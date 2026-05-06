@@ -1,0 +1,13 @@
+# Build outputs
+node_modules/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Lock file
+package-lock.json

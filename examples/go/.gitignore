@@ -1,0 +1,14 @@
+# Build outputs
+bin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go workspace
+*.exe
+*.exe~
+*.test
+*.out

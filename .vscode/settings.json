@@ -1,0 +1,9 @@
+{
+  "cucumber.features": [
+    "internal/**/*.feature"
+  ],
+  "cucumber.glue": [
+    "internal/**/steps.go",
+    "internal/**/*_test.go"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "strata",
+  "displayName": "STRATA",
+  "description": "Architecture violation diagnostics powered by the STRATA CLI",
+  "version": "0.0.1",
+  "publisher": "dariushalipour",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dariushalipour/strata"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Linters"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {},
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.0.0"
+  }
+}

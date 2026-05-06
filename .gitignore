@@ -1,0 +1,10 @@
+*.exe
+*.exe~
+*.test
+*.out
+.idea/
+.vscode/*
+!.vscode/settings.json
+*.swp
+*.swo
+.DS_Store

@@ -1,0 +1,14 @@
+# Build outputs
+build/
+.dart_tool/
+pubspec.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Generated files
+*.g.dart
+*.json_serializable.g.part
