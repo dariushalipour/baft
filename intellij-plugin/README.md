@@ -47,19 +47,15 @@ strata --version
 
 ## How it works
 
-On every save the plugin runs:
+The plugin uses IntelliJ's `ExternalAnnotator` pipeline to run `strata check --reporter=intellij .` from the project root. When there are unsaved files in the project, it adds `--overlay-stdin` and streams the current in-memory document contents to the CLI so diagnostics stay live while you type.
 
-```bash
-strata check --reporter=intellij .
-```
-
-from the project root, parses the JSON output, and publishes annotations. The plugin contains no architecture logic — the CLI is the single source of truth.
+The plugin parses the JSON output and publishes annotations. No architecture logic lives in the plugin — the CLI is the single source of truth.
 
 ---
 
 ## Usage
 
-Open any project that has a `STRATA.md` manifest. Violations appear automatically as red squiggles. Click any squiggle to see the rule name and message; the Problems tool window lists all violations across the project.
+Open any project that has a `STRATA.md` manifest. Violations appear automatically as red squiggles and refresh as you edit. Click any squiggle to see the rule name and message; the Problems tool window lists all violations across the project.
 
 ---
 

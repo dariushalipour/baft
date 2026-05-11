@@ -11,12 +11,16 @@ import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
+import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiFile
 import java.io.IOException
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
-data class StrataAnnotatorInfo(val projectRoot: String, val filePath: String)
+data class StrataAnnotatorInfo(val projectRoot: String, val filePath: String, val overlayJson: String?)
+data class StrataOverlayFile(val path: String, val content: String)
+data class StrataOverlayPayload(val files: List<StrataOverlayFile>)
 
 private val log = Logger.getInstance(StrataAnnotator::class.java)
 private val gson = Gson()
@@ -30,15 +34,20 @@ class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolat
         if (file.viewProvider.getPsi(file.viewProvider.baseLanguage) !== file) return null
         val root = file.project.basePath ?: return null
         val path = file.virtualFile?.path ?: return null
-        return StrataAnnotatorInfo(root, path)
+        return StrataAnnotatorInfo(root, path, collectOverlayJson(root))
     }
 
     override fun doAnnotate(info: StrataAnnotatorInfo): List<StrataViolation> {
         runningProcess.getAndSet(null)?.destroyForcibly()
 
         val process = try {
-            val pb = ProcessBuilder(findBinary(), "check", "--reporter=intellij", ".")
-                .directory(java.io.File(info.projectRoot))
+            val command = mutableListOf(findBinary(), "check", "--reporter=intellij")
+            if (info.overlayJson != null) {
+                command.add("--overlay-stdin")
+            }
+            command.add(".")
+            val pb = ProcessBuilder(command)
+                .directory(File(info.projectRoot))
             pb.environment()["PATH"] = augmentedPath()
             pb.start()
         } catch (e: IOException) {
@@ -55,6 +64,12 @@ class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolat
         }
 
         runningProcess.set(process)
+
+        process.outputStream.bufferedWriter().use { writer ->
+	        if (info.overlayJson != null) {
+	            writer.write(info.overlayJson)
+	        }
+	    }
 
         val stderr = process.errorStream.bufferedReader()
         val stdoutText = process.inputStream.bufferedReader().readText()
@@ -75,8 +90,7 @@ class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolat
 
     override fun apply(file: PsiFile, violations: List<StrataViolation>, holder: AnnotationHolder) {
         if (violations.isEmpty()) return
-        val doc = com.intellij.openapi.fileEditor.FileDocumentManager.getInstance()
-            .getDocument(file.virtualFile) ?: return
+        val doc = FileDocumentManager.getInstance().getDocument(file.virtualFile) ?: return
 
         for (v in violations) {
             val range = toTextRange(doc, v) ?: continue
@@ -117,6 +131,19 @@ class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolat
         "warning" -> HighlightSeverity.WARNING
         else -> HighlightSeverity.WEAK_WARNING
     }
+}
+
+private fun collectOverlayJson(projectRoot: String): String? {
+    val fileDocumentManager = FileDocumentManager.getInstance()
+    val rootPath = File(projectRoot).toPath().normalize()
+    val files = fileDocumentManager.unsavedDocuments.mapNotNull { document ->
+        val virtualFile = fileDocumentManager.getFile(document) ?: return@mapNotNull null
+        val filePath = File(virtualFile.path).toPath().normalize()
+        if (!filePath.startsWith(rootPath)) return@mapNotNull null
+        StrataOverlayFile(virtualFile.path, document.text)
+    }.distinctBy { it.path }
+    if (files.isEmpty()) return null
+    return gson.toJson(StrataOverlayPayload(files))
 }
 
 private fun findBinary(): String {

@@ -45,9 +45,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the check runs from "([^"]*)"$`,
 		func(ctx context.Context, rootDir string) error {
 			w := cw(ctx)
-			if w.Workspace.FSys == nil {
-				w.Workspace.FSys = steps.BuildMemFS(w.Workspace.Files)
-			}
+			w.Workspace.FSys = steps.BuildFS(w.GetWorkspace())
 
 			discovery := service.NewCapsuleDiscovery()
 			golang.RegisterDiscovery(discovery)

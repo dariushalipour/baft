@@ -10,13 +10,9 @@ Shows STRATA architecture violations as red squiggles and Problems tool window e
 
 ## How it works
 
-On every save the plugin runs:
+The plugin uses IntelliJ's `ExternalAnnotator` pipeline to run `strata check --reporter=intellij .` from the project root. When there are unsaved files in the project, it adds `--overlay-stdin` and streams the current in-memory document contents to the CLI so annotations track unsaved edits.
 
-```bash
-strata check --reporter=intellij .
-```
-
-from the project root, parses the JSON array on stdout, and publishes `ExternalAnnotator` annotations. No architecture logic lives in the plugin — the CLI is the single source of truth.
+The plugin parses the JSON array on stdout and publishes `ExternalAnnotator` annotations. No architecture logic lives in the plugin — the CLI is the single source of truth.
 
 ## Local development
 
@@ -28,7 +24,7 @@ Run a sandboxed IDE with the plugin loaded:
 ./gradlew runIde
 ```
 
-Open any project containing a `STRATA.md` manifest and save a file — violations will appear as red squiggles and in the Problems tool window.
+Open any project containing a `STRATA.md` manifest and edit a file — violations will appear as red squiggles and in the Problems tool window, including unsaved changes.
 
 ## Build a distributable ZIP
 

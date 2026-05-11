@@ -259,6 +259,142 @@ Feature: Architecture rule checking
     And 0 violations are reported
     And 0 errors are reported
 
+  Scenario: Unsaved STRATA.md content is checked without writing to disk
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ STRATA.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application/**"]
+        domain["internal/domain/**"]
+      ```
+      """
+    Given file "STRATA.md" has unsaved content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application/**"] --> domain["internal/domain/**"]
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 1 relation is examined
+    And 2 files are encountered
+    And 2 files are scanned
+    And 0 violations are reported
+    And 0 errors are reported
+
+  Scenario: Unsaved source content is checked without writing to disk
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ STRATA.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application/**"]
+        domain["internal/domain/**"]
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/application/order.go" has unsaved content:
+      """go
+      package application
+      """
+    Given file "internal/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 0 relations are examined
+    And 2 files are encountered
+    And 2 files are scanned
+    And 0 violations are reported
+    And 0 errors are reported
+
+  Scenario: Multiple unsaved files are checked together
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ STRATA.md
+      └─ internal/
+         ├─ api/
+         │  └─ handler.go
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application/**"] --> domain["internal/domain/**"]
+        api["internal/api/**"]
+      ```
+      """
+    Given file "STRATA.md" has unsaved content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application/**"] --> api["internal/api/**"]
+        domain["internal/domain/**"]
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/application/order.go" has unsaved content:
+      """go
+      package application
+
+      import "example.com/billing/internal/api"
+      """
+    Given file "internal/api/handler.go" has content "package api"
+    Given file "internal/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 1 relation is examined
+    And 3 files are encountered
+    And 3 files are scanned
+    And 0 violations are reported
+    And 0 errors are reported
+
   Scenario: Endophobic node forbids same-node imports
     Given a fresh workspace at "/Users/jane/strata" with this layout:
       """tree

@@ -47,13 +47,9 @@ strata --version
 
 ## How it works
 
-On every save, and 750 ms after edits stop, the extension runs:
+On every save, and 750 ms after edits stop, the extension runs `strata check --reporter=vsce .` from the workspace root. When there are dirty files in that workspace folder, it adds `--overlay-stdin` and streams the current unsaved buffer contents to the CLI so diagnostics stay live while you type.
 
-```bash
-strata check --reporter=vsce .
-```
-
-from the workspace root, parses the JSON output, and publishes diagnostics. The extension contains no architecture logic — the CLI is the single source of truth.
+The extension parses the JSON output and publishes diagnostics. No architecture logic lives in the extension — the CLI is the single source of truth.
 
 ---
 

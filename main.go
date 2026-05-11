@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"github.com/dariushalipour/strata/internal/adapter/fs/overlayfs"
 	"github.com/dariushalipour/strata/internal/adapter/fs/realfs"
 	"github.com/dariushalipour/strata/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/strata/internal/adapter/languages/dart"
@@ -67,12 +68,15 @@ func runCheck(args []string) {
 	var root string
 	var reporterName = "text"
 	var langs []string
+	var overlayStdin bool
 
 	for _, a := range args {
 		switch a {
 		case "--help", "-h":
 			printCheckUsage()
 			os.Exit(0)
+		case "--overlay-stdin":
+			overlayStdin = true
 		default:
 			if strings.HasPrefix(a, "--reporter=") {
 				reporterName = strings.TrimPrefix(a, "--reporter=")
@@ -96,7 +100,15 @@ func runCheck(args []string) {
 		os.Exit(1)
 	}
 
-	fs := realfs.New()
+	var fs port.FileSystem = realfs.New()
+	if overlayStdin {
+		payload, err := overlayfs.Decode(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "invalid overlay stdin: %v\n", err)
+			os.Exit(1)
+		}
+		fs = overlayfs.NewFromPayload(fs, payload)
+	}
 	languages := resolveLangs(langs)
 	repo := &mermaid.MermaidRepository{}
 

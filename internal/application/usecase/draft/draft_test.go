@@ -67,7 +67,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the draft runs from "([^"]*)"$`,
 		func(ctx context.Context, rootDir string) error {
 			w := dw(ctx)
-			w.Workspace.FSys = steps.BuildMemFS(w.Workspace.Files)
+			w.Workspace.FSys = steps.BuildFS(w.GetWorkspace())
 
 			discovery := service.NewCapsuleDiscovery()
 			golang.RegisterDiscovery(discovery)

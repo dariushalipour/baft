@@ -10,13 +10,9 @@ Shows STRATA architecture violations as red squiggles and Problems panel entries
 
 ## How it works
 
-On every save (immediately) and after edits stop (750 ms debounce), the extension runs:
+On every save (immediately) and after edits stop (750 ms debounce), the extension runs `strata check --reporter=vsce .` from each workspace folder root. When there are dirty files in that folder, it adds `--overlay-stdin` and streams the unsaved buffer contents to the CLI so diagnostics reflect in-memory edits.
 
-```bash
-strata check --reporter=vsce .
-```
-
-from each workspace folder root, parses the JSON array on stdout, and publishes diagnostics. No architecture logic lives in the extension — the CLI is the single source of truth.
+The extension parses the JSON array on stdout and publishes diagnostics. No architecture logic lives in the extension — the CLI is the single source of truth.
 
 ## Local development
 
