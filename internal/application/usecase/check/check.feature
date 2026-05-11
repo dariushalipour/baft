@@ -332,7 +332,7 @@ Feature: Architecture rule checking
     Given file "internal/application/order.go" has content:
       """go
       package application
-
+      
       import "example.com/billing/internal/domain"
       """
     Given file "internal/domain/order.go" has content "package domain"
@@ -368,7 +368,7 @@ Feature: Architecture rule checking
     Given file "internal/application/order.go" has content:
       """go
       package application
-
+      
       import "example.com/billing/internal/domain"
       """
     Given file "internal/application/order.go" has unsaved content:
@@ -418,13 +418,13 @@ Feature: Architecture rule checking
     Given file "internal/application/order.go" has content:
       """go
       package application
-
+      
       import "example.com/billing/internal/domain"
       """
     Given file "internal/application/order.go" has unsaved content:
       """go
       package application
-
+      
       import "example.com/billing/internal/api"
       """
     Given file "internal/api/handler.go" has content "package api"
@@ -1485,6 +1485,68 @@ Feature: Architecture rule checking
       /Users/jane/baft: mermaid block declared no nodes (/Users/jane/baft/BAFT.md)
       """
 
+  Scenario: Check passes when capsule root has governed sub dirs and parent declares cross-context edge
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ billing/
+      │  ├─ BAFT.md
+      │  ├─ calculator.ts
+      │  └─ invoice.ts
+      ├─ shared/
+      │  └─ utils.ts
+      ├─ package.json
+      ├─ tsconfig.json
+      └─ BAFT.md
+      """
+    Given file "package.json" has content '{"name":"@myorg/app"}'
+    Given file "tsconfig.json" has content:
+      """json
+      {"compilerOptions":{"baseUrl":".","paths":{"@myorg/shared/*":["shared/*"],"@myorg/billing/*":["billing/*"]}}}
+      """
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        billing["billing/&ast;&ast;"] --> shared["shared/&ast;&ast;"]
+      ```
+      """
+    Given file "billing/BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        calculator_dot_ts["calculator.ts"]
+        invoice_dot_ts["invoice.ts"]
+      
+        invoice_dot_ts --> calculator_dot_ts
+      ```
+      """
+    Given file "shared/utils.ts" has content:
+      """typescript
+      export function formatDate(d: Date) { return d.toISOString() }
+      """
+    Given file "billing/calculator.ts" has content:
+      """typescript
+      export function calculateTax(amount: number) { return amount * 0.1 }
+      """
+    Given file "billing/invoice.ts" has content:
+      """typescript
+      import { formatDate } from "@myorg/shared/utils"
+      import { calculateTax } from "./calculator"
+      
+      export function generateInvoice() {
+        const tax = calculateTax(100)
+        return formatDate(new Date()) + " tax:" + tax
+      }
+      """
+    Given the check uses the "typescript" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 2 relations are examined
+    And 3 files are encountered
+    And 3 files are scanned
+    And 0 violations are reported
+    And 0 errors are reported
+
   Scenario: Invalid edge token is reported as a parse error
     Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
@@ -1847,7 +1909,7 @@ Feature: Architecture rule checking
     Given file "internal/application/order.go" has content:
       """go
       package application
-
+      
       import "example.com/billing/internal/domain"
       """
     Given file "internal/domain/order.go" has content:

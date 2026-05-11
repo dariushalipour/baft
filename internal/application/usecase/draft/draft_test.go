@@ -135,7 +135,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return nil
 		})
 
-	sc.Step(`^capsule (\d+) has (\d+) nodes$`,
+	sc.Step(`^capsule (\d+) has (\d+) nodes?$`,
 		func(ctx context.Context, idx, n int) error {
 			w := dw(ctx)
 			if idx < 1 || idx > len(w.capsules) {
@@ -147,7 +147,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return nil
 		})
 
-	sc.Step(`^capsule (\d+) has (\d+) edges$`,
+	sc.Step(`^capsule (\d+) has (\d+) edges?$`,
 		func(ctx context.Context, idx, n int) error {
 			w := dw(ctx)
 			if idx < 1 || idx > len(w.capsules) {

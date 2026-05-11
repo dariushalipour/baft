@@ -223,7 +223,7 @@ Feature: Draft BAFT.md from actual imports
     When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 1 capsule is drafted
-    And capsule 1 has 2 files scanned
+    And capsule 1 has 3 files scanned
     And "BAFT.md" is expected to have content:
       """config
       <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
@@ -235,6 +235,7 @@ Feature: Draft BAFT.md from actual imports
       flowchart TD
         root["."]
         internal_slash_domain["internal/domain/&ast;&ast;"]
+        internal_slash_nested_slash_api["internal/nested/api/&ast;&ast;"]
       
         root --> internal_slash_domain
       ```
@@ -271,7 +272,7 @@ Feature: Draft BAFT.md from actual imports
     When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 1 capsule is drafted
-    And capsule 1 has 1 file scanned
+    And capsule 1 has 2 files scanned
 
   Scenario: Draft ignores missing files gracefully
     Given a fresh workspace at "/Users/jane/baft" with this layout:
@@ -364,3 +365,78 @@ Feature: Draft BAFT.md from actual imports
       """
     And "shared/BAFT.md" should not exist
     And "BAFT.md" should not exist
+
+  Scenario: Draft from capsule root shows cross-context imports
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ billing/
+      │  ├─ BAFT.md
+      │  ├─ calculator.ts
+      │  └─ invoice.ts
+      ├─ shared/
+      │  └─ utils.ts
+      ├─ package.json
+      ├─ tsconfig.json
+      └─ README.md
+      """
+    Given file "package.json" has content '{"name":"@myorg/app"}'
+    Given file "README.md" has content "# Monorepo"
+    Given file "tsconfig.json" has content:
+      """json
+      {"compilerOptions":{"baseUrl":".","paths":{"@myorg/shared/*":["shared/*"],"@myorg/billing/*":["billing/*"]}}}
+      """
+    Given file "shared/utils.ts" has content:
+      """typescript
+      export function formatDate(d: Date) { return d.toISOString() }
+      """
+    And file "billing/BAFT.md" has content:
+      """config
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
+      
+      ```mermaid
+      flowchart TD
+        calculator_dot_ts["calculator.ts"]
+        invoice_dot_ts["invoice.ts"]
+      
+        invoice_dot_ts --> calculator_dot_ts
+      ```
+      """
+    Given file "billing/calculator.ts" has content:
+      """typescript
+      export function calculateTax(amount: number) { return amount * 0.1 }
+      """
+    Given file "billing/invoice.ts" has content:
+      """typescript
+      import { formatDate } from "@myorg/shared/utils"
+      import { calculateTax } from "./calculator"
+      
+      export function generateInvoice() {
+        const tax = calculateTax(100)
+        return formatDate(new Date()) + " tax:" + tax
+      }
+      """
+    Given the draft uses the "typescript" language adapter
+    When the draft runs from "/Users/jane/baft"
+    Then the draft succeeds
+    And 1 capsule is drafted
+    And capsule 1 has 3 files scanned
+    And capsule 1 has 2 nodes
+    And capsule 1 has 1 edge
+    And "BAFT.md" is expected to have content:
+      """config
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
+      
+      ```mermaid
+      flowchart TD
+        billing["billing/&ast;&ast;"]
+        shared_slash_utils_dot_ts["shared/utils.ts"]
+      
+        billing --> shared_slash_utils_dot_ts
+      ```
+      """

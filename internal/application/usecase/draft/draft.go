@@ -39,6 +39,13 @@ type CapsuleDraft struct {
 	ConfigPath       string
 }
 
+// fileRecord holds import data for a single file during capsule-root drafting
+// with file-glob languages, before directory-level merging.
+type fileRecord struct {
+	rel     string
+	imports []port.ImportSpec
+}
+
 // Draft walks all capsules for every supplied language, parses every
 // import in every governed file, and writes a comprehensive BAFT.md
 // that reflects the current dependency reality at maximum granularity.
@@ -104,7 +111,11 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 	filesEncountered := 0
 	filesScanned := 0
 
-	err := service.WalkCapsule(fsys, configDir, lang, func(abs, rel string) error {
+	// For capsule-root drafts with file-glob languages, collect per-file data
+	// so we can merge same-directory files into a single directory-level node.
+	var fileRecords []fileRecord
+
+	walkFn := func(abs, rel string) error {
 		imports, err := lang.ParseImports(fsys, abs)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -120,6 +131,13 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 			fileRel, _ = filepath.Rel(p.Dir, filepath.Join(configDir, rel))
 		}
 		fileRel = filepath.ToSlash(fileRel)
+
+		// When drafting from capsule root with a file-glob language,
+		// collect per-file records for later merging.
+		if configDir == p.Dir && lang.SupportsFileGlobs() {
+			fileRecords = append(fileRecords, fileRecord{rel: fileRel, imports: imports})
+			return nil
+		}
 
 		srcID := nodeKey(rel, lang.SupportsFileGlobs())
 		nodes[srcID] = srcID
@@ -155,9 +173,22 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 		}
 
 		return nil
-	})
+	}
+
+	var err error
+	if configDir == p.Dir {
+		err = service.WalkAllFiles(fsys, configDir, lang, walkFn)
+	} else {
+		err = service.WalkCapsule(fsys, configDir, lang, walkFn)
+	}
 	if err != nil {
 		return nil, err
+	}
+
+	// If we collected file records (capsule-root + file-glob language),
+	// merge same-directory files into directory-level nodes.
+	if len(fileRecords) > 0 {
+		nodes, edges = mergeDirectoryNodes(fsys, fileRecords, p, lang)
 	}
 
 	if len(nodes) == 0 {
@@ -180,6 +211,104 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 		Edges:            edgeCount(edges),
 		ConfigPath:       configPath,
 	}, nil
+}
+
+// mergeDirectoryNodes takes per-file records and merges files that share
+// the same parent directory into a single directory-level node with a /**
+// glob.  Files whose directory is the capsule root itself stay as individual
+// file nodes.  Outgoing edges from merged files are promoted to the
+// directory-level node.
+func mergeDirectoryNodes(fsys port.FileSystem, records []fileRecord, p port.Capsule, lang port.Language) (map[string]string, map[string]map[string]bool) {
+	nodes := map[string]string{}
+	edges := map[string]map[string]bool{}
+
+	// Group file records by parent directory.
+	dirFiles := map[string][]fileRecord{}
+	for _, r := range records {
+		dir := filepath.Dir(r.rel)
+		dirFiles[dir] = append(dirFiles[dir], r)
+	}
+
+	// Build a map from directory to whether it has multiple files (should be merged).
+	dirIsMerged := map[string]bool{}
+	for dir, files := range dirFiles {
+		if dir != "." && dir != "" && len(files) > 1 {
+			dirIsMerged[dir] = true
+		}
+	}
+
+	configDirClean := filepath.Clean(p.Dir)
+
+	for dir, files := range dirFiles {
+		// If the directory is the capsule root, keep files as individual nodes.
+		if dir == "." || dir == "" {
+			for _, f := range files {
+				srcID := graph.NodeKeyForFile(f.rel)
+				nodes[srcID] = srcID
+				resolveFileImports(fsys, f.imports, f.rel, p, lang, configDirClean, nodes, edges, srcID, dirIsMerged)
+			}
+			continue
+		}
+
+		// Multiple files in the same subdirectory → merge into one directory node.
+		if len(files) > 1 {
+			dirGlob := dir + "/**"
+			dirID := graph.NodeKeyForDir(dir)
+			nodes[dirID] = dirGlob
+			for _, f := range files {
+				resolveFileImports(fsys, f.imports, f.rel, p, lang, configDirClean, nodes, edges, dirID, dirIsMerged)
+			}
+			continue
+		}
+
+		// Single file in subdirectory → keep as individual file node.
+		f := files[0]
+		srcID := graph.NodeKeyForFile(f.rel)
+		nodes[srcID] = srcID
+		resolveFileImports(fsys, f.imports, f.rel, p, lang, configDirClean, nodes, edges, srcID, dirIsMerged)
+	}
+
+	return nodes, edges
+}
+
+// resolveFileImports resolves each import spec for a file and adds nodes/edges.
+// dirIsMerged maps directories whose files are merged into a single directory-level node.
+func resolveFileImports(fsys port.FileSystem, imports []port.ImportSpec, fileRel string, c port.Capsule, lang port.Language, configDirClean string, nodes map[string]string, edges map[string]map[string]bool, srcID string, dirIsMerged map[string]bool) {
+	for _, spec := range imports {
+		targetPath, internal := lang.ResolveInternalTarget(fsys, spec, c, fileRel)
+		if !internal {
+			continue
+		}
+		targetAbs := targetPath
+		if !filepath.IsAbs(targetAbs) {
+			targetAbs = filepath.Join(c.Dir, targetAbs)
+		}
+		targetAbs = filepath.Clean(targetAbs)
+		if targetAbs != configDirClean && !strings.HasPrefix(targetAbs, configDirClean+string(filepath.Separator)) {
+			continue
+		}
+		dstRel, _ := filepath.Rel(configDirClean, targetAbs)
+
+		// If the target file is in a merged directory, use the directory node ID.
+		dstDir := filepath.Dir(dstRel)
+		var dstID string
+		if dirIsMerged[dstDir] {
+			dstID = graph.NodeKeyForDir(dstDir)
+		} else {
+			dstID = nodeKey(dstRel, lang.SupportsFileGlobs())
+		}
+
+		if srcID == dstID {
+			continue
+		}
+
+		nodes[dstID] = dstID
+
+		if edges[srcID] == nil {
+			edges[srcID] = map[string]bool{}
+		}
+		edges[srcID][dstID] = true
+	}
 }
 
 func edgeCount(edges map[string]map[string]bool) int {
