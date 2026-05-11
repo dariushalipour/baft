@@ -7,11 +7,11 @@
 
 ```mermaid
 flowchart TD
-  api["api/**"]
-  auth["auth/**"]
-  billing["billing/**"]
-  core["core/**"]
-  notifications["notifications/**"]
+  api["api/&ast;&ast;"]
+  auth["auth/&ast;&ast;"]
+  billing["billing/&ast;&ast;"]
+  core["core/&ast;&ast;"]
+  notifications["notifications/&ast;&ast;"]
   api --> billing
   api --> auth
   api --> core

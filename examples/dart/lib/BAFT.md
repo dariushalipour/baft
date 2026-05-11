@@ -7,10 +7,10 @@
 
 ```mermaid
 flowchart TD
-  api["api/**"]
-  auth["auth/**"]
-  billing["billing/**"]
-  core["core/**"]
+  api["api/&ast;&ast;"]
+  auth["auth/&ast;&ast;"]
+  billing["billing/&ast;&ast;"]
+  core["core/&ast;&ast;"]
   entry["main.dart"]
   api --> billing
   api --> auth

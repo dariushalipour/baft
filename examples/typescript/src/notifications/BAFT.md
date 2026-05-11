@@ -5,7 +5,7 @@
 
 ```mermaid
 flowchart TD
-  domain["domain/**"]
-  usecase["usecase/**"]
+  domain["domain/&ast;&ast;"]
+  usecase["usecase/&ast;&ast;"]
   usecase --> domain
 ```

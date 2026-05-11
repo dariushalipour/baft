@@ -7,9 +7,9 @@
 
 ```mermaid
 flowchart TD
-  auth["src/auth/**"]
-  billing["src/billing/**"]
-  shared["src/shared/**"]
+  auth["src/auth/&ast;&ast;"]
+  billing["src/billing/&ast;&ast;"]
+  shared["src/shared/&ast;&ast;"]
   billing --> auth
   billing --> shared
 ```

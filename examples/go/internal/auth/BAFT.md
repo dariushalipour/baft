@@ -5,7 +5,7 @@
 
 ```mermaid
 flowchart TD
-  domain["internal/auth/domain/**"]
-  usecase["internal/auth/usecase/**"]
+  domain["internal/auth/domain/&ast;&ast;"]
+  usecase["internal/auth/usecase/&ast;&ast;"]
   usecase --> domain
 ```

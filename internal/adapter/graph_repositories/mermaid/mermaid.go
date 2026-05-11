@@ -159,6 +159,12 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 	if rawGlob == "" {
 		rawGlob = m[3]
 	}
+	if strings.Contains(rawGlob, "*") {
+		return &ParseError{
+			Line: lineNum,
+			Msg:  fmt.Sprintf("node %q uses raw \"*\" in glob %q; write &ast; instead", id, rawGlob),
+		}
+	}
 	glob := decodeNodeGlob(rawGlob)
 
 	if existing, ok := g.Nodes[id]; ok && existing != glob {

@@ -7,12 +7,12 @@
 
 ```mermaid
 flowchart TD
-  api["src/api/**"]
-  auth["src/auth/**"]
-  core["src/core/**"]
-  domain["src/domain/**"]
-  shared["src/shared/**"]
-  usecase["src/usecase/**"]
+  api["src/api/&ast;&ast;"]
+  auth["src/auth/&ast;&ast;"]
+  core["src/core/&ast;&ast;"]
+  domain["src/domain/&ast;&ast;"]
+  shared["src/shared/&ast;&ast;"]
+  usecase["src/usecase/&ast;&ast;"]
   api --> usecase
   api --> auth
   api --> core

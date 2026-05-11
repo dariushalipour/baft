@@ -5,9 +5,9 @@
 
 ```mermaid
 flowchart TD
-  api["internal/billing/api/**"]
-  domain["internal/billing/domain/**"]
-  usecase["internal/billing/usecase/**"]
+  api["internal/billing/api/&ast;&ast;"]
+  domain["internal/billing/domain/&ast;&ast;"]
+  usecase["internal/billing/usecase/&ast;&ast;"]
   api --> usecase
   usecase --> domain
 ```

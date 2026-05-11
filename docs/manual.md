@@ -39,10 +39,10 @@ MINIMAL EXAMPLE
 
     ```mermaid
     flowchart TD
-      api["internal/api/**"]
-      usecase["internal/usecase/**"]:::endophobic
-      domain["internal/domain/**"]
-      infra["internal/infra/**"]
+      api["internal/api/&ast;&ast;"]
+      usecase["internal/usecase/&ast;&ast;"]:::endophobic
+      domain["internal/domain/&ast;&ast;"]
+      infra["internal/infra/&ast;&ast;"]
 
       api --> usecase
       usecase --> domain
@@ -66,7 +66,7 @@ FORMAT
 
 NODES
 -----
-Syntax: `nodeId["path/**"]` for a directory-shaped node or `nodeId["path/file.go"]` for a file-shaped node.
+Syntax: `nodeId["path/&ast;&ast;"]` for a directory-shaped node or `nodeId["path/file.go"]` for a file-shaped node.
 
 - Node IDs are arbitrary unique identifiers.
 - Directory globs claim every governed source file under that directory.
@@ -107,7 +107,7 @@ Child scope:
 - A child contract may not reference sibling directories with globs like `../sibling/**`.
 
 Parent scope:
-- The parent `BAFT.md` may reference child directories as nodes, for example `auth["auth/**"]`.
+- The parent `BAFT.md` may reference child directories as nodes, for example `auth["auth/&ast;&ast;"]`.
 - The parent governs cross-context edges between children, for example `billing --> auth`.
 - The parent does not scan files inside children for unmatched-file violations. That is the child's job.
 - If a child file imports a sibling-context file and the parent has no edge for that relation, the parent reports the violation.

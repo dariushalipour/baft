@@ -5,7 +5,7 @@
 
 ```mermaid
 flowchart TD
-  domain["src/auth/domain/**"]
-  service["src/auth/service/**"]
+  domain["src/auth/domain/&ast;&ast;"]
+  service["src/auth/service/&ast;&ast;"]
   service --> domain
 ```

@@ -7,10 +7,10 @@
 
 ```mermaid
 flowchart TD
-  api["src/main/kotlin/com/example/app/api/**"]
-  application["src/main/kotlin/com/example/app/application/**"]
-  domain["src/main/kotlin/com/example/app/domain/**"]
-  shared["src/main/kotlin/com/example/app/shared/**"]
+  api["src/main/kotlin/com/example/app/api/&ast;&ast;"]
+  application["src/main/kotlin/com/example/app/application/&ast;&ast;"]
+  domain["src/main/kotlin/com/example/app/domain/&ast;&ast;"]
+  shared["src/main/kotlin/com/example/app/shared/&ast;&ast;"]
   api --> application
   api --> shared
   application --> domain

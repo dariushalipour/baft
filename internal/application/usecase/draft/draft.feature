@@ -199,7 +199,7 @@ Feature: Draft BAFT.md from actual imports
       """config
       ```mermaid
       flowchart TD
-        api["internal/nested/api/**"]
+        api["internal/nested/api/&ast;&ast;"]
       ```
       """
     Given file "internal/domain/model.go" has content:

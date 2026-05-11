@@ -54,16 +54,16 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["application/**"]
-        domain["domain/**"]
+        app["application/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "auth/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        handler["api/**"]
-        domain["domain/**"]
+        handler["api/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "billing/application/order.go" has content "package application"
@@ -83,6 +83,49 @@ Feature: Architecture rule checking
       /Users/jane/baft/auth: read /Users/jane/baft/auth/BAFT.md: permission denied
       """
     And 0 violations are reported
+
+  Scenario: Multiple capsule errors all appear, including raw asterisk parse errors
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ billing/
+      │  ├─ go.mod
+      │  └─ BAFT.md
+      └─ auth/
+         ├─ go.mod
+         └─ BAFT.md
+      """
+    Given file "billing/go.mod" has content "module example.com/billing"
+    Given file "auth/go.mod" has content "module example.com/auth"
+    Given file "billing/BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        handler["api/handler.go"]
+        model["domain/model.go"]
+      ```
+      """
+    Given file "auth/BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        api["api/**"]
+        domain["domain/&ast;&ast;"]
+      ```
+      """
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 2 capsules are discovered
+    And 0 relations are examined
+    And 0 files are encountered
+    And 0 files are scanned
+    And 0 violations are reported
+    And 3 errors are reported
+    And the errors are:
+      """errors
+      /Users/jane/baft/auth: node "api" uses raw "*" in glob "api/**"; write &ast; instead (/Users/jane/baft/auth/BAFT.md:3)
+      /Users/jane/baft/billing: handler (/Users/jane/baft/billing/BAFT.md:3) references api/handler.go — file-shaped nodes require a language that supports file globs
+      /Users/jane/baft/billing: model (/Users/jane/baft/billing/BAFT.md:4) references domain/model.go — file-shaped nodes require a language that supports file globs
+      """
 
   Scenario: Check runs from a parent directory above capsules
     Given a fresh workspace at "/Users/jane/baft" with this layout:
@@ -108,16 +151,16 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["application/**"]
-        domain["domain/**"]
+        app["application/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "auth/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        handler["api/**"]
-        domain["domain/**"]
+        handler["api/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "billing/application/order.go" has content "package application"
@@ -152,9 +195,9 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
-        api["internal/api/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
+        api["internal/api/&ast;&ast;"]
         handler["internal/api/handler.go"]
         model["internal/model/repo.go"]
         app --> domain
@@ -211,7 +254,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["application/**"]
+        app["application/&ast;&ast;"]
       ```
       """
     Given file "billing/application/order.go" has content "package application"
@@ -240,7 +283,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"] --> domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"] --> domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content:
@@ -275,15 +318,15 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "BAFT.md" has unsaved content:
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"] --> domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"] --> domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content:
@@ -318,8 +361,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content:
@@ -360,16 +403,16 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"] --> domain["internal/domain/**"]
-        api["internal/api/**"]
+        app["internal/application/&ast;&ast;"] --> domain["internal/domain/&ast;&ast;"]
+        api["internal/api/&ast;&ast;"]
       ```
       """
     Given file "BAFT.md" has unsaved content:
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"] --> api["internal/api/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"] --> api["internal/api/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content:
@@ -420,7 +463,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        usecase["usecase/**"]:::endophobic
+        usecase["usecase/&ast;&ast;"]:::endophobic
       ```
       """
     Given file "internal/usecase/create_order.go" has content:
@@ -444,7 +487,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        handlers["*"]:::endophobic
+        handlers["&ast;"]:::endophobic
       ```
       """
     Given file "handlers/ui/button.ts" has content:
@@ -488,8 +531,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content:
@@ -536,16 +579,16 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["application/**"]
-        domain["domain/**"]
+        app["application/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "auth/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        handler["api/**"]
-        domain["domain/**"]
+        handler["api/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "billing/application/order.go" has content:
@@ -594,8 +637,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        handler["internal/api/**"]
-        domain["internal/domain/**"]
+        handler["internal/api/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/api/handler.go" has content "package api"
@@ -638,7 +681,7 @@ Feature: Architecture rule checking
       ```mermaid
       flowchart TD
         handler["internal/api/handler.go"]
-        domain["internal/domain/**"]
+        domain["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/api/handler.go" has content "package api"
@@ -672,8 +715,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
       
         app --> domain
       ```
@@ -713,7 +756,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["**"] --> domain["../domain/**"]
+        app["&ast;&ast;"] --> domain["../domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/create_order.go" has content:
@@ -767,7 +810,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        domain["domain/**"]
+        domain["domain/&ast;&ast;"]
         api["api/handler.go"]
       ```
       """
@@ -782,7 +825,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        domain["domain/**"]
+        domain["domain/&ast;&ast;"]
         api["api/login.go"]
       ```
       """
@@ -834,16 +877,16 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        usecase["usecase/**"] --> auth["../auth/usecase/**"]
-        usecase --> domain["domain/**"]
+        usecase["usecase/&ast;&ast;"] --> auth["../auth/usecase/&ast;&ast;"]
+        usecase --> domain["domain/&ast;&ast;"]
       ```
       """
     Given file "auth/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        usecase["usecase/**"]
-        domain["domain/**"]
+        usecase["usecase/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "billing/usecase/create_order.go" has content:
@@ -884,8 +927,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        api["api/**"]
-        kk["..domain/**"]
+        api["api/&ast;&ast;"]
+        kk["..domain/&ast;&ast;"]
       ```
       """
     Given file "billing/api/handler.go" has content "package api"
@@ -915,8 +958,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        api["api/**"]
-        kk["nested/..domain/**"]
+        api["api/&ast;&ast;"]
+        kk["nested/..domain/&ast;&ast;"]
       ```
       """
     Given file "billing/api/handler.go" has content "package api"
@@ -946,8 +989,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        domain["domain/**"]
-        dowhatever["do*"]
+        domain["domain/&ast;&ast;"]
+        dowhatever["do&ast;"]
       ```
       """
     Given file "billing/api/handler.go" has content "package api"
@@ -977,8 +1020,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        domain["domain/**"]
-        samething["domain/**"]
+        domain["domain/&ast;&ast;"]
+        samething["domain/&ast;&ast;"]
       ```
       """
     Given file "billing/api/handler.go" has content "package api"
@@ -1015,22 +1058,22 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        billing["billing/**"] --> auth["auth/**"]
+        billing["billing/&ast;&ast;"] --> auth["auth/&ast;&ast;"]
       ```
       """
     Given file "billing/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        usecase["usecase/**"] --> domain["domain/**"]
+        usecase["usecase/&ast;&ast;"] --> domain["domain/&ast;&ast;"]
       ```
       """
     Given file "auth/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        usecase["usecase/**"]
-        domain["domain/**"]
+        usecase["usecase/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "billing/usecase/create_order.go" has content:
@@ -1079,29 +1122,29 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        platform["platform/**"] --> shared_lib["shared/**"]
+        platform["platform/&ast;&ast;"] --> shared_lib["shared/&ast;&ast;"]
       ```
       """
     Given file "platform/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        billing["billing/**"] --> shared["shared/**"]
+        billing["billing/&ast;&ast;"] --> shared["shared/&ast;&ast;"]
       ```
       """
     Given file "platform/billing/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        usecase["usecase/**"] --> domain["domain/**"]
+        usecase["usecase/&ast;&ast;"] --> domain["domain/&ast;&ast;"]
       ```
       """
     Given file "platform/shared/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        logging["logging/**"]
-        database["database/**"]
+        logging["logging/&ast;&ast;"]
+        database["database/&ast;&ast;"]
       ```
       """
     Given file "platform/billing/usecase/create_order.go" has content:
@@ -1152,31 +1195,31 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        platform["platform/**"]
-        utils["utils/**"]
+        platform["platform/&ast;&ast;"]
+        utils["utils/&ast;&ast;"]
       ```
       """
     Given file "platform/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        billing["billing/**"]
-        shared["shared/**"]
+        billing["billing/&ast;&ast;"]
+        shared["shared/&ast;&ast;"]
       ```
       """
     Given file "platform/billing/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        usecase["usecase/**"] --> domain["domain/**"]
+        usecase["usecase/&ast;&ast;"] --> domain["domain/&ast;&ast;"]
       ```
       """
     Given file "platform/shared/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        logging["logging/**"]
-        database["database/**"]
+        logging["logging/&ast;&ast;"]
+        database["database/&ast;&ast;"]
       ```
       """
     Given file "platform/billing/usecase/create_order.go" has content:
@@ -1220,8 +1263,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        billing["billing/**"]
-        shared_again["billing/**"]
+        billing["billing/&ast;&ast;"]
+        shared_again["billing/&ast;&ast;"]
       ```
       """
     Given the check uses the "go" language adapter
@@ -1253,8 +1296,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"
+        domain["internal/domain/&ast;&ast;"]
         app --> domain
       ```
       """
@@ -1275,7 +1318,48 @@ Feature: Architecture rule checking
     And 1 error is reported
     And the error is:
       """errors
-      /Users/jane/baft: unrecognized mermaid line: app["internal/application/**" (/Users/jane/baft/BAFT.md:3)
+      /Users/jane/baft: unrecognized mermaid line: app["internal/application/&ast;&ast;" (/Users/jane/baft/BAFT.md:3)
+      """
+
+  Scenario: Raw asterisks in mermaid node labels are reported as a config error
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application/**"]
+        domain["internal/domain/&ast;&ast;"]
+        app --> domain
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+      
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 0 relations are examined
+    And 0 files are encountered
+    And 0 files are scanned
+    And 0 violations are reported
+    And 1 error is reported
+    And the error is:
+      """errors
+      /Users/jane/baft: node "app" uses raw "*" in glob "internal/application/**"; write &ast; instead (/Users/jane/baft/BAFT.md:3)
       """
 
   Scenario: Overlapping node globs are reported as an error
@@ -1294,8 +1378,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        handlers["internal/handlers/**"]
-        services["internal/**"]
+        handlers["internal/handlers/&ast;&ast;"]
+        services["internal/&ast;&ast;"]
       ```
       """
     Given file "internal/handlers/create.go" has content "package handlers"
@@ -1327,7 +1411,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
+        app["internal/application/&ast;&ast;"]
       """
     Given file "internal/application/order.go" has content "package application"
     Given the check uses the "go" language adapter
@@ -1417,8 +1501,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
         app --> bad-name!
       ```
       """
@@ -1456,8 +1540,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        app["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        app["internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content "package application"
@@ -1488,8 +1572,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        svc["internal/application/**"]
+        app["internal/application/&ast;&ast;"]
+        svc["internal/application/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content "package application"
@@ -1522,9 +1606,9 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        svc["internal/application/**"]
-        bad["../internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        svc["internal/application/&ast;&ast;"]
+        bad["../internal/domain/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content "package application"
@@ -1558,7 +1642,7 @@ Feature: Architecture rule checking
       ```mermaid
       flowchart TD
         app[""]
-        domain["internal/application/**"]
+        domain["internal/application/&ast;&ast;"]
       ```
       """
     Given file "internal/application/order.go" has content "package application"
@@ -1591,8 +1675,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
         app -->
       ```
       """
@@ -1640,16 +1724,16 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["application/**"]
-        domain["domain/**"]
+        app["application/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "auth/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
-        handler["api/**"]
-        domain["domain/**"]
+        handler["api/&ast;&ast;"]
+        domain["domain/&ast;&ast;"]
       ```
       """
     Given file "billing/application/order.go" has content:
@@ -1700,8 +1784,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
         app --> domain
         domain --> app
       ```
@@ -1747,8 +1831,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
         app --> infrastructure
       ```
       """
@@ -1788,13 +1872,13 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"] --> domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"] --> domain["internal/domain/&ast;&ast;"]
       ```
       Some explanatory text between blocks.
       ```mermaid
       flowchart TD
-        domain["internal/domain/**"]
-        infra["internal/infrastructure/**"]
+        domain["internal/domain/&ast;&ast;"]
+        infra["internal/infrastructure/&ast;&ast;"]
         infra --> domain
       ```
       """
@@ -1834,8 +1918,8 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        app["internal/application/**"]
-        domain["internal/domain/**"]
+        app["internal/application/&ast;&ast;"]
+        domain["internal/domain/&ast;&ast;"]
         app --> domain
         domain --> domain
       ```
@@ -1883,7 +1967,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        core["core/**"]
+        core["core/&ast;&ast;"]
       ```
       """
     Given file "core/config.go" has content "package core"
@@ -1892,7 +1976,7 @@ Feature: Architecture rule checking
       """config
       ```mermaid
       flowchart TD
-        svc["service/**"]
+        svc["service/&ast;&ast;"]
       ```
       """
     Given file "sub/domain/model.go" has content "package domain"

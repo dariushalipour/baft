@@ -52,10 +52,10 @@ Create `BAFT.md` beside your module manifest.
 ````markdown
 ```mermaid
 flowchart TD
-  api["internal/api/**"]
-  usecase["internal/usecase/**"]:::endophobic
-  domain["internal/domain/**"]
-  infra["internal/infra/**"]
+  api["internal/api/&ast;&ast;"]
+  usecase["internal/usecase/&ast;&ast;"]:::endophobic
+  domain["internal/domain/&ast;&ast;"]
+  infra["internal/infra/&ast;&ast;"]
 
   api --> usecase
   usecase --> domain
@@ -68,10 +68,10 @@ GitHub will render that Mermaid block as a diagram:
 
 ```mermaid
 flowchart TD
-  api["internal/api/**"]
-  usecase["internal/usecase/**"]:::endophobic
-  domain["internal/domain/**"]
-  infra["internal/infra/**"]
+  api["internal/api/&ast;&ast;"]
+  usecase["internal/usecase/&ast;&ast;"]:::endophobic
+  domain["internal/domain/&ast;&ast;"]
+  infra["internal/infra/&ast;&ast;"]
 
   api --> usecase
   usecase --> domain
@@ -131,7 +131,7 @@ Nested capsules are supported. A child directory with its own `BAFT.md` is treat
 
 ## Contract Model
 
-- **Node:** `nodeId["path/**"]` claims a directory or file-shaped slice of a capsule
+- **Node:** `nodeId["path/&ast;&ast;"]` claims a directory or file-shaped slice of a capsule
 - **Edge:** `A --> B` means files in `A` may import files in `B`
 - **Self-imports:** allowed by default
 - **Endophobic node:** `:::endophobic` disables same-node imports

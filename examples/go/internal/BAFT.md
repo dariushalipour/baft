@@ -7,11 +7,11 @@
 
 ```mermaid
 flowchart TD
-  api["internal/api/**"]
-  auth["internal/auth/**"]
-  billing["internal/billing/**"]
-  cmd["internal/cmd/**"]
-  domain["internal/domain/**"]
+  api["internal/api/&ast;&ast;"]
+  auth["internal/auth/&ast;&ast;"]
+  billing["internal/billing/&ast;&ast;"]
+  cmd["internal/cmd/&ast;&ast;"]
+  domain["internal/domain/&ast;&ast;"]
   cmd --> api
   cmd --> domain
   api --> billing

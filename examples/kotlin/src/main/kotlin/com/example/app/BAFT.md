@@ -7,10 +7,10 @@
 
 ```mermaid
 flowchart TD
-  api["api/**"]
-  auth["auth/**"]
-  billing["billing/**"]
-  shared["shared/**"]
+  api["api/&ast;&ast;"]
+  auth["auth/&ast;&ast;"]
+  billing["billing/&ast;&ast;"]
+  shared["shared/&ast;&ast;"]
   api --> billing
   api --> auth
   api --> shared

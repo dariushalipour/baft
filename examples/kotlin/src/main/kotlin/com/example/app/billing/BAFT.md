@@ -5,9 +5,9 @@
 
 ```mermaid
 flowchart TD
-  api["api/**"]
-  domain["domain/**"]
-  application["application/**"]
+  api["api/&ast;&ast;"]
+  domain["domain/&ast;&ast;"]
+  application["application/&ast;&ast;"]
   api --> application
   application --> domain
 ```

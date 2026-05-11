@@ -10,8 +10,8 @@ import (
 func TestMermaidRepository_Load(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  main["."]` + "\n" +
-		`  api["internal/api/**"]` + "\n" +
-		`  domain["internal/domain/**"]` + "\n" +
+		`  api["internal/api/&ast;&ast;"]` + "\n" +
+		`  domain["internal/domain/&ast;&ast;"]` + "\n" +
 		"  main --> api --> domain\n" +
 		"```\n"
 
@@ -41,10 +41,24 @@ func TestMermaidRepository_LoadEscapedGlobs(t *testing.T) {
 	}
 }
 
+func TestMermaidRepository_LoadRejectsRawAsterisks(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  dom["src/domain/**"]` + "\n" +
+		"```\n"
+
+	_, err := (&MermaidRepository{}).Load(md)
+	if err == nil {
+		t.Fatal("expected error for raw * in node glob")
+	}
+	if got := err.Error(); !strings.Contains(got, `write &ast; instead`) {
+		t.Fatalf("unexpected error %q", got)
+	}
+}
+
 func TestMermaidRepository_LoadEndophobicClass(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
-		`  uc["internal/usecase/**"]:::endophobic` + "\n" +
-		`  svc["internal/service/**"]` + "\n" +
+		`  uc["internal/usecase/&ast;&ast;"]:::endophobic` + "\n" +
+		`  svc["internal/service/&ast;&ast;"]` + "\n" +
 		"  classDef endophobic stroke-dasharray: 5 5\n" +
 		"  uc --> svc\n" +
 		"```\n"
@@ -155,9 +169,9 @@ func TestMermaidRepository_SaveDeterministicOrder(t *testing.T) {
 func TestRoundTrip_LoadSaveLoad(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  main["."]` + "\n" +
-		`  api["internal/api/**"]` + "\n" +
-		`  domain["internal/domain/**"]` + "\n" +
-		`  usecase["internal/usecase/**"]:::endophobic` + "\n" +
+		`  api["internal/api/&ast;&ast;"]` + "\n" +
+		`  domain["internal/domain/&ast;&ast;"]` + "\n" +
+		`  usecase["internal/usecase/&ast;&ast;"]:::endophobic` + "\n" +
 		"  classDef endophobic stroke-dasharray: 5 5\n" +
 		"  main --> api --> usecase --> domain\n" +
 		"  main --> usecase\n" +
@@ -396,7 +410,7 @@ func TestSave_OutputEncoding(t *testing.T) {
 
 func TestMermaidRepository_LoadInlineEdge(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
-		`  app["internal/application/**"] --> domain["internal/domain/**"]` + "\n" +
+		`  app["internal/application/&ast;&ast;"] --> domain["internal/domain/&ast;&ast;"]` + "\n" +
 		"```\n"
 
 	g, err := (&MermaidRepository{}).Load(md)
@@ -417,8 +431,8 @@ func TestMermaidRepository_LoadInlineEdge(t *testing.T) {
 func TestMermaidRepository_LoadNodesAndEdges(t *testing.T) {
 	md := "prelude\n\n```mermaid\nflowchart TD\n" +
 		`  main["."]` + "\n" +
-		`  httpapi["internal/adapter/inbound/httpapi/**"]` + "\n" +
-		`  usecase["internal/usecase/**"]` + "\n" +
+		`  httpapi["internal/adapter/inbound/httpapi/&ast;&ast;"]` + "\n" +
+		`  usecase["internal/usecase/&ast;&ast;"]` + "\n" +
 		"  main --> httpapi --> usecase\n" +
 		"```\n"
 
@@ -442,8 +456,8 @@ func TestMermaidRepository_LoadNodesAndEdges(t *testing.T) {
 
 func TestMermaidRepository_DuplicateGlobLoads(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
-		`  a["internal/x/**"]` + "\n" +
-		`  b["internal/x/**"]` + "\n" +
+		`  a["internal/x/&ast;&ast;"]` + "\n" +
+		`  b["internal/x/&ast;&ast;"]` + "\n" +
 		"```\n"
 	g, err := (&MermaidRepository{}).Load(md)
 	if err != nil {
@@ -459,8 +473,8 @@ func TestMermaidRepository_DuplicateGlobLoads(t *testing.T) {
 
 func TestMermaidRepository_EndophobicClass(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
-		`  usecase["internal/usecase/**"]:::endophobic` + "\n" +
-		`  service["internal/service/**"]` + "\n" +
+		`  usecase["internal/usecase/&ast;&ast;"]:::endophobic` + "\n" +
+		`  service["internal/service/&ast;&ast;"]` + "\n" +
 		"  classDef endophobic stroke-dasharray: 5 5,stroke-width:2px\n" +
 		"  usecase --> service\n" +
 		"```\n"

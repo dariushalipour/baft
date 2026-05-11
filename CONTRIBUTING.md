@@ -77,9 +77,9 @@ Each governed capsule has a `BAFT.md` at its root. The first ```mermaid block is
 ```mermaid
 flowchart TD
   main["."]
-  httpapi["internal/adapter/http/**"]
-  usecase["internal/usecase/**"]:::endophobic
-  domain["internal/domain/**"]
+  httpapi["internal/adapter/http/&ast;&ast;"]
+  usecase["internal/usecase/&ast;&ast;"]:::endophobic
+  domain["internal/domain/&ast;&ast;"]
 
   main --> httpapi --> usecase --> domain
 ```
