@@ -187,11 +187,22 @@ func (ch *capsuleChecker) validateAll() {
 		ch.validateGraph(ch.rootGraph, ch.configPathAbs)
 	}
 	ch.scopeCache.iterate(func(entry *scopeEntry) {
+		if entry.loadErr != nil {
+			ch.res.errors = append(ch.res.errors, *entry.loadErr)
+			return
+		}
 		ch.validateGraph(entry.graph, entry.cfgPath)
 	})
 }
 
 func (ch *capsuleChecker) validateGraph(g *graph.Graph, cfgPath string) {
+	duplicateGlobErrors := duplicateNodeGlobErrors(g, cfgPath)
+	if len(duplicateGlobErrors) > 0 {
+		ch.res.hasDuplicateGlobError = true
+	}
+	for _, err := range duplicateGlobErrors {
+		ch.res.errors = append(ch.res.errors, err)
+	}
 	if !ch.lang.SupportsFileGlobs() {
 		for id, glob := range g.Nodes {
 			if graph.IsFileGlob(glob) {
@@ -207,6 +218,31 @@ func (ch *capsuleChecker) validateGraph(g *graph.Graph, cfgPath string) {
 	ch.findOverlappingNodes(g, cfgPath)
 }
 
+func duplicateNodeGlobErrors(g *graph.Graph, cfgPath string) []port.Violation {
+	byGlob := map[string][]string{}
+	for id, glob := range g.Nodes {
+		byGlob[glob] = append(byGlob[glob], id)
+	}
+
+	var globs []string
+	for glob, ids := range byGlob {
+		if len(ids) < 2 {
+			continue
+		}
+		sort.Strings(ids)
+		globs = append(globs, glob)
+	}
+	sort.Strings(globs)
+
+	errs := make([]port.Violation, 0, len(globs))
+	for _, glob := range globs {
+		ids := byGlob[glob]
+		line := g.NodeLines[ids[1]]
+		errs = append(errs, makeDuplicateNodeGlobError(cfgPath, line, glob, ids))
+	}
+	return errs
+}
+
 func (ch *capsuleChecker) findOverlappingNodes(g *graph.Graph, cfgPath string) {
 	ids := make([]string, 0, len(g.Nodes))
 	for id := range g.Nodes {
@@ -218,13 +254,17 @@ func (ch *capsuleChecker) findOverlappingNodes(g *graph.Graph, cfgPath string) {
 		for j := i + 1; j < len(ids); j++ {
 			a, b := ids[i], ids[j]
 			aGlob, bGlob := g.Nodes[a], g.Nodes[b]
+			if aGlob == bGlob {
+				continue
+			}
 			if graph.IsFileGlob(aGlob) || graph.IsFileGlob(bGlob) {
 				continue
 			}
 			if !graph.GlobsOverlap(aGlob, bGlob) {
 				continue
 			}
-			if witness := ch.findWitnessFile(aGlob, bGlob); witness != "" {
+			scopeDir := filepath.Dir(cfgPath)
+			if witness := ch.findWitnessFile(aGlob, bGlob, scopeDir); witness != "" {
 				ch.res.errors = append(ch.res.errors, makeOverlapError(a, b, cfgPath, g.NodeLines[a], g.NodeLines[b], witness))
 				ch.res.hasOverlapError = true
 			}
@@ -232,15 +272,15 @@ func (ch *capsuleChecker) findOverlappingNodes(g *graph.Graph, cfgPath string) {
 	}
 }
 
-func (ch *capsuleChecker) findWitnessFile(aGlob, bGlob string) string {
+func (ch *capsuleChecker) findWitnessFile(aGlob, bGlob string, baseDir string) string {
 	var witness string
-	_ = service.WalkAllFiles(ch.fsys, ch.capsule.Dir, ch.lang, func(abs, rel string) error {
+	_ = service.WalkAllFiles(ch.fsys, baseDir, ch.lang, func(abs, rel string) error {
 		if witness != "" {
 			return fs.SkipDir
 		}
 		key := graph.NodeKeyForDir(rel)
 		if graph.MatchDirGlob(aGlob, key) && graph.MatchDirGlob(bGlob, key) {
-			witness = relToSlash(ch.capsule.Dir, abs)
+			witness = relToSlash(baseDir, abs)
 			return fs.SkipDir
 		}
 		return nil
@@ -258,6 +298,7 @@ type scopeCache struct {
 type scopeEntry struct {
 	graph   *graph.Graph
 	cfgPath string
+	loadErr *port.Violation
 }
 
 func newScopeCache(fsys port.FileSystem, repo port.GraphRepository) *scopeCache {
@@ -273,13 +314,19 @@ func (sc *scopeCache) load(scopeDir string) (*scopeEntry, error) {
 	sc.mu.Unlock()
 
 	cfg := filepath.Join(scopeDir, port.ConfigFile)
+	e := &scopeEntry{cfgPath: cfg}
 	data, err := sc.fsys.ReadFile(cfg)
 	if err != nil {
-		return nil, err
-	}
-	g, err := sc.repo.Load(string(data))
-	if err != nil {
-		return nil, err
+		loadErr := makeConfigLoadError(cfg, err)
+		e.loadErr = &loadErr
+	} else {
+		g, loadErr := sc.repo.Load(string(data))
+		if loadErr != nil {
+			v := makeConfigLoadError(cfg, loadErr)
+			e.loadErr = &v
+		} else {
+			e.graph = g
+		}
 	}
 
 	sc.mu.Lock()
@@ -287,7 +334,6 @@ func (sc *scopeCache) load(scopeDir string) (*scopeEntry, error) {
 	if existing, ok := sc.m[scopeDir]; ok {
 		return existing, nil
 	}
-	e := &scopeEntry{graph: g, cfgPath: cfg}
 	sc.m[scopeDir] = e
 	return e, nil
 }
@@ -321,7 +367,7 @@ func ancestorConfigs(fsys port.FileSystem, scopeDir, capsuleDir string, sc *scop
 			return false
 		}
 		entry, serr := sc.load(parentDir)
-		if serr != nil {
+		if serr != nil || entry.loadErr != nil || entry.graph == nil {
 			return true
 		}
 		result = append(result, ancestorConfig{dir: parentDir, graph: entry.graph, cfgPath: entry.cfgPath})

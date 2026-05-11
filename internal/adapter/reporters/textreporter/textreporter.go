@@ -22,8 +22,17 @@ type TextRenderer struct{}
 
 func (r *TextRenderer) Render(result *port.CheckResult) string {
 	var out string
+	capsuleErrors := make(map[string]bool)
+	for _, c := range result.Capsules {
+		for _, e := range c.Errors {
+			capsuleErrors[c.Label+": "+e.Message] = true
+		}
+	}
 
 	for _, e := range result.Errors {
+		if capsuleErrors[e] {
+			continue
+		}
 		out += red("✗ "+e) + "\n"
 	}
 

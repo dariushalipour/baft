@@ -271,7 +271,7 @@ func NewGraph(nodes map[string]string, edges map[string]map[string]bool) *Graph 
 func ValidateNodeGlob(pattern string) []string {
 	var msgs []string
 	for _, seg := range strings.Split(pattern, "/") {
-		if seg == ".." {
+		if strings.HasPrefix(seg, "..") {
 			msgs = append(msgs, `".." not allowed in node globs`)
 		}
 	}

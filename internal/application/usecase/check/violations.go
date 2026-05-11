@@ -3,6 +3,7 @@ package check
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/dariushalipour/strata/internal/port"
 )
@@ -108,6 +109,17 @@ func makeInvalidNodeGlobError(id, cfgPath string, line int, glob, msg string) po
 		Severity: "error",
 		Source:   "strata",
 		Message:  fmt.Sprintf("%s (%s:%d) references %s — %s", id, cfgPath, line, glob, msg),
+		File:     cfgPath,
+		Line:     line,
+	}
+}
+
+func makeDuplicateNodeGlobError(cfgPath string, line int, glob string, ids []string) port.Violation {
+	return port.Violation{
+		Rule:     "duplicate-node-glob",
+		Severity: "error",
+		Source:   "strata",
+		Message:  fmt.Sprintf("glob %q claimed by multiple nodes: %s (%s:%d)", glob, strings.Join(ids, ", "), cfgPath, line),
 		File:     cfgPath,
 		Line:     line,
 	}

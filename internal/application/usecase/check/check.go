@@ -28,13 +28,14 @@ import (
 )
 
 type capsuleResult struct {
-	graph            *graph.Graph
-	filesEncountered int
-	filesScanned     int
-	relations        int
-	violations       []port.Violation
-	errors           []port.Violation
-	hasOverlapError  bool
+	graph                 *graph.Graph
+	filesEncountered      int
+	filesScanned          int
+	relations             int
+	violations            []port.Violation
+	errors                []port.Violation
+	hasOverlapError       bool
+	hasDuplicateGlobError bool
 }
 
 func (r *capsuleResult) toPublic(label string) port.CapsuleResult {
@@ -57,6 +58,7 @@ type configContext struct {
 	rootGraph     *graph.Graph
 	hasRootConfig bool
 	configPathAbs string
+	loadErr       *port.Violation
 }
 
 type capsuleChecker struct {
@@ -115,6 +117,7 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 	})
 
 	var result port.CheckResult
+	seenConfigErrors := map[string]bool{}
 	for _, c := range capsules {
 		label := port.Label(c.capsule, rootDir)
 		nestedDirs := nestedCapsuleDirs(capsules, c.capsule.Dir)
@@ -127,6 +130,7 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 		if capsuleRes == nil {
 			continue
 		}
+		capsuleRes.errors = dedupeConfigErrors(capsuleRes.errors, seenConfigErrors)
 		result.Capsules = append(result.Capsules, capsuleRes.toPublic(label))
 		for _, v := range capsuleRes.violations {
 			result.Violations = append(result.Violations, label+": "+v.Message)
@@ -136,6 +140,28 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 		}
 	}
 	return &result
+}
+
+func dedupeConfigErrors(errors []port.Violation, seen map[string]bool) []port.Violation {
+	filtered := errors[:0]
+	for _, err := range errors {
+		key := configErrorKey(err)
+		if key != "" {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		filtered = append(filtered, err)
+	}
+	return filtered
+}
+
+func configErrorKey(err port.Violation) string {
+	if filepath.Base(err.File) != port.ConfigFile {
+		return ""
+	}
+	return err.File + "\x00" + err.Message
 }
 
 func matchCapsulesToLanguages(entries []service.CapsuleEntry, languages []port.Language) []capsuleEntry {
@@ -167,6 +193,9 @@ func checkCapsule(fsys port.FileSystem, capsule port.Capsule, lang port.Language
 	if err != nil {
 		return nil, err
 	}
+	if ctx.loadErr != nil {
+		return &capsuleResult{errors: []port.Violation{*ctx.loadErr}}, nil
+	}
 	if !ctx.hasRootConfig && !hasScopedConfig(fsys, capsule.Dir) {
 		return nil, nil
 	}
@@ -175,7 +204,7 @@ func checkCapsule(fsys port.FileSystem, capsule port.Capsule, lang port.Language
 		return nil, err
 	}
 	chk.validateAll()
-	if chk.res.hasOverlapError {
+	if chk.res.hasOverlapError || chk.res.hasDuplicateGlobError {
 		chk.res.filesEncountered = 0
 		chk.res.filesScanned = 0
 		chk.res.relations = 0
@@ -190,6 +219,36 @@ func checkCapsule(fsys port.FileSystem, capsule port.Capsule, lang port.Language
 	return chk.res, nil
 }
 
+func makeConfigLoadError(cfgPath string, err error) port.Violation {
+	v := port.Violation{
+		Rule:     "config-load-error",
+		Severity: "error",
+		Source:   "strata",
+		File:     cfgPath,
+	}
+
+	var pe *mermaid.ParseError
+	if errors.As(err, &pe) {
+		if pe.Raw != "" {
+			v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(pe.Raw), cfgPath, pe.Line)
+		} else if pe.Line > 0 {
+			v.Message = fmt.Sprintf("%s (%s:%d)", pe.Msg, cfgPath, pe.Line)
+		} else {
+			v.Message = fmt.Sprintf("%s (%s)", pe.Msg, cfgPath)
+		}
+		if pe.Line > 0 {
+			v.Line = pe.Line
+		}
+		return v
+	}
+
+	v.Message = err.Error()
+	if !strings.Contains(v.Message, cfgPath) {
+		v.Message = fmt.Sprintf("%s (%s)", v.Message, cfgPath)
+	}
+	return v
+}
+
 func loadCapsuleConfig(fsys port.FileSystem, repo port.GraphRepository, configDir, capsuleDir string) (configContext, error) {
 	var ctx configContext
 	configPath := service.FindConfig(fsys, configDir, capsuleDir)
@@ -199,22 +258,16 @@ func loadCapsuleConfig(fsys port.FileSystem, repo port.GraphRepository, configDi
 		if os.IsNotExist(err) {
 			return ctx, nil
 		}
-		return ctx, err
+		loadErr := makeConfigLoadError(ctx.configPathAbs, err)
+		ctx.loadErr = &loadErr
+		return ctx, nil
 	}
 	ctx.hasRootConfig = true
 	ctx.rootGraph, err = repo.Load(string(raw))
 	if err != nil {
-		var pe *mermaid.ParseError
-		if errors.As(err, &pe) {
-			if pe.Raw != "" {
-				return ctx, fmt.Errorf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(pe.Raw), ctx.configPathAbs, pe.Line)
-			}
-			if pe.Line > 0 {
-				return ctx, fmt.Errorf("%s (%s:%d)", pe.Msg, ctx.configPathAbs, pe.Line)
-			}
-			return ctx, fmt.Errorf("%s (%s)", pe.Msg, ctx.configPathAbs)
-		}
-		return ctx, fmt.Errorf("%s (%s)", err.Error(), ctx.configPathAbs)
+		loadErr := makeConfigLoadError(ctx.configPathAbs, err)
+		ctx.loadErr = &loadErr
+		return ctx, nil
 	}
 	return ctx, nil
 }

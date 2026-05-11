@@ -140,13 +140,13 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	if len(g.Nodes) == 0 {
 		return nil, &ParseError{Msg: "mermaid block declared no nodes"}
 	}
+	if err := checkEmptyGlobs(g); err != nil {
+		return nil, err
+	}
 	if err := checkUndefinedEdgeNodes(g); err != nil {
 		return nil, err
 	}
 	if err := checkCycles(g); err != nil {
-		return nil, err
-	}
-	if err := checkDuplicateGlobs(g); err != nil {
 		return nil, err
 	}
 	return g, nil
@@ -286,38 +286,13 @@ func extractMermaidBlock(md string) (string, int, error) {
 	return "", 0, &ParseError{Msg: "no ```mermaid block found"}
 }
 
-func checkDuplicateGlobs(g *graph.Graph) error {
-	byGlob := map[string][]string{}
+func checkEmptyGlobs(g *graph.Graph) error {
 	for id, glob := range g.Nodes {
 		if glob == "" {
 			return &ParseError{
 				Line: g.NodeLines[id],
 				Msg:  fmt.Sprintf("node %q has empty glob", id),
 			}
-		}
-		byGlob[glob] = append(byGlob[glob], id)
-	}
-	var errs []string
-	for glob, ids := range byGlob {
-		if len(ids) > 1 {
-			sort.Strings(ids)
-			errs = append(errs, fmt.Sprintf("glob %q claimed by multiple nodes: %s", glob, strings.Join(ids, ", ")))
-		}
-	}
-	if len(errs) > 0 {
-		sort.Strings(errs)
-		// Find the line of the second node that claims the duplicate glob.
-		var lineNum int
-		for _, ids := range byGlob {
-			if len(ids) > 1 {
-				sort.Strings(ids)
-				lineNum = g.NodeLines[ids[1]]
-				break
-			}
-		}
-		return &ParseError{
-			Line: lineNum,
-			Msg:  strings.Join(errs, "; "),
 		}
 	}
 	return nil

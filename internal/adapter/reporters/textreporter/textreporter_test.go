@@ -59,3 +59,21 @@ func TestRenderWithErrors(t *testing.T) {
 		t.Error("expected label in error output")
 	}
 }
+
+func TestRenderDoesNotDuplicateCapsuleErrors(t *testing.T) {
+	r := &TextRenderer{}
+	result := &port.CheckResult{
+		Errors: []string{"mypkg: parse failed"},
+		Capsules: []port.CapsuleResult{{
+			Label:  "mypkg",
+			Errors: []port.Violation{{Message: "parse failed"}},
+		}},
+	}
+	out := r.Render(result)
+	if strings.Count(out, "parse failed") != 1 {
+		t.Fatalf("expected parse failed once, got output: %q", out)
+	}
+	if !strings.Contains(out, "✗ mypkg") {
+		t.Error("expected capsule section in output")
+	}
+}

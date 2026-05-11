@@ -732,6 +732,130 @@ Feature: Architecture rule checking
       /Users/jane/strata: auth (/Users/jane/strata/billing/STRATA.md:3) references ../auth/usecase/** — ".." not allowed in node globs
       """
 
+  Scenario: Scoped config has a node whose glob starts with .. (prefix, not standalone segment)
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      └─ billing/
+         ├─ STRATA.md
+         ├─ api/
+         │  └─ handler.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com"
+    Given file "billing/STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        api["api/**"]
+        kk["..domain/**"]
+      ```
+      """
+    Given file "billing/api/handler.go" has content "package api"
+    Given file "billing/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 1 error is reported
+    And the error is:
+      """errors
+      /Users/jane/strata: kk (/Users/jane/strata/billing/STRATA.md:4) references ..domain/** — ".." not allowed in node globs
+      """
+
+  Scenario: Scoped config has a node whose later segment starts with .. (prefix, not standalone segment)
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      └─ billing/
+         ├─ STRATA.md
+         ├─ api/
+         │  └─ handler.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com"
+    Given file "billing/STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        api["api/**"]
+        kk["nested/..domain/**"]
+      ```
+      """
+    Given file "billing/api/handler.go" has content "package api"
+    Given file "billing/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 1 error is reported
+    And the error is:
+      """errors
+      /Users/jane/strata: kk (/Users/jane/strata/billing/STRATA.md:4) references nested/..domain/** — ".." not allowed in node globs
+      """
+
+  Scenario: Scoped config inside a capsule has overlapping node globs
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      └─ billing/
+         ├─ STRATA.md
+         ├─ api/
+         │  └─ handler.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com"
+    Given file "billing/STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        domain["domain/**"]
+        dowhatever["do*"]
+      ```
+      """
+    Given file "billing/api/handler.go" has content "package api"
+    Given file "billing/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 1 error is reported
+    And the error is:
+      """errors
+      /Users/jane/strata: node "domain" (/Users/jane/strata/billing/STRATA.md:3) and node "dowhatever" (/Users/jane/strata/billing/STRATA.md:4) overlap — file domain/order.go matches both globs
+      """
+
+  Scenario: Scoped config inside a capsule with duplicate node globs is reported as an error
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      └─ billing/
+         ├─ STRATA.md
+         ├─ api/
+         │  └─ handler.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com"
+    Given file "billing/STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        domain["domain/**"]
+        samething["domain/**"]
+      ```
+      """
+    Given file "billing/api/handler.go" has content "package api"
+    Given file "billing/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 1 error is reported
+    And the error is:
+      """errors
+      /Users/jane/strata: glob "domain/**" claimed by multiple nodes: domain, samething (/Users/jane/strata/billing/STRATA.md:4)
+      """
+
   Scenario: Parent STRATA.md declares cross-context edge between sibling capsules
     Given a fresh workspace at "/Users/jane/strata" with this layout:
       """tree
@@ -944,6 +1068,38 @@ Feature: Architecture rule checking
       /Users/jane/strata: platform/billing/usecase/create_order.go:5:8 (platform) → utils (utils) — relation not allowed (add edge in /Users/jane/strata/STRATA.md or move the file)
       """
     And 0 errors are reported
+
+  Scenario: Shared root config load error is reported once across sibling capsules
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ STRATA.md
+      ├─ auth/
+      │  └─ go.mod
+      └─ billing/
+         └─ go.mod
+      """
+    Given file "auth/go.mod" has content "module example.com/auth"
+    Given file "billing/go.mod" has content "module example.com/billing"
+    Given file "STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        billing["billing/**"]
+        shared_again["billing/**"]
+      ```
+      """
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 2 capsules are discovered
+    And 0 relations are examined
+    And 0 files are encountered
+    And 0 files are scanned
+    And 0 violations are reported
+    And 1 error is reported
+    And the error is:
+      """errors
+      /Users/jane/strata/auth: glob "billing/**" claimed by multiple nodes: billing, shared_again (/Users/jane/strata/STRATA.md:4)
+      """
 
   Scenario: Malformed mermaid diagram in STRATA.md is reported as a parse error
     Given a fresh workspace at "/Users/jane/strata" with this layout:
@@ -1212,6 +1368,43 @@ Feature: Architecture rule checking
     And the error is:
       """errors
       /Users/jane/strata: glob "internal/application/**" claimed by multiple nodes: app, svc (/Users/jane/strata/STRATA.md:4)
+      """
+
+  Scenario: Duplicate node globs do not suppress invalid node glob errors
+    Given a fresh workspace at "/Users/jane/strata" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ STRATA.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/app"
+    Given file "STRATA.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application/**"]
+        svc["internal/application/**"]
+        bad["../internal/domain/**"]
+      ```
+      """
+    Given file "internal/application/order.go" has content "package application"
+    Given file "internal/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/strata"
+    Then 1 capsule is discovered
+    And 0 relations are examined
+    And 0 files are encountered
+    And 0 files are scanned
+    And 0 violations are reported
+    And 2 errors are reported
+    And the errors are:
+      """errors
+       /Users/jane/strata: bad (/Users/jane/strata/STRATA.md:5) references ../internal/domain/** — ".." not allowed in node globs
+       /Users/jane/strata: glob "internal/application/**" claimed by multiple nodes: app, svc (/Users/jane/strata/STRATA.md:4)
       """
 
   Scenario: Empty node glob is reported as an error

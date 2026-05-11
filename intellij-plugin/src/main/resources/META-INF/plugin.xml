@@ -19,10 +19,4 @@
             language=""
             implementationClass="com.strata.intellij.StrataAnnotator"/>
     </extensions>
-
-    <applicationListeners>
-        <listener
-            class="com.strata.intellij.StrataSaveListener"
-            topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
-    </applicationListeners>
 </idea-plugin>

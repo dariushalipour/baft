@@ -26,6 +26,8 @@ private val runningProcess = AtomicReference<Process?>(null)
 class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolation>>() {
 
     override fun collectInformation(file: PsiFile): StrataAnnotatorInfo? {
+        if (!file.isPhysical || file !== file.originalFile) return null
+        if (file.viewProvider.getPsi(file.viewProvider.baseLanguage) !== file) return null
         val root = file.project.basePath ?: return null
         val path = file.virtualFile?.path ?: return null
         return StrataAnnotatorInfo(root, path)

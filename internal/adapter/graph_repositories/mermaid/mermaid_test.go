@@ -440,13 +440,20 @@ func TestMermaidRepository_LoadNodesAndEdges(t *testing.T) {
 	}
 }
 
-func TestMermaidRepository_DuplicateGlobRejected(t *testing.T) {
+func TestMermaidRepository_DuplicateGlobLoads(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  a["internal/x/**"]` + "\n" +
 		`  b["internal/x/**"]` + "\n" +
 		"```\n"
-	if _, err := (&MermaidRepository{}).Load(md); err == nil {
-		t.Fatalf("expected duplicate-glob error, got nil")
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(g.Nodes) != 2 {
+		t.Fatalf("nodes: got %d, want 2", len(g.Nodes))
+	}
+	if g.Nodes["a"] != "internal/x/**" || g.Nodes["b"] != "internal/x/**" {
+		t.Fatalf("unexpected nodes: %+v", g.Nodes)
 	}
 }
 
