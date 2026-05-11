@@ -12,6 +12,7 @@ import (
 	"github.com/cucumber/godog"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
+	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/steps"
 	"github.com/dariushalipour/baft/internal/port"
@@ -53,12 +54,17 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the draft uses the "([^"]*)" language adapter$`,
 		func(ctx context.Context, langName string) error {
 			w := dw(ctx)
+			var lang port.Language
 			switch langName {
 			case "go":
-				var lang port.Language = golang.Language{}
+				lang = golang.Language{}
 				if len(w.readErrors) > 0 {
 					lang = wrapLangWithMissingFiles(lang, w.readErrors)
 				}
+			case "typescript":
+				lang = typescript.Language{}
+			}
+			if lang != nil {
 				w.Workspace.Langs = append(w.Workspace.Langs, lang)
 			}
 			return nil
@@ -71,6 +77,7 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 
 			discovery := service.NewCapsuleDiscovery()
 			golang.RegisterDiscovery(discovery)
+			typescript.RegisterDiscovery(discovery)
 
 			result, runErr := RunWith(w.Workspace.FSys, rootDir, w.Workspace.Langs, &mermaid.MermaidRepository{}, discovery, &w.logBuf)
 			if runErr != nil {

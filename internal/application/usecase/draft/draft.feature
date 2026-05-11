@@ -304,3 +304,63 @@ Feature: Draft BAFT.md from actual imports
     Then the draft succeeds
     And 1 capsule is drafted
     And capsule 1 has 2 files scanned
+
+  Scenario: Draft runs from a TypeScript subdirectory bounded context
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ billing/
+      │  ├─ calculator.ts
+      │  └─ invoice.ts
+      ├─ shared/
+      │  └─ utils.ts
+      ├─ package.json
+      ├─ tsconfig.json
+      └─ README.md
+      """
+    Given file "package.json" has content '{"name":"@myorg/app"}'
+    Given file "README.md" has content "# Monorepo"
+    Given file "tsconfig.json" has content:
+      """json
+      {"compilerOptions":{"baseUrl":".","paths":{"@myorg/shared/*":["shared/*"],"@myorg/billing/*":["billing/*"]}}}
+      """
+    Given file "shared/utils.ts" has content:
+      """typescript
+      export function formatDate(d: Date) { return d.toISOString() }
+      """
+    Given file "billing/calculator.ts" has content:
+      """typescript
+      export function calculateTax(amount: number) { return amount * 0.1 }
+      """
+    Given file "billing/invoice.ts" has content:
+      """typescript
+      import { formatDate } from "@myorg/shared/utils"
+      import { calculateTax } from "./calculator"
+      
+      export function generateInvoice() {
+        const tax = calculateTax(100)
+        return formatDate(new Date()) + " tax:" + tax
+      }
+      """
+    Given the draft uses the "typescript" language adapter
+    When the draft runs from "/Users/jane/baft/billing"
+    Then the draft succeeds
+    And 1 capsule is drafted
+    And capsule 1 has 2 files scanned
+    And capsule 1 has 2 nodes
+    And "billing/BAFT.md" is expected to have content:
+      """config
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
+      
+      ```mermaid
+      flowchart TD
+        calculator_dot_ts["calculator.ts"]
+        invoice_dot_ts["invoice.ts"]
+      
+        invoice_dot_ts --> calculator_dot_ts
+      ```
+      """
+    And "shared/BAFT.md" should not exist
+    And "BAFT.md" should not exist

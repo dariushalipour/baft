@@ -61,6 +61,17 @@ func Initialize(sc *godog.ScenarioContext, getter func(context.Context) *Workspa
 			return nil
 		})
 
+	sc.Step(`^file "([^"]*)" has content '([^']*)'$`,
+		func(ctx context.Context, fpath, content string) error {
+			w := getter(ctx)
+			absPath := filepath.Join(w.RootDir, fpath)
+			if _, ok := w.Files[absPath]; !ok {
+				return fmt.Errorf("file %q was not defined in the workspace layout", absPath)
+			}
+			w.Files[absPath] = content
+			return nil
+		})
+
 	sc.Step(`^file "([^"]*)" has content:$`,
 		func(ctx context.Context, fpath, content string) error {
 			w := getter(ctx)

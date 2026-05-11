@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/domain/graph"
@@ -75,7 +76,11 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 	result := &DraftResult{}
 
 	for _, e := range all {
-		configDir, exists := service.FindOrCreateConfigDir(fsys, e.capsule.Dir, e.capsule.Dir)
+		startDir := e.capsule.Dir
+		if strings.HasPrefix(rootDir, e.capsule.Dir+string(filepath.Separator)) || rootDir == e.capsule.Dir {
+			startDir = rootDir
+		}
+		configDir, exists := service.FindOrCreateConfigDir(fsys, startDir, e.capsule.Dir)
 		if exists {
 			continue
 		}
@@ -110,16 +115,33 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 		filesEncountered++
 		filesScanned++
 
+		fileRel := rel
+		if !filepath.IsAbs(rel) {
+			fileRel, _ = filepath.Rel(p.Dir, filepath.Join(configDir, rel))
+		}
+		fileRel = filepath.ToSlash(fileRel)
+
 		srcID := nodeKey(rel, lang.SupportsFileGlobs())
 		nodes[srcID] = srcID
 
 		for _, spec := range imports {
-			targetPath, internal := lang.ResolveInternalTarget(fsys, spec, p, rel)
+			targetPath, internal := lang.ResolveInternalTarget(fsys, spec, p, fileRel)
 			if !internal {
 				continue
 			}
 
-			dstID := nodeKey(targetPath, lang.SupportsFileGlobs())
+			targetAbs := targetPath
+			if !filepath.IsAbs(targetAbs) {
+				targetAbs = filepath.Join(p.Dir, targetAbs)
+			}
+			targetAbs = filepath.Clean(targetAbs)
+			configDirClean := filepath.Clean(configDir)
+			if targetAbs != configDirClean && !strings.HasPrefix(targetAbs, configDirClean+string(filepath.Separator)) {
+				continue
+			}
+
+			dstRel, _ := filepath.Rel(configDirClean, targetAbs)
+			dstID := nodeKey(dstRel, lang.SupportsFileGlobs())
 			nodes[dstID] = dstID
 
 			if srcID == dstID {
