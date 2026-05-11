@@ -1,10 +1,8 @@
 package graph
 
 import (
-	"fmt"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 )
 
@@ -27,6 +25,9 @@ type Graph struct {
 	Classes   map[string]map[string]bool
 	NodeLines map[string]int
 	EdgeLines map[string]int
+
+	// edgeCount caches the total edge count to avoid O(n) iteration.
+	edgeCount int
 
 	// nodeInfos holds pre-computed info per node ID for fast matching.
 	nodeInfos map[string]*nodeInfo
@@ -61,10 +62,15 @@ func (g *Graph) buildNodeInfos() {
 	// Pre-allocate partition slices to avoid repeated resizing.
 	g.dirNodes = make([]string, 0, len(g.Nodes))
 	g.fileNodes = make([]string, 0, len(g.Nodes))
+	// Pre-compute edge count.
+	g.edgeCount = 0
+	for _, targets := range g.Edges {
+		g.edgeCount += len(targets)
+	}
 	for id, pattern := range g.Nodes {
 		ni := &nodeInfo{
 			pattern:    pattern,
-			segments:   strings.Split(pattern, "/"),
+			segments:   splitPath(pattern),
 			isFileGlob: isFileGlobFast(pattern),
 		}
 		ni.hasWildcard = hasWildcardInSegments(ni.segments)
@@ -179,19 +185,14 @@ func (g *Graph) Allows(sourceID, targetID string) bool {
 }
 
 func (g *Graph) EdgeCount() int {
-	count := 0
-	for _, targets := range g.Edges {
-		count += len(targets)
-	}
-	return count
+	return g.edgeCount
 }
 
 func (g *Graph) FileGlobNodes() []string {
-	var ids []string
-	for id, pattern := range g.Nodes {
-		if IsFileGlob(pattern) {
-			ids = append(ids, id)
-		}
+	g.ensureNodeInfos()
+	ids := make([]string, 0, len(g.fileNodes))
+	for _, id := range g.fileNodes {
+		ids = append(ids, id)
 	}
 	sort.Strings(ids)
 	return ids
@@ -202,7 +203,7 @@ func MatchDirGlob(pattern, dirPath string) bool {
 	if pattern == "." {
 		return dirPath == "."
 	}
-	seg := strings.Split(pattern, "/")
+	seg := splitPath(pattern)
 	hasW := hasWildcardInSegments(seg)
 	dirSegs := splitPath(dirPath)
 	return matchDirGlobSegments(seg, hasW, dirSegs)
@@ -210,6 +211,9 @@ func MatchDirGlob(pattern, dirPath string) bool {
 
 // matchDirGlobSegments matches pre-split segments against a dir path.
 func matchDirGlobSegments(patternSegs []string, patternHasWildcard bool, dirSegs []string) bool {
+	if len(patternSegs) == 0 {
+		return len(dirSegs) == 0
+	}
 	if len(patternSegs) == 1 && patternSegs[0] == "." {
 		return len(dirSegs) == 0
 	}
@@ -396,8 +400,10 @@ func stringsContainsByte(s string, b byte) bool {
 
 // GlobSpecificity returns a score where higher means more specific.
 func GlobSpecificity(pattern string) int {
-	seg := strings.Split(pattern, "/")
-	return globSpecificityFast(seg)
+	if pattern == "." {
+		return 10
+	}
+	return globSpecificityFast(splitPath(pattern))
 }
 
 // globSpecificityFast computes specificity from pre-split segments.
@@ -457,7 +463,7 @@ func MatchFileGlob(pattern, filePath string) bool {
 	if filePath == "" || filePath == "." {
 		return false
 	}
-	patternSegs := strings.Split(pattern, "/")
+	patternSegs := splitPath(pattern)
 	pathSegs := splitPath(filePath)
 	if len(patternSegs) != len(pathSegs) {
 		return false
@@ -488,20 +494,32 @@ func matchFileGlobSegments(patternSegs []string, patternHasWildcard bool, pathSe
 
 // DirOf returns the directory portion of a path, or "." if it has no directory.
 func DirOf(path string) string {
-	if !strings.Contains(path, "/") {
-		return "."
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			return path[:i]
+		}
 	}
-	return path[:strings.LastIndex(path, "/")]
+	return "."
 }
 
 // NodeKeyForDir returns the directory-level key for a path.
 // Files are stripped to their parent directory.
 func NodeKeyForDir(path string) string {
-	if strings.Contains(path, ".") && strings.Contains(path, "/") {
+	hasDot := false
+	hasSlash := false
+	for i := 0; i < len(path); i++ {
+		if path[i] == '.' {
+			hasDot = true
+		}
+		if path[i] == '/' {
+			hasSlash = true
+		}
+	}
+	if hasDot && hasSlash {
 		dir := filepath.Dir(filepath.FromSlash(path))
 		return filepath.ToSlash(dir)
 	}
-	if strings.Contains(path, ".") {
+	if hasDot {
 		return "."
 	}
 	return path
@@ -513,10 +531,10 @@ func NodeKeyForFile(path string) string {
 }
 
 func (g *Graph) Validate() []string {
-	var errs []string
+	errs := make([]string, 0, len(g.Nodes)*2)
 	for id, pattern := range g.Nodes {
 		for _, msg := range ValidateNodeGlob(pattern) {
-			errs = append(errs, fmt.Sprintf("node %q: %s", id, msg))
+			errs = append(errs, "node "+id+": "+msg)
 		}
 	}
 	sort.Strings(errs)
@@ -525,8 +543,9 @@ func (g *Graph) Validate() []string {
 
 func ValidateNodeGlob(pattern string) []string {
 	var msgs []string
-	for _, seg := range strings.Split(pattern, "/") {
-		if strings.HasPrefix(seg, "..") {
+	segs := splitPath(pattern)
+	for _, seg := range segs {
+		if len(seg) >= 2 && seg[0] == '.' && seg[1] == '.' {
 			msgs = append(msgs, `".." not allowed in node globs`)
 		}
 	}

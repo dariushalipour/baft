@@ -41,11 +41,14 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	}
 	out := make([]port.ImportSpec, 0, len(file.Imports))
 	for _, imp := range file.Imports {
+		// Call fset.Position once per import, reusing the result.
+		pos := fset.Position(imp.Path.Pos())
+		endPos := fset.Position(imp.Path.End())
 		out = append(out, port.ImportSpec{
 			Path:   strings.Trim(imp.Path.Value, `"`),
-			Line:   fset.Position(imp.Path.Pos()).Line,
-			Col:    fset.Position(imp.Path.Pos()).Column,
-			ColEnd: fset.Position(imp.Path.End()).Column,
+			Line:   pos.Line,
+			Col:    pos.Column,
+			ColEnd: endPos.Column,
 		})
 	}
 	return out, nil
@@ -68,27 +71,63 @@ func RegisterDiscovery(d *service.CapsuleDiscovery) {
 	})
 }
 
-func readGoModulePath(fsys port.FileSystem, path string) (string, error) {
-	data, err := fsys.ReadFile(path)
+func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
+	data, err := fsys.ReadFile(modPath)
 	if err != nil {
 		return "", err
 	}
 	lineStart := 0
 	for i := 0; i < len(data); i++ {
 		if data[i] == '\n' {
-			line := strings.TrimSpace(string(data[lineStart:i]))
-			if len(line) >= 7 && line[:7] == "module " {
-				return strings.TrimSpace(line[7:]), nil
+			line := data[lineStart:i]
+			// Trim whitespace by scanning bytes.
+			trimStart := 0
+			for trimStart < len(line) && (line[trimStart] == ' ' || line[trimStart] == '\t') {
+				trimStart++
+			}
+			trimEnd := len(line)
+			for trimEnd > trimStart && (line[trimEnd-1] == ' ' || line[trimEnd-1] == '\t' || line[trimEnd-1] == '\r') {
+				trimEnd--
+			}
+			trimmed := line[trimStart:trimEnd]
+			if len(trimmed) >= 7 && trimmed[0] == 'm' && trimmed[1] == 'o' && trimmed[2] == 'd' && trimmed[3] == 'u' && trimmed[4] == 'l' && trimmed[5] == 'e' && trimmed[6] == ' ' {
+				// Trim the module name value.
+				modStart := 7
+				for modStart < len(trimmed) && (trimmed[modStart] == ' ' || trimmed[modStart] == '\t') {
+					modStart++
+				}
+				modEnd := len(trimmed)
+				for modEnd > modStart && (trimmed[modEnd-1] == ' ' || trimmed[modEnd-1] == '\t') {
+					modEnd--
+				}
+				return string(trimmed[modStart:modEnd]), nil
 			}
 			lineStart = i + 1
 		}
 	}
 	// Handle last line without newline.
 	if lineStart < len(data) {
-		line := strings.TrimSpace(string(data[lineStart:]))
-		if len(line) >= 7 && line[:7] == "module " {
-			return strings.TrimSpace(line[7:]), nil
+		line := data[lineStart:]
+		trimStart := 0
+		for trimStart < len(line) && (line[trimStart] == ' ' || line[trimStart] == '\t') {
+			trimStart++
+		}
+		trimEnd := len(line)
+		for trimEnd > trimStart && (line[trimEnd-1] == ' ' || line[trimEnd-1] == '\t' || line[trimEnd-1] == '\r') {
+			trimEnd--
+		}
+		trimmed := line[trimStart:trimEnd]
+		if len(trimmed) >= 7 && trimmed[0] == 'm' && trimmed[1] == 'o' && trimmed[2] == 'd' && trimmed[3] == 'u' && trimmed[4] == 'l' && trimmed[5] == 'e' && trimmed[6] == ' ' {
+			modStart := 7
+			for modStart < len(trimmed) && (trimmed[modStart] == ' ' || trimmed[modStart] == '\t') {
+				modStart++
+			}
+			modEnd := len(trimmed)
+			for modEnd > modStart && (trimmed[modEnd-1] == ' ' || trimmed[modEnd-1] == '\t') {
+				modEnd--
+			}
+			return string(trimmed[modStart:modEnd]), nil
 		}
 	}
-	return "", fmt.Errorf("no module line in %s", path)
+	return "", fmt.Errorf("no module line in %s", modPath)
 }

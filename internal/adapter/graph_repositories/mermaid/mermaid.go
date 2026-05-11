@@ -9,6 +9,41 @@ import (
 	"github.com/dariushalipour/baft/internal/domain/graph"
 )
 
+var (
+	// Pre-compiled regex for node matching - compiled once at package init.
+	nodeRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\[(?:"([^"]*)"|([^\]]*))\](?::::([A-Za-z_][A-Za-z0-9_,]*))?$`)
+
+	// Pre-built replacers for node ID encoding/decoding to avoid per-call allocation.
+	nodeIdReplacer = strings.NewReplacer(
+		"/", "_slash_",
+		".", "_dot_",
+		"-", "_dash_",
+		"*", "_asterisk_",
+		"@", "_atsign_",
+		"[", "_lsqb_",
+		"]", "_rsqb_",
+		"{", "_lbrace_",
+		"}", "_rbrace_",
+	)
+
+	nodeIdDecodeReplacer = strings.NewReplacer(
+		"_slash_", "/",
+		"_dot_", ".",
+		"_dash_", "-",
+		"_asterisk_", "*",
+		"_atsign_", "@",
+		"_lsqb_", "[",
+		"_rsqb_", "]",
+		"_lbrace_", "{",
+		"_rbrace_", "}",
+	)
+
+	globDecodeReplacer = strings.NewReplacer(
+		"&ast;", "*",
+		"&#42;", "*",
+	)
+)
+
 // MermaidRepository implements port.GraphRepository using mermaid flowchart format.
 type MermaidRepository struct{}
 
@@ -52,7 +87,11 @@ func (r *MermaidRepository) Save(g *graph.Graph) string {
 		if glob != "." && !looksLikeFilePath(glob) && !strings.HasSuffix(glob, "/**") {
 			display = glob + "/**"
 		}
-		sb.WriteString(fmt.Sprintf("  %s[%s]\n", encodeNodeId(id), quotedEncode(display)))
+		sb.WriteString("  ")
+		sb.WriteString(encodeNodeId(id))
+		sb.WriteString("[")
+		sb.WriteString(quotedEncode(display))
+		sb.WriteString("]\n")
 	}
 
 	sb.WriteString("\n")
@@ -70,7 +109,11 @@ func (r *MermaidRepository) Save(g *graph.Graph) string {
 		}
 		sort.Strings(targets)
 		for _, dst := range targets {
-			sb.WriteString(fmt.Sprintf("  %s --> %s\n", encodeNodeId(src), encodeNodeId(dst)))
+			sb.WriteString("  ")
+			sb.WriteString(encodeNodeId(src))
+			sb.WriteString(" --> ")
+			sb.WriteString(encodeNodeId(dst))
+			sb.WriteByte('\n')
 		}
 	}
 
@@ -94,7 +137,6 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	}
 
 	lines := strings.Split(block, "\n")
-	nodeRe := regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\[(?:"([^"]*)"|([^\]]*))\](?::::([A-Za-z_][A-Za-z0-9_,]*))?$`)
 
 	lineNum := 0
 	for _, raw := range lines {
@@ -104,10 +146,12 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 		if line == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "%%") || strings.HasPrefix(line, "flowchart") || strings.HasPrefix(line, "graph") {
+		if line[0] == '%' && len(line) >= 2 && line[1] == '%' {
 			continue
 		}
-		if strings.HasPrefix(line, "classDef ") {
+		if line == "flowchart TD" || line == "flowchart LR" || line == "flowchart RL" || line == "flowchart BT" ||
+			strings.HasPrefix(line, "flowchart ") || line == "graph TD" || line == "graph LR" || line == "graph RL" || line == "graph BT" ||
+			strings.HasPrefix(line, "graph ") || strings.HasPrefix(line, "classDef ") {
 			continue
 		}
 		if idx := strings.Index(line, "%%"); idx >= 0 {
@@ -117,7 +161,7 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 			}
 		}
 		if strings.Contains(line, "-->") {
-			if err := parseEdgeLine(line, g, nodeRe, absLine); err != nil {
+			if err := parseEdgeLine(line, g, absLine); err != nil {
 				return nil, err
 			}
 			continue
@@ -192,7 +236,7 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 	return nil
 }
 
-func parseEdgeLine(line string, g *graph.Graph, nodeRe *regexp.Regexp, lineNum int) error {
+func parseEdgeLine(line string, g *graph.Graph, lineNum int) error {
 	tokens := splitArrow(line)
 	if len(tokens) < 2 {
 		return &ParseError{
@@ -310,10 +354,7 @@ func encodeNodeGlob(s string) string {
 
 // decodeNodeGlob reverses encodeNodeGlob.
 func decodeNodeGlob(s string) string {
-	return strings.NewReplacer(
-		"&ast;", "*",
-		"&#42;", "*",
-	).Replace(s)
+	return globDecodeReplacer.Replace(s)
 }
 
 // encodeNodeId produces a valid mermaid identifier from a raw node ID.
@@ -321,17 +362,7 @@ func encodeNodeId(s string) string {
 	if s == "" || s == "." {
 		return "root"
 	}
-	result := strings.NewReplacer(
-		"/", "_slash_",
-		".", "_dot_",
-		"-", "_dash_",
-		"*", "_asterisk_",
-		"@", "_atsign_",
-		"[", "_lsqb_",
-		"]", "_rsqb_",
-		"{", "_lbrace_",
-		"}", "_rbrace_",
-	).Replace(s)
+	result := nodeIdReplacer.Replace(s)
 	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
 		result = "n" + result
 	}
@@ -346,17 +377,7 @@ func decodeNodeId(s string) string {
 	if len(s) > 1 && s[0] == 'n' && s[1] >= '0' && s[1] <= '9' {
 		s = s[1:]
 	}
-	return strings.NewReplacer(
-		"_slash_", "/",
-		"_dot_", ".",
-		"_dash_", "-",
-		"_asterisk_", "*",
-		"_atsign_", "@",
-		"_lsqb_", "[",
-		"_rsqb_", "]",
-		"_lbrace_", "{",
-		"_rbrace_", "}",
-	).Replace(s)
+	return nodeIdDecodeReplacer.Replace(s)
 }
 
 // quotedEncode wraps the encoded glob in Go-style double quotes for mermaid output.
@@ -387,11 +408,12 @@ func checkCycles(g *graph.Graph) error {
 		gray
 		black
 	)
-	color := make(map[string]state)
+	color := make(map[string]state, len(g.Nodes))
 	for id := range g.Nodes {
 		color[id] = white
 	}
-	var path []string
+	// Pre-allocate path with capacity for all nodes.
+	path := make([]string, 0, len(g.Nodes))
 	var dfs func(node string) error
 	dfs = func(node string) error {
 		color[node] = gray
@@ -408,16 +430,16 @@ func checkCycles(g *graph.Graph) error {
 					}
 				}
 				if cycleStart >= 0 {
-					cycle := append(path[cycleStart:], dst)
 					cycleStr := ""
-					for i, n := range cycle {
-						if i > 0 {
-							cycleStr += " → "
+					for i := cycleStart; i < len(path); i++ {
+						if i > cycleStart {
+							cycleStr += " \u2192 "
 						}
-						cycleStr += n
+						cycleStr += path[i]
 					}
+					cycleStr += " \u2192 " + dst
 					line := g.EdgeLines[path[len(path)-1]+"\t"+dst]
-					return &ParseError{Line: line, Msg: fmt.Sprintf("cycle detected: %s", cycleStr)}
+					return &ParseError{Line: line, Msg: "cycle detected: " + cycleStr}
 				}
 			} else if c == white {
 				if err := dfs(dst); err != nil {
@@ -448,10 +470,28 @@ func looksLikeFilePath(p string) bool {
 	if p == "." || p == "" {
 		return false
 	}
-	segs := strings.Split(p, "/")
-	last := segs[len(segs)-1]
+	// Find last '/' using byte scan.
+	lastSlash := -1
+	for i := len(p) - 1; i >= 0; i-- {
+		if p[i] == '/' {
+			lastSlash = i
+			break
+		}
+	}
+	var last string
+	if lastSlash >= 0 {
+		last = p[lastSlash+1:]
+	} else {
+		last = p
+	}
 	if last == "." || last == ".." {
 		return false
 	}
-	return strings.Contains(last, ".")
+	// Check for dot in last segment.
+	for i := 0; i < len(last); i++ {
+		if last[i] == '.' {
+			return true
+		}
+	}
+	return false
 }

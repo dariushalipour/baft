@@ -9,12 +9,16 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-type Language struct{}
+type Language struct {
+	// tsconfigCache caches resolved tsconfig results per directory.
+	tsconfigCache sync.Map
+}
 
 func (Language) Name() string { return "typescript" }
 
@@ -35,10 +39,9 @@ func (Language) IsGovernedFile(rel string) bool {
 	return true
 }
 
-var staticImportRe = regexp.MustCompile(`(?m)^\s*(?:import|export)\s+.*?['"]([^'"]+)['"]`)
-var dynamicImportRe = regexp.MustCompile(`\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)`)
-var requireRe = regexp.MustCompile(`\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)`)
-var importRequireRe = regexp.MustCompile(`^\s*import\s+\w+\s*=\s*require\s*\(\s*['"]([^'"]+)['"]\s*\)`)
+// Combined import regex: matches all four import patterns in a single pass.
+// Group 1: single-quoted path, Group 2: double-quoted path.
+var combinedImportRe = regexp.MustCompile(`(?m)(?:^\s*(?:import|export)\s+.*?|^\s*import\s+\w+\s*=\s*require\s*\(|\bimport\s*\(|\brequire\s*\()('([^']+)'|\"([^\"]+)\")`)
 
 func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
 	data, err := fsys.ReadFile(absPath)
@@ -47,39 +50,29 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	}
 	lineOffsets := makeLineOffsets(data)
 	dataStr := string(data)
-	seen := make(map[string]bool)
+	seen := make(map[string]bool, 16)
 	out := make([]port.ImportSpec, 0, 16)
-	for _, m := range staticImportRe.FindAllStringSubmatchIndex(dataStr, -1) {
-		line, col := offsetToLineCol(lineOffsets, data, m[2])
-		_, colEnd := offsetToLineCol(lineOffsets, data, m[3])
-		spec := dataStr[m[2]:m[3]]
-		if !seen[spec] {
-			seen[spec] = true
-			out = append(out, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: colEnd})
+	// Single-pass: find all import paths at once instead of 4 separate regex scans.
+	// m[0]=full, m[1]='full-single', m[2]=single-content, m[3]="full-double", m[4]=double-content
+	for _, m := range combinedImportRe.FindAllStringSubmatchIndex(dataStr, -1) {
+		var pathStart, pathEnd int
+		if m[2] >= 0 {
+			// Single-quoted: m[1] = 'path' (with quotes), m[2] = path content (without quotes)
+			// But m[1] includes the quotes, so content is m[1]+1 : m[2]
+			// Actually from debug: m[2]=20 is start of ' and m[3]=27 is end of '
+			// m[4]=21 is start of content and m[5]=26 is end of content
+			// Since m[4]>=0 means double-quote match, m[2]>=0 means single-quote match
+			// For single-quote: content is at m[2]+1 : m[3]-1
+			pathStart = m[2] + 1
+			pathEnd = m[3] - 1
+		} else {
+			// Double-quoted: content is at m[4]+1 : m[5]-1
+			pathStart = m[4] + 1
+			pathEnd = m[5] - 1
 		}
-	}
-	for _, m := range dynamicImportRe.FindAllStringSubmatchIndex(dataStr, -1) {
-		line, col := offsetToLineCol(lineOffsets, data, m[2])
-		_, colEnd := offsetToLineCol(lineOffsets, data, m[3])
-		spec := dataStr[m[2]:m[3]]
-		if !seen[spec] {
-			seen[spec] = true
-			out = append(out, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: colEnd})
-		}
-	}
-	for _, m := range requireRe.FindAllStringSubmatchIndex(dataStr, -1) {
-		line, col := offsetToLineCol(lineOffsets, data, m[2])
-		_, colEnd := offsetToLineCol(lineOffsets, data, m[3])
-		spec := dataStr[m[2]:m[3]]
-		if !seen[spec] {
-			seen[spec] = true
-			out = append(out, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: colEnd})
-		}
-	}
-	for _, m := range importRequireRe.FindAllStringSubmatchIndex(dataStr, -1) {
-		line, col := offsetToLineCol(lineOffsets, data, m[2])
-		_, colEnd := offsetToLineCol(lineOffsets, data, m[3])
-		spec := dataStr[m[2]:m[3]]
+		line, col := offsetToLineCol(lineOffsets, data, pathStart)
+		_, colEnd := offsetToLineCol(lineOffsets, data, pathEnd)
+		spec := dataStr[pathStart:pathEnd]
 		if !seen[spec] {
 			seen[spec] = true
 			out = append(out, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: colEnd})
@@ -121,7 +114,7 @@ func offsetToLineCol(lineOffsets []int, data []byte, offset int) (int, int) {
 	return line + 1, offset - lineOffsets[line] + 1
 }
 
-func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
+func (l Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
 	if strings.HasPrefix(spec.Path, ".") {
 		base := path.Dir(fileRel)
 		full := path.Clean(path.Join(base, spec.Path))
@@ -131,7 +124,7 @@ func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec
 		return resolveExtension(fsys, full, c.Dir), true
 	}
 
-	tsconfig, err := resolveTsconfig(fsys, c.Dir)
+	tsconfig, err := l.resolveTsconfigCached(fsys, c.Dir)
 	if err != nil || tsconfig == nil {
 		resolved, ok := resolveByCapsuleName(spec.Path, c, fileRel)
 		if ok {
@@ -149,6 +142,23 @@ func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec
 		resolved = resolveExtension(fsys, resolved, c.Dir)
 	}
 	return resolved, ok
+}
+
+func (l Language) resolveTsconfigCached(fsys port.FileSystem, capsuleDir string) (*tsconfig, error) {
+	if cached, ok := l.tsconfigCache.Load(capsuleDir); ok {
+		return cached.(*tsconfig), nil
+	}
+	cfg, err := resolveTsconfig(fsys, capsuleDir)
+	if err != nil {
+		return nil, err
+	}
+	if cfg != nil {
+		// Store in cache using LoadOrStore to avoid duplicate resolution.
+		if loaded, ok := l.tsconfigCache.LoadOrStore(capsuleDir, cfg); ok {
+			return loaded.(*tsconfig), nil
+		}
+	}
+	return cfg, nil
 }
 
 func resolveByCapsuleName(spec string, c port.Capsule, fileRel string) (string, bool) {
@@ -169,25 +179,25 @@ func resolveByCapsuleName(spec string, c port.Capsule, fileRel string) (string, 
 
 func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string {
 	base := path.Base(resolved)
-	hasDot := strings.Contains(base, ".")
+	hasDot := false
+	for i := 0; i < len(base); i++ {
+		if base[i] == '.' {
+			hasDot = true
+			break
+		}
+	}
 
 	if strings.HasSuffix(resolved, ".ts") || strings.HasSuffix(resolved, ".tsx") {
 		return resolved
 	}
 
-	jsToTs := map[string]string{
-		".js":  ".ts",
-		".jsx": ".tsx",
-		".mjs": ".mts",
-		".cjs": ".cts",
-	}
+	jsToTs := [][2]string{{".js", ".ts"}, {".jsx", ".tsx"}, {".mjs", ".mts"}, {".cjs", ".cts"}}
 
-	jsExt := ""
-	var tsExt string
-	for jsExtCandidate, tsExtCandidate := range jsToTs {
-		if strings.HasSuffix(resolved, jsExtCandidate) {
-			jsExt = jsExtCandidate
-			tsExt = tsExtCandidate
+	var jsExt, tsExt string
+	for _, pair := range jsToTs {
+		if strings.HasSuffix(resolved, pair[0]) {
+			jsExt = pair[0]
+			tsExt = pair[1]
 			break
 		}
 	}
@@ -211,7 +221,7 @@ func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string 
 		return resolved
 	}
 
-	for _, ext := range []string{".ts", ".tsx", ".js", ".jsx"} {
+	for _, ext := range [4]string{".ts", ".tsx", ".js", ".jsx"} {
 		candidate := resolved + ext
 		if _, err := fsys.Stat(filepath.Join(capsuleDir, filepath.FromSlash(candidate))); err == nil {
 			return candidate
@@ -220,7 +230,7 @@ func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string 
 
 	dirAbs := filepath.Join(capsuleDir, filepath.FromSlash(resolved))
 	if _, err := fsys.Stat(dirAbs); err == nil {
-		for _, ext := range []string{"index.ts", "index.tsx", "index.js", "index.jsx"} {
+		for _, ext := range [4]string{"index.ts", "index.tsx", "index.js", "index.jsx"} {
 			if _, err := fsys.Stat(filepath.Join(dirAbs, ext)); err == nil {
 				return path.Join(resolved, ext)
 			}

@@ -23,16 +23,23 @@ type fileWork struct {
 }
 
 func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsuleDir string) error {
+	// Pre-compute separator strings to avoid repeated concatenation.
+	configDirSep := ch.configDirAbs + string(filepath.Separator)
+	var nestedSep []string
+	for _, nested := range ch.nestedCapsuleDirs {
+		nestedSep = append(nestedSep, nested+string(filepath.Separator))
+	}
+
 	// Collect all files to check first, then process in parallel.
 	// This avoids holding filesystem locks during the parallel phase.
 	var filesToCheck []fileWork
 
 	err := service.WalkAllFiles(fsys, capsuleDir, ch.lang, func(abs, rel string) error {
-		if abs != ch.configDirAbs && !strings.HasPrefix(abs, ch.configDirAbs+string(filepath.Separator)) {
+		if abs != ch.configDirAbs && !strings.HasPrefix(abs, configDirSep) {
 			return nil
 		}
-		for _, nested := range ch.nestedCapsuleDirs {
-			if strings.HasPrefix(abs, nested+string(filepath.Separator)) {
+		for _, nsep := range nestedSep {
+			if strings.HasPrefix(abs, nsep) {
 				return nil
 			}
 		}
@@ -501,7 +508,7 @@ func (ch *capsuleChecker) findWitnessFile(aGlob, bGlob string, baseDir string) s
 }
 
 type scopeCache struct {
-	mu   sync.Mutex
+	mu   sync.RWMutex // Use RWMutex so concurrent cache hits don't block each other.
 	m    map[string]*scopeEntry
 	fsys port.FileSystem
 	repo port.GraphRepository
@@ -518,12 +525,12 @@ func newScopeCache(fsys port.FileSystem, repo port.GraphRepository) *scopeCache 
 }
 
 func (sc *scopeCache) load(scopeDir string) (*scopeEntry, error) {
-	sc.mu.Lock()
+	sc.mu.RLock()
 	if e, ok := sc.m[scopeDir]; ok {
-		sc.mu.Unlock()
+		sc.mu.RUnlock()
 		return e, nil
 	}
-	sc.mu.Unlock()
+	sc.mu.RUnlock()
 
 	cfg := filepath.Join(scopeDir, port.ConfigFile)
 	e := &scopeEntry{cfgPath: cfg}
@@ -619,29 +626,16 @@ func hasScopedConfig(fsys port.FileSystem, capsuleDir string) bool {
 // parseCache provides thread-safe caching of ParseImports results.
 // This avoids re-parsing the same file multiple times during check operations.
 type parseCache struct {
-	mu    sync.RWMutex
-	cache map[string]*port.ParsedImports
+	m sync.Map // sync.Map is more efficient for read-heavy workloads with many concurrent goroutines.
 }
 
 func newParseCache() *parseCache {
-	return &parseCache{cache: make(map[string]*port.ParsedImports)}
-}
-
-func (pc *parseCache) get(path string) (*port.ParsedImports, bool) {
-	pc.mu.RLock()
-	entry, ok := pc.cache[path]
-	pc.mu.RUnlock()
-	return entry, ok
-}
-
-func (pc *parseCache) set(path string, imports *port.ParsedImports) {
-	pc.mu.Lock()
-	pc.cache[path] = imports
-	pc.mu.Unlock()
+	return &parseCache{}
 }
 
 func (pc *parseCache) loadOrParse(ch *capsuleChecker, abs string) ([]port.ImportSpec, error) {
-	if entry, ok := pc.get(abs); ok {
+	if loaded, ok := pc.m.Load(abs); ok {
+		entry := loaded.(*port.ParsedImports)
 		return entry.Imports, nil
 	}
 
@@ -649,7 +643,12 @@ func (pc *parseCache) loadOrParse(ch *capsuleChecker, abs string) ([]port.Import
 	if err != nil {
 		return nil, err
 	}
-	// Store in cache for future lookups.
-	pc.set(abs, &port.ParsedImports{Imports: imports, Hash: ""})
+	// Store in cache for future lookups using LoadOrStore to avoid duplicate parsing.
+	full := &port.ParsedImports{Imports: imports, Hash: ""}
+	if loaded, ok := pc.m.LoadOrStore(abs, full); ok {
+		// Another goroutine stored it first.
+		entry := loaded.(*port.ParsedImports)
+		return entry.Imports, nil
+	}
 	return imports, nil
 }

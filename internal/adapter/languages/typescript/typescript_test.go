@@ -1,6 +1,7 @@
 package typescript
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
@@ -152,9 +153,16 @@ import Foo = require('./import-require');
 	if len(got) != len(want) {
 		t.Fatalf("got %d, want %d\n\ngot:  %v\nwant: %v", len(got), len(want), got, want)
 	}
+	// Sort both slices for comparison since the combined regex returns in source order.
+	gotPaths := make([]string, len(got))
+	for i, imp := range got {
+		gotPaths[i] = imp.Path
+	}
+	sort.Strings(gotPaths)
+	sort.Strings(want)
 	for i := range want {
-		if got[i].Path != want[i] {
-			t.Errorf("[%d] got %q, want %q", i, got[i].Path, want[i])
+		if gotPaths[i] != want[i] {
+			t.Errorf("[%d] got %q, want %q", i, gotPaths[i], want[i])
 		}
 	}
 }
