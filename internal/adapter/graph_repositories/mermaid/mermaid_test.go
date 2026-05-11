@@ -508,6 +508,12 @@ func TestEncodeDecodeNodeId(t *testing.T) {
 		{"my+pkg", "my_plus_pkg"},
 		{"a?b", "a_qmark_b"},
 		{"x,y", "x_comma_y"},
+		{"hello world", "hello_space_world"},
+		{"a\tb", "a_tab_b"},
+		{"a\nb", "a_newline_b"},
+		{"a\rb", "a_carriage_return_b"},
+		{"a\x0bb", "a_vertical_tab_b"},
+		{"a\x0cb", "a_form_feed_b"},
 	}
 	for _, tc := range cases {
 		enc := encodeNodeId(tc.raw)

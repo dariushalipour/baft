@@ -27,6 +27,12 @@ var (
 		"+", "_plus_",
 		"?", "_qmark_",
 		",", "_comma_",
+		" ", "_space_",
+		"\t", "_tab_",
+		"\n", "_newline_",
+		"\r", "_carriage_return_",
+		"\x0b", "_vertical_tab_",
+		"\x0c", "_form_feed_",
 	)
 
 	nodeIdDecodeReplacer = strings.NewReplacer(
@@ -42,6 +48,12 @@ var (
 		"_plus_", "+",
 		"_qmark_", "?",
 		"_comma_", ",",
+		"_space_", " ",
+		"_tab_", "\t",
+		"_newline_", "\n",
+		"_carriage_return_", "\r",
+		"_vertical_tab_", "\x0b",
+		"_form_feed_", "\x0c",
 	)
 
 	globDecodeReplacer = strings.NewReplacer(
