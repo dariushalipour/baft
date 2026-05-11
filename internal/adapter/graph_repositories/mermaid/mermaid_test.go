@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/domain/graph"
+	"github.com/dariushalipour/baft/internal/domain/graph"
 )
 
 func TestMermaidRepository_Load(t *testing.T) {

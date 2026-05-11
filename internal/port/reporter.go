@@ -23,7 +23,7 @@ type CheckResultRenderer interface {
 	Render(result *CheckResult) string
 }
 
-// CheckResult holds the outcome of a strata check run.
+// CheckResult holds the outcome of a baft check run.
 type CheckResult struct {
 	Capsules   []CapsuleResult `json:"capsules,omitempty"`
 	Violations []string        `json:"violations,omitempty"`

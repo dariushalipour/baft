@@ -1,6 +1,6 @@
-Usage: strata draft [flags] [root-dir]
+Usage: baft draft [flags] [root-dir]
 
-Generate STRATA.md files from current dependency reality.
+Generate BAFT.md files from current dependency reality.
 
 Flags:
   --lang <name>   Language filter (can be repeated): go, typescript, dart, kotlin, rust

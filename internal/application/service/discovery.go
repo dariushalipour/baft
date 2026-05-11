@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 // ManifestInfo describes how to find and parse a build manifest for a language.

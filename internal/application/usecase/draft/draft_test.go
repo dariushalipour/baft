@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	"github.com/cucumber/godog"
-	"github.com/dariushalipour/strata/internal/adapter/graph_repositories/mermaid"
-	"github.com/dariushalipour/strata/internal/adapter/languages/golang"
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/application/steps"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
+	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/application/steps"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 type draftWorld struct {
@@ -192,19 +192,19 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			return nil
 		})
 
-	sc.Step(`^STRATA\.md is unchanged$`,
+	sc.Step(`^BAFT\.md is unchanged$`,
 		func(ctx context.Context) error {
 			w := dw(ctx)
-			original, exists := w.Workspace.Files[filepath.Join(w.Workspace.RootDir, "STRATA.md")]
+			original, exists := w.Workspace.Files[filepath.Join(w.Workspace.RootDir, "BAFT.md")]
 			if !exists {
-				return fmt.Errorf("STRATA.md was not in the original files")
+				return fmt.Errorf("BAFT.md was not in the original files")
 			}
-			content, err := w.Workspace.FSys.ReadFile(filepath.Join(w.Workspace.RootDir, "STRATA.md"))
+			content, err := w.Workspace.FSys.ReadFile(filepath.Join(w.Workspace.RootDir, "BAFT.md"))
 			if err != nil {
-				return fmt.Errorf("STRATA.md not found: %v", err)
+				return fmt.Errorf("BAFT.md not found: %v", err)
 			}
 			if string(content) != original {
-				return fmt.Errorf("STRATA.md was modified, expected:\n%s\ngot:\n%s", original, content)
+				return fmt.Errorf("BAFT.md was modified, expected:\n%s\ngot:\n%s", original, content)
 			}
 			return nil
 		})

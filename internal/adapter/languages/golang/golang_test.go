@@ -3,8 +3,8 @@ package golang
 import (
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/adapter/fs/memfs"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func TestIsGovernedFile(t *testing.T) {

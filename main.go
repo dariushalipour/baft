@@ -7,22 +7,22 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/dariushalipour/strata/internal/adapter/fs/overlayfs"
-	"github.com/dariushalipour/strata/internal/adapter/fs/realfs"
-	"github.com/dariushalipour/strata/internal/adapter/graph_repositories/mermaid"
-	"github.com/dariushalipour/strata/internal/adapter/languages/dart"
-	"github.com/dariushalipour/strata/internal/adapter/languages/golang"
-	"github.com/dariushalipour/strata/internal/adapter/languages/kotlin"
-	"github.com/dariushalipour/strata/internal/adapter/languages/rust"
-	"github.com/dariushalipour/strata/internal/adapter/languages/typescript"
-	"github.com/dariushalipour/strata/internal/adapter/reporters/intellijreporter"
-	"github.com/dariushalipour/strata/internal/adapter/reporters/jsonreporter"
-	"github.com/dariushalipour/strata/internal/adapter/reporters/textreporter"
-	"github.com/dariushalipour/strata/internal/adapter/reporters/vscereporter"
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/application/usecase/check"
-	"github.com/dariushalipour/strata/internal/application/usecase/draft"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
+	"github.com/dariushalipour/baft/internal/adapter/fs/realfs"
+	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
+	"github.com/dariushalipour/baft/internal/adapter/languages/dart"
+	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
+	"github.com/dariushalipour/baft/internal/adapter/languages/kotlin"
+	"github.com/dariushalipour/baft/internal/adapter/languages/rust"
+	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
+	"github.com/dariushalipour/baft/internal/adapter/reporters/intellijreporter"
+	"github.com/dariushalipour/baft/internal/adapter/reporters/jsonreporter"
+	"github.com/dariushalipour/baft/internal/adapter/reporters/textreporter"
+	"github.com/dariushalipour/baft/internal/adapter/reporters/vscereporter"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/application/usecase/check"
+	"github.com/dariushalipour/baft/internal/application/usecase/draft"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 var version string // set by -ldflags at build time
@@ -59,7 +59,7 @@ func main() {
 	case "draft":
 		runDraft(args[1:])
 	default:
-		fmt.Fprintf(os.Stderr, "unknown command: %s\n\nRun 'strata --help' for usage\n", args[0])
+		fmt.Fprintf(os.Stderr, "unknown command: %s\n\nRun 'baft --help' for usage\n", args[0])
 		os.Exit(1)
 	}
 }
@@ -83,7 +83,7 @@ func runCheck(args []string) {
 			} else if strings.HasPrefix(a, "--lang") {
 				langs = append(langs, strings.TrimPrefix(a, "--lang"))
 			} else if strings.HasPrefix(a, "--") {
-				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'strata check --help' for usage\n", a)
+				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft check --help' for usage\n", a)
 				os.Exit(1)
 			} else if root == "" {
 				root = a
@@ -96,7 +96,7 @@ func runCheck(args []string) {
 	}
 
 	if reporterName != "text" && reporterName != "json" && reporterName != "vsce" && reporterName != "intellij" {
-		fmt.Fprintf(os.Stderr, "unknown reporter: %s\n\nRun 'strata check --help' for usage\n", reporterName)
+		fmt.Fprintf(os.Stderr, "unknown reporter: %s\n\nRun 'baft check --help' for usage\n", reporterName)
 		os.Exit(1)
 	}
 
@@ -162,7 +162,7 @@ func runDraft(args []string) {
 			if strings.HasPrefix(a, "--lang") {
 				langs = append(langs, strings.TrimPrefix(a, "--lang"))
 			} else if strings.HasPrefix(a, "--") {
-				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'strata draft --help' for usage\n", a)
+				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft draft --help' for usage\n", a)
 				os.Exit(1)
 			} else if root == "" {
 				root = a

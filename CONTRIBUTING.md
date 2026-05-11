@@ -3,25 +3,25 @@
 ## Quick start
 
 ```
-go build -o strata .
-./strata check /path/to/repo
-./strata draft /path/to/repo
+go build -o baft .
+./baft check /path/to/repo
+./baft draft /path/to/repo
 go test ./...
 ```
 
 ## Architecture
 
 ```
-strata/
+baft/
 ├── main.go                          # CLI: subcommands, version, reporters
 ├── go.mod                           # Zero external dependencies
 └── internal/
     ├── ui/ui.go                     # Terminal output (✓, ✗, ℹ)
-    └── strata/
+    └── baft/
         ├── language.go              # Language interface + Capsule struct
         ├── graph.go                 # Mermaid parser, glob matching, Graph type
         ├── check.go                 # File walk + rule application
-        ├── strata.go                # Run() — orchestrates discovery + checks
+        ├── baft.go                # Run() — orchestrates discovery + checks
         ├── golang/golang.go         # Go adapter
         ├── dart/dart.go             # Dart adapter
         ├── kotlin/kotlin.go         # Kotlin adapter
@@ -29,11 +29,11 @@ strata/
         └── rust/rust.go             # Rust adapter
 ```
 
-The core (`graph.go`, `check.go`, `strata.go`, `language.go`) knows nothing about Go, Dart, or Kotlin. Language-specific logic lives behind the `Language` interface.
+The core (`graph.go`, `check.go`, `baft.go`, `language.go`) knows nothing about Go, Dart, or Kotlin. Language-specific logic lives behind the `Language` interface.
 
 ## Adding a language adapter
 
-Create a new capsule under `internal/strata/<lang>/` and implement the `Language` interface:
+Create a new capsule under `internal/baft/<lang>/` and implement the `Language` interface:
 
 ```go
 type Language interface {
@@ -51,7 +51,7 @@ Each method:
 | Method | Purpose |
 |---|---|
 | `Name()` | Short identifier for diagnostics (e.g. `"go"`, `"dart"`) |
-| `Discover()` | Walk the repo tree, return every directory that has both a module manifest and a `STRATA.md` |
+| `Discover()` | Walk the repo tree, return every directory that has both a module manifest and a `BAFT.md` |
 | `IsGovernedFile()` | Return `true` for source files that should be checked (exclude tests, generated files, etc.) |
 | `ParseImports()` | Extract raw import specifiers from a file. Language-specific format. |
 | `ResolveInternalTarget()` | Map a raw import specifier to a capsule-relative path. Return `internal=false` for external/stdlib imports. |
@@ -60,18 +60,18 @@ Each method:
 Then register it in `main.go`:
 
 ```go
-result := strata.Run(root, []strata.Language{
+result := baft.Run(root, []baft.Language{
     golang.Language{},
     dart.Language{},
     mylang.Language{},
-}, strata.OptJSON(jsonOut))
+}, baft.OptJSON(jsonOut))
 ```
 
 That's it. No other changes needed.
 
-## STRATA.md format
+## BAFT.md format
 
-Each governed capsule has a `STRATA.md` at its root. The first ```mermaid block is parsed:
+Each governed capsule has a `BAFT.md` at its root. The first ```mermaid block is parsed:
 
 ````markdown
 ```mermaid
@@ -229,7 +229,7 @@ filepath.Join(append([]string{"src"}, parts...)...)
 
 ## Releasing
 
-Strata uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
+Baft uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
 
 ### Steps
 
@@ -244,15 +244,15 @@ Strata uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
    git push origin v0.1.0
    ```
 
-3. Create a GitHub release at `https://github.com/dariushalipour/strata/releases/new`:
+3. Create a GitHub release at `https://github.com/dariushalipour/baft/releases/new`:
    - Target the new tag
    - Auto-generate release notes or summarize changes
    - Publish
 
 4. Verify `go install` works:
    ```
-   go install github.com/dariushalipour/strata@v0.1.0
-   strata --version
+   go install github.com/dariushalipour/baft@v0.1.0
+   baft --version
    ```
 
 ### Version scheme
@@ -265,7 +265,7 @@ Strata uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
 For local builds that report a proper version string:
 
 ```
-go build -ldflags "-X main.version=v0.1.0" -o strata .
+go build -ldflags "-X main.version=v0.1.0" -o baft .
 ```
 
 The `main.version` variable is set to `"dev"` by default when not provided via `-ldflags`.

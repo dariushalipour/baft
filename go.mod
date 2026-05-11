@@ -1,4 +1,4 @@
-module github.com/dariushalipour/strata
+module github.com/dariushalipour/baft
 
 go 1.21
 

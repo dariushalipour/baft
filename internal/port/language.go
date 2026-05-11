@@ -1,7 +1,7 @@
 package port
 
-// ConfigFile is the name of the strata configuration file.
-const ConfigFile = "STRATA.md"
+// ConfigFile is the name of the Baft contract file.
+const ConfigFile = "BAFT.md"
 
 // Label returns the absolute directory path of a capsule.
 func Label(c Capsule, _ string) string {

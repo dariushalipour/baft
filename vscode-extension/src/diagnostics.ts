@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Violation } from "./strata";
+import type { Violation } from "./baft";
 
 function toSeverity(s: string): vscode.DiagnosticSeverity {
   switch (s) {
@@ -26,7 +26,7 @@ export function publish(
     const endCol = v.columnEnd ? v.columnEnd - 1 : Number.MAX_SAFE_INTEGER;
     const range = new vscode.Range(line, col, line, endCol);
     const diag = new vscode.Diagnostic(range, v.message, toSeverity(v.severity));
-    diag.source = "strata";
+    diag.source = "baft";
     diag.code = v.rule;
 
     const existing = byFile.get(v.file) ?? [];

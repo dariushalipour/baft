@@ -1,19 +1,19 @@
-Feature: Draft STRATA.md from actual imports
+Feature: Draft BAFT.md from actual imports
   As a developer
-  I want strata to generate a STRATA.md that reflects my real import graph
+  I want baft to generate a BAFT.md that reflects my real import graph
   So that I have an accurate starting point for my architecture rules
 
   Scenario: No capsules discovered yields an error
-    Given a fresh workspace at "/Users/jane/strata" with this layout:
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       └─ src/
          └─ app.ts
       """
-    When the draft runs from "/Users/jane/strata"
+    When the draft runs from "/Users/jane/baft"
     Then the draft errors
 
   Scenario: Empty capsule is skipped and other capsules are drafted
-    Given a fresh workspace at "/Users/jane/strata" with this layout:
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ empty/
       │  ├─ go.mod
@@ -45,20 +45,20 @@ Feature: Draft STRATA.md from actual imports
       type User struct{}
       """
     Given the draft uses the "go" language adapter
-    When the draft runs from "/Users/jane/strata"
+    When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 2 capsules are drafted
     And 1 error is reported
     And the error is:
       """
-        /Users/jane/strata/empty: capsule at /Users/jane/strata/empty has no governed files to draft
+        /Users/jane/baft/empty: capsule at /Users/jane/baft/empty has no governed files to draft
       """
-    And "services/STRATA.md" is expected to have content:
+    And "services/BAFT.md" is expected to have content:
       """config
-      <!-- STRATA — Architecture Contract: Human-maintained. Edit this file to change rules. -->
+      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
       <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `strata` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/strata@latest` -->
+      <!-- Run `baft` for the complete specification. -->
+      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
       <!-- (ensure ~/go/bin is in your PATH) -->
       
       ```mermaid
@@ -67,12 +67,12 @@ Feature: Draft STRATA.md from actual imports
       
       ```
       """
-    And "libs/STRATA.md" is expected to have content:
+    And "libs/BAFT.md" is expected to have content:
       """config
-      <!-- STRATA — Architecture Contract: Human-maintained. Edit this file to change rules. -->
+      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
       <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `strata` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/strata@latest` -->
+      <!-- Run `baft` for the complete specification. -->
+      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
       <!-- (ensure ~/go/bin is in your PATH) -->
       
       ```mermaid
@@ -81,11 +81,11 @@ Feature: Draft STRATA.md from actual imports
       
       ```
       """
-    And "empty/STRATA.md" should not exist
-    And "STRATA.md" should not exist
+    And "empty/BAFT.md" should not exist
+    And "BAFT.md" should not exist
 
-  Scenario: Draft analyzes Go project imports and writes STRATA.md
-    Given a fresh workspace at "/Users/jane/strata" with this layout:
+  Scenario: Draft analyzes Go project imports and writes BAFT.md
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ go.mod
       ├─ internal/
@@ -133,18 +133,18 @@ Feature: Draft STRATA.md from actual imports
       }
       """
     Given the draft uses the "go" language adapter
-    When the draft runs from "/Users/jane/strata"
+    When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 1 capsule is drafted
     And capsule 1 has 3 files scanned
     And capsule 1 has 3 nodes
     And capsule 1 has 2 edges
-    And "STRATA.md" is expected to have content:
+    And "BAFT.md" is expected to have content:
       """config
-      <!-- STRATA — Architecture Contract: Human-maintained. Edit this file to change rules. -->
+      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
       <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `strata` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/strata@latest` -->
+      <!-- Run `baft` for the complete specification. -->
+      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
       <!-- (ensure ~/go/bin is in your PATH) -->
       
       ```mermaid
@@ -158,15 +158,15 @@ Feature: Draft STRATA.md from actual imports
       ```
       """
 
-  Scenario: Draft skips capsule with existing STRATA.md
-    Given a fresh workspace at "/Users/jane/strata" with this layout:
+  Scenario: Draft skips capsule with existing BAFT.md
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ go.mod
-      ├─ STRATA.md
+      ├─ BAFT.md
       └─ main.go
       """
     Given file "go.mod" has content "module example.com/skip"
-    Given file "STRATA.md" has content:
+    Given file "BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
@@ -179,26 +179,26 @@ Feature: Draft STRATA.md from actual imports
       func main() {}
       """
     Given the draft uses the "go" language adapter
-    When the draft runs from "/Users/jane/strata"
+    When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 0 capsules are drafted
-    And STRATA.md is unchanged
+    And BAFT.md is unchanged
 
-  Scenario: Draft partially skips nested package with existing STRATA.md
-    Given a fresh workspace at "/Users/jane/strata" with this layout:
+  Scenario: Draft partially skips nested package with existing BAFT.md
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ go.mod
       ├─ internal/
       │  ├─ domain/
       │  │  └─ model.go
       │  └─ nested/
-      │     ├─ STRATA.md
+      │     ├─ BAFT.md
       │     └─ api/
       │        └─ handler.go
       └─ main.go
       """
     Given file "go.mod" has content "module example.com/nested"
-    Given file "internal/nested/STRATA.md" has content:
+    Given file "internal/nested/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
@@ -223,16 +223,16 @@ Feature: Draft STRATA.md from actual imports
       func main() { _ = domain.User{} }
       """
     Given the draft uses the "go" language adapter
-    When the draft runs from "/Users/jane/strata"
+    When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 1 capsule is drafted
     And capsule 1 has 2 files scanned
-    And "STRATA.md" is expected to have content:
+    And "BAFT.md" is expected to have content:
       """config
-      <!-- STRATA — Architecture Contract: Human-maintained. Edit this file to change rules. -->
+      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
       <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `strata` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/strata@latest` -->
+      <!-- Run `baft` for the complete specification. -->
+      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
       <!-- (ensure ~/go/bin is in your PATH) -->
       
       ```mermaid
@@ -245,18 +245,18 @@ Feature: Draft STRATA.md from actual imports
       """
 
   Scenario: Draft does not double-scan files in nested skipped package
-    Given a fresh workspace at "/Users/jane/strata" with this layout:
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ go.mod
       └─ internal/
          └─ a/
             ├─ top.go
             └─ b/
-               ├─ STRATA.md
+               ├─ BAFT.md
                └─ deep.go
       """
     Given file "go.mod" has content "module example.com/double"
-    Given file "internal/a/b/STRATA.md" has content:
+    Given file "internal/a/b/BAFT.md" has content:
       """config
       ```mermaid
       flowchart TD
@@ -272,13 +272,13 @@ Feature: Draft STRATA.md from actual imports
       package b
       """
     Given the draft uses the "go" language adapter
-    When the draft runs from "/Users/jane/strata"
+    When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 1 capsule is drafted
     And capsule 1 has 1 file scanned
 
   Scenario: Draft ignores missing files gracefully
-    Given a fresh workspace at "/Users/jane/strata" with this layout:
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ go.mod
       ├─ internal/
@@ -304,7 +304,7 @@ Feature: Draft STRATA.md from actual imports
       """
     Given the "go" language adapter cannot read "internal/usecase/generated.go"
     Given the draft uses the "go" language adapter
-    When the draft runs from "/Users/jane/strata"
+    When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 1 capsule is drafted
     And capsule 1 has 2 files scanned

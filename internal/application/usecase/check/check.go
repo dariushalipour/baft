@@ -1,10 +1,10 @@
 // Package check verifies that code imports respect architecture rules
-// declared in STRATA.md config files across one or more capsules.
+// declared in BAFT.md config files across one or more capsules.
 //
 // Algorithm:
 //
 //  1. Discover capsules (modules with manifest files like go.mod)
-//  2. For each capsule, find the root STRATA.md and any scoped configs
+//  2. For each capsule, find the root BAFT.md and any scoped configs
 //  3. Walk every governed file, resolve its imports to internal targets
 //  4. For each import, determine the governing scope and check the
 //     relation against the appropriate graph, walking up ancestor scopes
@@ -21,10 +21,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dariushalipour/strata/internal/adapter/graph_repositories/mermaid"
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/domain/graph"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/domain/graph"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 type capsuleResult struct {
@@ -223,7 +223,7 @@ func makeConfigLoadError(cfgPath string, err error) port.Violation {
 	v := port.Violation{
 		Rule:     "config-load-error",
 		Severity: "error",
-		Source:   "strata",
+		Source:   "baft",
 		File:     cfgPath,
 	}
 

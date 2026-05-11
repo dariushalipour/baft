@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func importPrefix(fileRel string, spec port.ImportSpec, src, targetRel, dst string) string {
@@ -47,7 +47,7 @@ func makeRelationViolation(fileAbs, fileRel string, spec port.ImportSpec, src, t
 	return port.Violation{
 		Rule:      "import-not-allowed",
 		Severity:  "error",
-		Source:    "strata",
+		Source:    "baft",
 		Message:   formatRelation(fileRel, spec, src, targetRel, dst, cfgPath),
 		File:      fileAbs,
 		Line:      spec.Line,
@@ -60,7 +60,7 @@ func makeNoNodeViolation(fileAbs, scopeRel, cfgPath string) port.Violation {
 	return port.Violation{
 		Rule:     "no-node",
 		Severity: "error",
-		Source:   "strata",
+		Source:   "baft",
 		Message:  formatNoNode(scopeRel, cfgPath),
 		File:     fileAbs,
 	}
@@ -70,7 +70,7 @@ func makeImportNoNodeViolation(fileAbs, scopeRel string, spec port.ImportSpec, c
 	return port.Violation{
 		Rule:      "import-no-node",
 		Severity:  "error",
-		Source:    "strata",
+		Source:    "baft",
 		Message:   formatImportNoNode(scopeRel, spec, cfgPath),
 		File:      fileAbs,
 		Line:      spec.Line,
@@ -83,7 +83,7 @@ func makeEndophobicViolation(fileAbs, fileRel string, spec port.ImportSpec, targ
 	return port.Violation{
 		Rule:      "endophobic",
 		Severity:  "error",
-		Source:    "strata",
+		Source:    "baft",
 		Message:   formatEndophobic(fileRel, spec, targetRel, src, cfgPath),
 		File:      fileAbs,
 		Line:      spec.Line,
@@ -96,7 +96,7 @@ func makeFileGlobUnsupportedError(id, cfgPath string, line int, glob string) por
 	return port.Violation{
 		Rule:     "file-glob-unsupported",
 		Severity: "error",
-		Source:   "strata",
+		Source:   "baft",
 		Message:  fmt.Sprintf("%s (%s:%d) references %s — file-shaped nodes require a language that supports file globs", id, cfgPath, line, glob),
 		File:     cfgPath,
 		Line:     line,
@@ -107,7 +107,7 @@ func makeInvalidNodeGlobError(id, cfgPath string, line int, glob, msg string) po
 	return port.Violation{
 		Rule:     "invalid-node-glob",
 		Severity: "error",
-		Source:   "strata",
+		Source:   "baft",
 		Message:  fmt.Sprintf("%s (%s:%d) references %s — %s", id, cfgPath, line, glob, msg),
 		File:     cfgPath,
 		Line:     line,
@@ -118,7 +118,7 @@ func makeDuplicateNodeGlobError(cfgPath string, line int, glob string, ids []str
 	return port.Violation{
 		Rule:     "duplicate-node-glob",
 		Severity: "error",
-		Source:   "strata",
+		Source:   "baft",
 		Message:  fmt.Sprintf("glob %q claimed by multiple nodes: %s (%s:%d)", glob, strings.Join(ids, ", "), cfgPath, line),
 		File:     cfgPath,
 		Line:     line,
@@ -129,7 +129,7 @@ func makeOverlapError(a, b, cfgPath string, aLine, bLine int, witness string) po
 	return port.Violation{
 		Rule:     "node-overlap",
 		Severity: "error",
-		Source:   "strata",
+		Source:   "baft",
 		Message:  formatOverlap(a, b, cfgPath, cfgPath, fmt.Sprintf("%d", aLine), fmt.Sprintf("%d", bLine), witness),
 		File:     cfgPath,
 		Line:     aLine,

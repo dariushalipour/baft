@@ -39,7 +39,7 @@ export function runCheck(
     }
     args.push(".");
 
-    const proc = spawn("strata", args, {
+    const proc = spawn("baft", args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -72,7 +72,7 @@ export function runCheck(
       try {
         resolve(JSON.parse(stdout.trim()));
       } catch {
-        output.appendLine(`STRATA: failed to parse output:\n${stdout}`);
+        output.appendLine(`BAFT: failed to parse output:\n${stdout}`);
         resolve([]);
       }
     });

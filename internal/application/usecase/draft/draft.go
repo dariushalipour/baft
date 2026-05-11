@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/domain/graph"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/domain/graph"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 // DraftResult holds the outcome of a draft run.
@@ -39,7 +39,7 @@ type CapsuleDraft struct {
 }
 
 // Draft walks all capsules for every supplied language, parses every
-// import in every governed file, and writes a comprehensive STRATA.md
+// import in every governed file, and writes a comprehensive BAFT.md
 // that reflects the current dependency reality at maximum granularity.
 func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) (*DraftResult, error) {
 	return RunWith(fsys, rootDir, languages, repo, discovery, os.Stderr)

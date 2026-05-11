@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 // FS is an in-memory FileSystem for testing.

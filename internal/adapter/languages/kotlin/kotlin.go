@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 type Language struct{}

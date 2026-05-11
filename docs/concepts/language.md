@@ -103,7 +103,7 @@ knowledge of how that path was computed.
 
 ## 5. `SupportsFileGlobs() bool`
 
-Returns `true` if the language's `STRATA.md` can use file-shaped node
+Returns `true` if the language's `BAFT.md` can use file-shaped node
 definitions (e.g. `lib/main.dart` as a node). Only Dart and TypeScript
 support this — Go, Kotlin, and Rust only support directory-level nodes.
 
@@ -150,8 +150,8 @@ Language modules do not:
 - **Build the graph** — The core (`draft.Run`, `check.Run`) assembles
   nodes and edges from the paths that languages return.
 - **Validate rules** — The core checks whether edges between nodes are allowed
-  by the `STRATA.md` graph.
-- **Parse STRATA.md** — The `mermaid.MermaidRepository` loads and saves the
+  by the `BAFT.md` graph.
+- **Parse BAFT.md** — The `mermaid.MermaidRepository` loads and saves the
   mermaid flowchart format.
 - **Walk the file tree** — `service.WalkCapsule` and `service.WalkAllFiles`
   handle traversal; languages only provide the `IsGovernedFile` filter.

@@ -8,12 +8,12 @@ import (
 	"strings"
 
 	"github.com/cucumber/godog"
-	"github.com/dariushalipour/strata/internal/adapter/fs/memfs"
-	"github.com/dariushalipour/strata/internal/adapter/fs/overlayfs"
-	"github.com/dariushalipour/strata/internal/adapter/languages/golang"
-	"github.com/dariushalipour/strata/internal/adapter/languages/typescript"
-	"github.com/dariushalipour/strata/internal/port"
-	"github.com/dariushalipour/strata/pkg/treeview"
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
+	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
+	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
+	"github.com/dariushalipour/baft/internal/port"
+	"github.com/dariushalipour/baft/pkg/treeview"
 )
 
 // Workspace holds the shared state for file-system based test scenarios.

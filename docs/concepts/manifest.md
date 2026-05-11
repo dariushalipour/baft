@@ -4,13 +4,13 @@ A **Manifest** is the build-system file that a Capsule owns. It is the file
 that declares identity, version, and dependencies — `go.mod`, `package.json`,
 `Cargo.toml`, `pubspec.yaml`, `build.gradle.kts`.
 
-A Manifest is both an ecosystem concept and a Strata concept. In each
-ecosystem, it has its own semantics, format, and tooling. Strata reads
+A Manifest is both an ecosystem concept and a Baft concept. In each
+ecosystem, it has its own semantics, format, and tooling. Baft reads
 Manifests only to discover Capsules and extract module identifiers. It
 does not execute build tools, resolve dependencies, or interpret build
 logic.
 
-Strata's view of a Manifest is narrow by design. It extracts exactly one
+Baft's view of a Manifest is narrow by design. It extracts exactly one
 piece of data — the `CapsuleID` — and ignores everything else. The
 ecosystem semantics are real and complete.
 
@@ -56,7 +56,7 @@ terminology for the underlying concept would introduce bias and confusion.
 
 A **Manifest** is the language-agnostic name for the build-system file
 that defines a Capsule. Each ecosystem has its own format and semantics.
-Strata treats them all uniformly: walk the filesystem, locate files by
+Baft treats them all uniformly: walk the filesystem, locate files by
 known names, parse the module identifier, produce a Capsule.
 
 The Manifest is the source of truth for a Capsule's identity and
@@ -68,33 +68,33 @@ One manifest, one Capsule.
 
 ---
 
-## What a Manifest is not in Strata
+## What a Manifest is not in Baft
 
 A Manifest is not:
 
-- **A build configuration in Strata.** The tooling does not execute build
+- **A build configuration in Baft.** The tooling does not execute build
   tools or interpret build logic. It reads manifests as raw text or JSON
   to extract identity. It does not run `go build`, `npm install`, `cargo
   build`, `dart pub get`, or `gradle build`.
-- **A dependency resolver in Strata.** The tooling does not read lockfiles
+- **A dependency resolver in Baft.** The tooling does not read lockfiles
   (`go.sum`, `package-lock.json`, `Cargo.lock`, `pubspec.lock`) or
   resolve external dependencies. External dependency information is not
   used by the check or draft commands.
-- **A Strata Capsule by default.** Not every build manifest in an
-  ecosystem becomes a Capsule in Strata. Cargo workspace roots with
+- **A Baft Capsule by default.** Not every build manifest in an
+  ecosystem becomes a Capsule in Baft. Cargo workspace roots with
   `[workspace]` but no `[package]` are valid manifests in Cargo but
-  are not Capsules in Strata because they declare no module identity.
-  Strata only treats manifests that declare a module identifier as
+  are not Capsules in Baft because they declare no module identity.
+  Baft only treats manifests that declare a module identifier as
   Capsule manifests.
-- **A STRATA.md.** The manifest defines identity and dependencies.
-  `STRATA.md` defines architecture rules (nodes and allowed imports).
+- **A BAFT.md.** The manifest defines identity and dependencies.
+  `BAFT.md` defines architecture rules (nodes and allowed imports).
   They are separate files with separate purposes. A Capsule may have a
-  manifest without a `STRATA.md` (meaning no architecture rules yet),
-  but it cannot have a `STRATA.md` without a manifest.
+  manifest without a `BAFT.md` (meaning no architecture rules yet),
+  but it cannot have a `BAFT.md` without a manifest.
 
 ---
 
-## What a Manifest is in Strata
+## What a Manifest is in Baft
 
 A Manifest is:
 
@@ -126,7 +126,7 @@ semantic validation.
 2. **Semantic validation.** When a file matches a known name, the
    registered parser extracts the module identifier from its contents.
    If the result is non-empty, the file becomes a Capsule. If the
-   result is empty, the file is skipped — it is not a Strata Capsule
+   result is empty, the file is skipped — it is not a Baft Capsule
    even though it may be a valid ecosystem file.
 
 The discovery service also walks upward from the user-provided directory

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Graph is the parsed contract from a STRATA.md mermaid block.
+// Graph is the parsed contract from a BAFT.md mermaid block.
 type Graph struct {
 	Nodes     map[string]string
 	Edges     map[string]map[string]bool

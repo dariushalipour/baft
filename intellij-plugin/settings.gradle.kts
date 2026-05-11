@@ -2,4 +2,4 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
-rootProject.name = "strata-intellij"
+rootProject.name = "baft-intellij"

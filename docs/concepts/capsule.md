@@ -87,7 +87,7 @@ A Capsule is not:
 - **A compilation unit.** A Rust crate is a compilation unit. A Go module is
   not. A Capsule is neither — it is the normalized boundary that tooling
   uses regardless of compilation model.
-- **A scope for architecture rules.** Architecture rules (STRATA.md) apply
+- **A scope for architecture rules.** Architecture rules (BAFT.md) apply
   per-Capsule, but the Capsule itself does not define the rules. It is the
   container that holds them.
 
@@ -104,7 +104,7 @@ A Capsule is:
   unit. Commands resolve to Capsules, report against Capsules, and validate
   Capsules independently.
 - **A scoping boundary for architecture rules.** Each Capsule may contain
-  its own `STRATA.md`. Rules inside a Capsule govern only imports within that
+  its own `BAFT.md`. Rules inside a Capsule govern only imports within that
   Capsule. Cross-Capsule imports are governed by the parent Capsule or by
   external dependency declarations.
 - **A discovery target.** Capsule discovery walks the filesystem, locates
@@ -281,11 +281,11 @@ directories/files) and edges (internal imports) to the dependency graph.
 Cross-Capsule imports are external edges.
 
 **Check.** The check command evaluates each Capsule independently. A
-Capsule's `STRATA.md` governs only imports within that Capsule's directory.
+Capsule's `BAFT.md` governs only imports within that Capsule's directory.
 Cross-Capsule imports are validated by the parent Capsule's rules or by
 external dependency declarations.
 
-**Draft.** The draft command generates `STRATA.md` files per Capsule by
+**Draft.** The draft command generates `BAFT.md` files per Capsule by
 scanning the Capsule's source files, resolving imports, and mapping them to
 graph nodes.
 

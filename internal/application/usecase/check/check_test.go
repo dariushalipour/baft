@@ -10,12 +10,12 @@ import (
 	"testing"
 
 	"github.com/cucumber/godog"
-	"github.com/dariushalipour/strata/internal/adapter/fs/memfs"
-	"github.com/dariushalipour/strata/internal/adapter/graph_repositories/mermaid"
-	"github.com/dariushalipour/strata/internal/adapter/languages/golang"
-	"github.com/dariushalipour/strata/internal/adapter/languages/typescript"
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/application/steps"
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
+	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
+	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/application/steps"
 )
 
 type checkWorld struct {

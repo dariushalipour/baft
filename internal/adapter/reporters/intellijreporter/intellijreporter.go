@@ -3,7 +3,7 @@ package intellijreporter
 import (
 	"encoding/json"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 type IntelliJRenderer struct{}

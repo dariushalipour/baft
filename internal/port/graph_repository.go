@@ -1,6 +1,6 @@
 package port
 
-import "github.com/dariushalipour/strata/internal/domain/graph"
+import "github.com/dariushalipour/baft/internal/domain/graph"
 
 // GraphRepository persists and loads Graph objects.
 type GraphRepository interface {

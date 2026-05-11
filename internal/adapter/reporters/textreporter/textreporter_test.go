@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func TestRenderEmpty(t *testing.T) {

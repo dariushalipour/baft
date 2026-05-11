@@ -1,5 +1,5 @@
 name: example_monorepo
-description: A multi-node Dart application demonstrating STRATA.md architecture
+description: A multi-node Dart application demonstrating BAFT.md architecture
 version: 1.0.0
 publish_to: none
 

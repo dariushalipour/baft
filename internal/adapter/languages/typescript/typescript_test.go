@@ -3,9 +3,9 @@ package typescript
 import (
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/adapter/fs/memfs"
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func TestIsGovernedFile(t *testing.T) {
@@ -38,7 +38,7 @@ func TestParseImports(t *testing.T) {
 import { useEffect } from 'react';
 import { useState } from "react";
 import { formatDate } from '../lib/utils/format';
-import { User } from '@strata/models/user';
+import { User } from '@baft/models/user';
 export { helper } from './helper';
 export * from './utils';
 import axios from 'axios';
@@ -54,7 +54,7 @@ import axios from 'axios';
 	want := []string{
 		"react",
 		"../lib/utils/format",
-		"@strata/models/user",
+		"@baft/models/user",
 		"./helper",
 		"./utils",
 		"axios",
@@ -163,7 +163,7 @@ func TestResolveInternalTarget(t *testing.T) {
 	l := Language{}
 
 	t.Run("relative imports", func(t *testing.T) {
-		capsule := port.Capsule{CapsuleID: "@strata/app"}
+		capsule := port.Capsule{CapsuleID: "@baft/app"}
 		cases := []struct {
 			spec     string
 			fileRel  string
@@ -185,7 +185,7 @@ func TestResolveInternalTarget(t *testing.T) {
 	})
 
 	t.Run("package name imports", func(t *testing.T) {
-		capsule := port.Capsule{CapsuleID: "@strata/app"}
+		capsule := port.Capsule{CapsuleID: "@baft/app"}
 		cases := []struct {
 			spec     string
 			fileRel  string
@@ -194,8 +194,8 @@ func TestResolveInternalTarget(t *testing.T) {
 		}{
 			{"react", "src/app.ts", "", false},
 			{"axios", "src/app.ts", "", false},
-			{"@strata/app/lib/utils.ts", "src/app.ts", "src/lib/utils.ts", true},
-			{"@strata/app/components/Button", "src/app.ts", "src/components/Button", true},
+			{"@baft/app/lib/utils.ts", "src/app.ts", "src/lib/utils.ts", true},
+			{"@baft/app/components/Button", "src/app.ts", "src/components/Button", true},
 			{"@other/pkg", "src/app.ts", "", false},
 		}
 		for _, c := range cases {
@@ -312,12 +312,12 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 
 func TestReadPackageName(t *testing.T) {
 	fs := memfs.New()
-	fs.WriteFile("/package.json", []byte(`{"name": "@strata/app", "version": "1.0.0"}`), 0o644)
+	fs.WriteFile("/package.json", []byte(`{"name": "@baft/app", "version": "1.0.0"}`), 0o644)
 	got, err := readCapsuleName(fs, "/package.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got != "@strata/app" {
+	if got != "@baft/app" {
 		t.Fatalf("got %q", got)
 	}
 }
@@ -349,9 +349,9 @@ func TestReadPackageNameEmptyName(t *testing.T) {
 func TestDiscoverSkipsNamelessPackage(t *testing.T) {
 	fs := memfs.New()
 	fs.WriteFile("/features/package.json", []byte(`{"type": "module"}`), 0o644)
-	fs.WriteFile("/features/STRATA.md", []byte("# Features"), 0o644)
-	fs.WriteFile("/core/package.json", []byte(`{"name": "@strata/core"}`), 0o644)
-	fs.WriteFile("/core/STRATA.md", []byte("# Core"), 0o644)
+	fs.WriteFile("/features/BAFT.md", []byte("# Features"), 0o644)
+	fs.WriteFile("/core/package.json", []byte(`{"name": "@baft/core"}`), 0o644)
+	fs.WriteFile("/core/BAFT.md", []byte("# Core"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
 	RegisterDiscovery(disco)
@@ -368,15 +368,15 @@ func TestDiscoverSkipsNamelessPackage(t *testing.T) {
 		t.Errorf("expected label %q, got %q", got[0].Capsule.Dir, port.Label(got[0].Capsule, "/"))
 	}
 
-	if got[0].Capsule.CapsuleID != "@strata/core" {
-		t.Errorf("expected capsuleID \"@strata/core\", got %q", got[0].Capsule.CapsuleID)
+	if got[0].Capsule.CapsuleID != "@baft/core" {
+		t.Errorf("expected capsuleID \"@baft/core\", got %q", got[0].Capsule.CapsuleID)
 	}
 }
 
 func TestDiscoverDraftSkipsNamelessPackage(t *testing.T) {
 	fs := memfs.New()
 	fs.WriteFile("/features/package.json", []byte(`{"type": "module"}`), 0o644)
-	fs.WriteFile("/core/package.json", []byte(`{"name": "@strata/core"}`), 0o644)
+	fs.WriteFile("/core/package.json", []byte(`{"name": "@baft/core"}`), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
 	RegisterDiscovery(disco)
@@ -398,7 +398,7 @@ func TestDiscoverAllNamelessSkipped(t *testing.T) {
 	fs := memfs.New()
 	for _, name := range []string{"features", "utils"} {
 		fs.WriteFile("/"+name+"/package.json", []byte(`{"type": "module"}`), 0o644)
-		fs.WriteFile("/"+name+"/STRATA.md", []byte("# "+name), 0o644)
+		fs.WriteFile("/"+name+"/BAFT.md", []byte("# "+name), 0o644)
 	}
 
 	disco := service.NewCapsuleDiscovery()

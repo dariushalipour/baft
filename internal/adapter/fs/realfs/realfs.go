@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dariushalipour/strata/internal/adapter/fs/realfs/gitignore"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/fs/realfs/gitignore"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 // FS is a FileSystem backed by the real operating system.

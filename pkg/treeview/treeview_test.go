@@ -10,11 +10,11 @@ func TestParse(t *testing.T) {
 	}{
 		{
 			name: "single file in subdirectory",
-			doc: `/Users/jane/strata
+			doc: `/Users/jane/baft
 └─ src/
    └─ app.ts`,
 			expect: []Entry{
-				{BaseDir: "/Users/jane/strata", RelPath: "src/app.ts"},
+				{BaseDir: "/Users/jane/baft", RelPath: "src/app.ts"},
 			},
 		},
 		{
@@ -131,31 +131,31 @@ func TestParse(t *testing.T) {
 		},
 		{
 			name: "complex capsule layout",
-			doc: `/Users/jane/strata
+			doc: `/Users/jane/baft
 ├─ billing/
 │  ├─ go.mod
-│  ├─ STRATA.md
+│  ├─ BAFT.md
 │  ├─ application/
 │  │  └─ order.go
 │  └─ domain/
 │     └─ order.go
 ├─ auth/
 │  ├─ go.mod
-│  ├─ STRATA.md
+│  ├─ BAFT.md
 │  ├─ api/
 │  │  └─ handler.go
 │  └─ domain/
 │     └─ auth.go
 `,
 			expect: []Entry{
-				{BaseDir: "/Users/jane/strata", RelPath: "billing/go.mod"},
-				{BaseDir: "/Users/jane/strata", RelPath: "billing/STRATA.md"},
-				{BaseDir: "/Users/jane/strata", RelPath: "billing/application/order.go"},
-				{BaseDir: "/Users/jane/strata", RelPath: "billing/domain/order.go"},
-				{BaseDir: "/Users/jane/strata", RelPath: "auth/go.mod"},
-				{BaseDir: "/Users/jane/strata", RelPath: "auth/STRATA.md"},
-				{BaseDir: "/Users/jane/strata", RelPath: "auth/api/handler.go"},
-				{BaseDir: "/Users/jane/strata", RelPath: "auth/domain/auth.go"},
+				{BaseDir: "/Users/jane/baft", RelPath: "billing/go.mod"},
+				{BaseDir: "/Users/jane/baft", RelPath: "billing/BAFT.md"},
+				{BaseDir: "/Users/jane/baft", RelPath: "billing/application/order.go"},
+				{BaseDir: "/Users/jane/baft", RelPath: "billing/domain/order.go"},
+				{BaseDir: "/Users/jane/baft", RelPath: "auth/go.mod"},
+				{BaseDir: "/Users/jane/baft", RelPath: "auth/BAFT.md"},
+				{BaseDir: "/Users/jane/baft", RelPath: "auth/api/handler.go"},
+				{BaseDir: "/Users/jane/baft", RelPath: "auth/domain/auth.go"},
 			},
 		},
 	}
@@ -189,7 +189,7 @@ func TestExtractBaseDir(t *testing.T) {
 		line string
 		want string
 	}{
-		{"absolute path", "/Users/jane/strata", "/Users/jane/strata"},
+		{"absolute path", "/Users/jane/baft", "/Users/jane/baft"},
 		{"with leading spaces", "  /project", "/project"},
 		{"with trailing spaces", "/project  ", "/project"},
 		{"empty string", "", ""},

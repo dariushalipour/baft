@@ -2,7 +2,7 @@
 name = "example-monorepo"
 version = "1.0.0"
 edition = "2021"
-description = "A multi-node Rust application demonstrating STRATA.md architecture"
+description = "A multi-node Rust application demonstrating BAFT.md architecture"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

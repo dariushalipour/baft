@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/domain/graph"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/domain/graph"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func (ch *capsuleChecker) walk(fsys port.FileSystem, capsuleDir string) error {

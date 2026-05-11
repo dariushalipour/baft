@@ -1,11 +1,11 @@
 import * as vscode from "vscode";
-import { runCheck } from "./strata";
+import { runCheck } from "./baft";
 import { publish } from "./diagnostics";
 
 const DEBOUNCE_MS = 750;
 
 export function activate(context: vscode.ExtensionContext): void {
-  const output = vscode.window.createOutputChannel("STRATA");
+  const output = vscode.window.createOutputChannel("BAFT");
   context.subscriptions.push(output);
 
   const collections = new Map<string, vscode.DiagnosticCollection>();
@@ -15,7 +15,7 @@ export function activate(context: vscode.ExtensionContext): void {
   function getCollection(root: string): vscode.DiagnosticCollection {
     let c = collections.get(root);
     if (!c) {
-      c = vscode.languages.createDiagnosticCollection(`strata:${root}`);
+      c = vscode.languages.createDiagnosticCollection(`baft:${root}`);
       collections.set(root, c);
       context.subscriptions.push(c);
     }
@@ -33,7 +33,7 @@ export function activate(context: vscode.ExtensionContext): void {
     } catch (err: unknown) {
       if (runs.get(root) !== runId) return;
       if (isEnoent(err)) {
-        vscode.window.showErrorMessage("STRATA: binary not found in PATH");
+        vscode.window.showErrorMessage("BAFT: binary not found in PATH");
       }
     }
   }

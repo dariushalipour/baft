@@ -1,4 +1,4 @@
-Usage: strata check [flags] [root-dir]
+Usage: baft check [flags] [root-dir]
 
 Check packages for architecture violations.
 

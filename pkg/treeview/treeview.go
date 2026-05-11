@@ -35,10 +35,10 @@ type Entry struct {
 //	│  └─ domain/
 //	│     └─ order.go
 //
-// With rootDir="/Users/jane/strata", returns:
+// With rootDir="/Users/jane/baft", returns:
 //
-//	Entries{{BaseDir: "/Users/jane/strata", RelPath: "billing/go.mod"},
-//	        {BaseDir: "/Users/jane/strata", RelPath: "billing/domain/order.go"}}
+//	Entries{{BaseDir: "/Users/jane/baft", RelPath: "billing/go.mod"},
+//	        {BaseDir: "/Users/jane/baft", RelPath: "billing/domain/order.go"}}
 func ParseTree(rootDir, doc string) []Entry {
 	lines := strings.Split(doc, "\n")
 
@@ -87,7 +87,7 @@ func ParseTree(rootDir, doc string) []Entry {
 //
 // Example input:
 //
-//	/Users/jane/strata
+//	/Users/jane/baft
 //	├─ billing/
 //	│  ├─ go.mod
 //	│  └─ domain/
@@ -95,8 +95,8 @@ func ParseTree(rootDir, doc string) []Entry {
 //
 // Returns:
 //
-//	Entries{{BaseDir: "/Users/jane/strata", RelPath: "billing/go.mod"},
-//	        {BaseDir: "/Users/jane/strata", RelPath: "billing/domain/order.go"}}
+//	Entries{{BaseDir: "/Users/jane/baft", RelPath: "billing/go.mod"},
+//	        {BaseDir: "/Users/jane/baft", RelPath: "billing/domain/order.go"}}
 func Parse(doc string) []Entry {
 	lines := strings.Split(doc, "\n")
 	if len(lines) == 0 {

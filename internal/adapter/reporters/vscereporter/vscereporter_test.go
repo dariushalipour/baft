@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func TestRenderEmpty(t *testing.T) {
@@ -26,7 +26,7 @@ func TestRenderWithViolations(t *testing.T) {
 					{
 						Rule:      "import-not-allowed",
 						Severity:  "error",
-						Source:    "strata",
+						Source:    "baft",
 						Message:   "auth cannot import billing",
 						File:      "/repo/auth/service.go",
 						Line:      12,
@@ -50,7 +50,7 @@ func TestRenderWithViolations(t *testing.T) {
 	checks := map[string]string{
 		"rule":     "import-not-allowed",
 		"severity": "error",
-		"source":   "strata",
+		"source":   "baft",
 		"message":  "auth cannot import billing",
 		"file":     "/repo/auth/service.go",
 	}
@@ -114,7 +114,7 @@ func TestRenderIncludesErrors(t *testing.T) {
 			{
 				Label:      "auth",
 				Violations: []port.Violation{{Rule: "import-not-allowed", Message: "v1"}},
-				Errors:     []port.Violation{{Rule: "file-glob-unsupported", Message: "e1", File: "/repo/STRATA.md", Line: 3}},
+				Errors:     []port.Violation{{Rule: "file-glob-unsupported", Message: "e1", File: "/repo/BAFT.md", Line: 3}},
 			},
 		},
 	}

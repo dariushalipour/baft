@@ -1,12 +1,12 @@
 <idea-plugin>
-    <id>com.strata.intellij</id>
-    <name>STRATA</name>
+    <id>com.baft.intellij</id>
+    <name>BAFT</name>
     <version>0.1.0</version>
     <vendor>dariushalipour</vendor>
 
     <description>
-        Surfaces STRATA architecture violations as editor diagnostics (red squiggles and Problems view entries).
-        Requires the strata CLI to be installed and available in PATH.
+        Surfaces BAFT architecture violations as editor diagnostics (red squiggles and Problems view entries).
+        Requires the baft CLI to be installed and available in PATH.
     </description>
 
     <idea-version since-build="241"/>
@@ -14,9 +14,9 @@
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <notificationGroup id="STRATA" displayType="BALLOON"/>
+        <notificationGroup id="BAFT" displayType="BALLOON"/>
         <externalAnnotator
             language=""
-            implementationClass="com.strata.intellij.StrataAnnotator"/>
+            implementationClass="com.baft.intellij.BaftAnnotator"/>
     </extensions>
 </idea-plugin>

@@ -1,6 +1,6 @@
-# Strata
+# Baft
 
-**Enforces architecture rules declared in each capsule's `STRATA.md`.**
+**Enforces architecture rules declared in each capsule's `BAFT.md`.**
 
 ## Problem
 
@@ -8,13 +8,13 @@ An architecture is only useful if its dependency rules are enforced. Hand-writte
 
 ## Solution
 
-`strata` reads a ```mermaid flowchart block from a `STRATA.md` file, treats nodes as glob-matched groups and edges as the allow-list of cross-node imports, then walks source files to verify every import follows the declared graph.
+`baft` reads a ```mermaid flowchart block from a `BAFT.md` file, treats nodes as glob-matched groups and edges as the allow-list of cross-node imports, then walks source files to verify every import follows the declared graph.
 
 One diagram. One source of truth. Zero configuration.
 
 ## What it is
 
-- A **structural policy check** — enforces the dependency graph declared in `STRATA.md`
+- A **structural policy check** — enforces the dependency graph declared in `BAFT.md`
 - A **standalone binary** — one `go.mod`, no external dependencies, builds to a single executable
 - **Language-agnostic** — the core knows nothing about Go, Dart, Kotlin, TypeScript, or Rust. Language-specific parsing lives behind a `Language` interface. Adapters are easy to add.
 - **Deterministic** — same files, same diagram, same result. No heuristics, no inference.
@@ -22,44 +22,44 @@ One diagram. One source of truth. Zero configuration.
 ## What it is not
 
 - **Not a linter** — no style, naming, or code quality checks
-- **Not a general-purpose dependency analyzer** — only enforces rules you declare in `STRATA.md`
+- **Not a general-purpose dependency analyzer** — only enforces rules you declare in `BAFT.md`
 - **Not a CI server** — runs locally, exits 0/1, pipe it into whatever workflow you use
-- **Not a replacement for `go vet`, `dart analyze`, `clippy`, etc.** — those check code. Strata checks architecture.
+- **Not a replacement for `go vet`, `dart analyze`, `clippy`, etc.** — those check code. Baft checks architecture.
 
 ## Getting started
 
 ### Install
 
 ```bash
-go install github.com/dariushalipour/strata@latest
+go install github.com/dariushalipour/baft@latest
 ```
 
 Or build from source:
 
 ```bash
-go build -o strata .
+go build -o baft .
 ```
 
 ### Draft
 
-Generate a `STRATA.md` draft from your current dependency reality:
+Generate a `BAFT.md` draft from your current dependency reality:
 
 ```bash
-strata draft /path/to/repo
+baft draft /path/to/repo
 ```
 
-This scans every governed file, resolves every internal import, and writes a comprehensive `STRATA.md` with all nodes and edges. File-level granularity for Dart, directory-level for everything else. If a capsule already has a `STRATA.md`, it's skipped.
+This scans every governed file, resolves every internal import, and writes a comprehensive `BAFT.md` with all nodes and edges. File-level granularity for Dart, directory-level for everything else. If a capsule already has a `BAFT.md`, it's skipped.
 
 This gives you a starting point to prune into your intended architecture.
 
 ```bash
-strata draft /path/to/repo
-drafted: /path/to/repo/myservice/STRATA.md (432 files, 14 nodes, 23 edges)
+baft draft /path/to/repo
+drafted: /path/to/repo/myservice/BAFT.md (432 files, 14 nodes, 23 edges)
 ```
 
-### Add a STRATA.md
+### Add a BAFT.md
 
-You can write one by hand, or use `strata draft` to generate a draft from your existing code.
+You can write one by hand, or use `baft draft` to generate a draft from your existing code.
 
 ````markdown
 ```mermaid
@@ -99,12 +99,12 @@ flowchart TD
 
 ### How it works
 
-You point `strata` at a directory — usually the root of your repository. It walks the tree, finds every capsule that has both a module manifest (`go.mod`, `pubspec.yaml`, `build.gradle.kts`, `package.json`, or `Cargo.toml`) and a `STRATA.md`, and checks each one. One run covers all capsules. No configuration needed.
+You point `baft` at a directory — usually the root of your repository. It walks the tree, finds every capsule that has both a module manifest (`go.mod`, `pubspec.yaml`, `build.gradle.kts`, `package.json`, or `Cargo.toml`) and a `BAFT.md`, and checks each one. One run covers all capsules. No configuration needed.
 
-**Nested capsules** are supported — if a subdirectory has its own `STRATA.md`, it's treated as an independent capsule. The parent scan skips into that subdirectory, so files are only checked against their own `STRATA.md`, not the parent's. This prevents double-scanning, label collisions, and false positives across capsule boundaries.
+**Nested capsules** are supported — if a subdirectory has its own `BAFT.md`, it's treated as an independent capsule. The parent scan skips into that subdirectory, so files are only checked against their own `BAFT.md`, not the parent's. This prevents double-scanning, label collisions, and false positives across capsule boundaries.
 
 ```bash
-strata /path/to/repo
+baft /path/to/repo
 ```
 
 Output (one line per capsule):
@@ -121,7 +121,7 @@ When a violation is found:
 
   internal/adapter/http/handler.go (httpapi) → internal/domain (domain) — not allowed
 
-ℹ Fix: add the missing edge to STRATA.md, or move the file to the correct node.
+ℹ Fix: add the missing edge to BAFT.md, or move the file to the correct node.
 ```
 
 Exit code 0 = clean. Exit code 1 = violations or error.
@@ -131,7 +131,7 @@ Exit code 0 = clean. Exit code 1 = violations or error.
 For CI or tooling, use `--reporter=json` to get machine-parseable output:
 
 ```bash
-strata check --reporter=json /path/to/repo
+baft check --reporter=json /path/to/repo
 ```
 
 ### Glob syntax
@@ -161,18 +161,18 @@ type Language interface {
 }
 ```
 
-Then pass your adapter to `strata.Run(rootDir, []strata.Language{yourAdapter{}}, ...)`.
+Then pass your adapter to `baft.Run(rootDir, []baft.Language{yourAdapter{}}, ...)`.
 
 ### Kotlin example
 
-Kotlin projects are discovered by looking for `build.gradle.kts` or `build.gradle` alongside a `STRATA.md`. Strata automatically determines the base capsule by scanning source directories (`src/main/kotlin`, `src/commonMain/kotlin`, etc.).
+Kotlin projects are discovered by looking for `build.gradle.kts` or `build.gradle` alongside a `BAFT.md`. Baft automatically determines the base capsule by scanning source directories (`src/main/kotlin`, `src/commonMain/kotlin`, etc.).
 
 **Project layout:**
 
 ```
 myapp/
 ├── build.gradle.kts
-├── STRATA.md
+├── BAFT.md
 └── src/main/kotlin/com/example/
     ├── api/
     │   └── UserController.kt
@@ -185,7 +185,7 @@ myapp/
         └── OrderRepository.kt
 ```
 
-**STRATA.md:**
+**BAFT.md:**
 
 ````markdown
 ```mermaid
@@ -212,18 +212,18 @@ This declares that:
 **Run:**
 
 ```bash
-strata /path/to/myapp
+baft /path/to/myapp
 ```
 
 ```bash
 ✓ myapp            15 files, 3 nodes, 3 edges
 ```
 
-Kotlin multi-platform projects are supported out of the box. Strata recognizes source sets like `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their corresponding test variants.
+Kotlin multi-platform projects are supported out of the box. Baft recognizes source sets like `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their corresponding test variants.
 
 ### TypeScript example
 
-TypeScript projects are discovered by looking for `package.json` alongside a `STRATA.md`. Strata only governs files under `src/`, and automatically excludes declaration files (`.d.ts`), and tests (`.test.ts`, `.spec.ts`).
+TypeScript projects are discovered by looking for `package.json` alongside a `BAFT.md`. Baft only governs files under `src/`, and automatically excludes declaration files (`.d.ts`), and tests (`.test.ts`, `.spec.ts`).
 
 Import resolution honors `tsconfig.json` — `paths` aliases, `baseUrl`, and `extends` chains are all resolved. Falls back to `package.json` name matching when no tsconfig is present.
 
@@ -235,7 +235,7 @@ All import patterns are supported: static imports, re-exports, dynamic imports, 
 myapp/
 ├── package.json
 ├── tsconfig.json
-├── STRATA.md
+├── BAFT.md
 └── src/
     ├── index.ts
     ├── api/
@@ -265,7 +265,7 @@ myapp/
 }
 ```
 
-**STRATA.md:**
+**BAFT.md:**
 
 ````markdown
 ```mermaid
@@ -293,7 +293,7 @@ This declares that:
 **Run:**
 
 ```bash
-strata /path/to/myapp
+baft /path/to/myapp
 ```
 
 ```bash
@@ -302,7 +302,7 @@ strata /path/to/myapp
 
 ### Dart example
 
-Dart projects are discovered by looking for `pubspec.yaml` alongside a `STRATA.md`. Strata only governs files under `lib/`, and automatically excludes generated files (`.g.dart`, `.freezed.dart`) and tests (`_test.dart`).
+Dart projects are discovered by looking for `pubspec.yaml` alongside a `BAFT.md`. Baft only governs files under `lib/`, and automatically excludes generated files (`.g.dart`, `.freezed.dart`) and tests (`_test.dart`).
 
 Dart is the only language that supports **file-shaped globs**, letting you pin individual files to nodes.
 
@@ -311,7 +311,7 @@ Dart is the only language that supports **file-shaped globs**, letting you pin i
 ```
 myapp/
 ├── pubspec.yaml
-├── STRATA.md
+├── BAFT.md
 └── lib/
     ├── main.dart
     ├── src/
@@ -323,7 +323,7 @@ myapp/
     │       └── user.dart
 ```
 
-**STRATA.md:**
+**BAFT.md:**
 
 ````markdown
 ```mermaid
@@ -349,7 +349,7 @@ This declares that:
 **Run:**
 
 ```bash
-strata /path/to/myapp
+baft /path/to/myapp
 ```
 
 ```bash
@@ -358,7 +358,7 @@ strata /path/to/myapp
 
 ### Rust example
 
-Rust projects are discovered by looking for `Cargo.toml` alongside a `STRATA.md`. Strata only governs `.rs` files under `src/`, and automatically excludes binaries (`src/bin/`), examples (`src/examples/`), integration tests, benches, and `build.rs`.
+Rust projects are discovered by looking for `Cargo.toml` alongside a `BAFT.md`. Baft only governs `.rs` files under `src/`, and automatically excludes binaries (`src/bin/`), examples (`src/examples/`), integration tests, benches, and `build.rs`.
 
 All import patterns are supported: `use`, `pub use`, scoped visibility (`pub(crate) use`, `pub(super) use`, etc.), `extern crate`, `mod` declarations, grouped imports (`use std::{fmt, io}`), aliased imports (`use Path as Alias`), and wildcard globs (`use path::*`).
 
@@ -367,7 +367,7 @@ All import patterns are supported: `use`, `pub use`, scoped visibility (`pub(cra
 ```
 myapp/
 ├── Cargo.toml
-├── STRATA.md
+├── BAFT.md
 └── src/
     ├── lib.rs
     ├── api/
@@ -381,7 +381,7 @@ myapp/
         └── order_repo.rs
 ```
 
-**STRATA.md:**
+**BAFT.md:**
 
 ````markdown
 ```mermaid
@@ -408,7 +408,7 @@ This declares that:
 **Run:**
 
 ```bash
-strata /path/to/myapp
+baft /path/to/myapp
 ```
 
 ```bash
@@ -419,7 +419,7 @@ strata /path/to/myapp
 
 ```yaml
 - name: Node architecture check
-  run: strata /github/workspace
+  run: baft /github/workspace
 ```
 
 Or integrate it into your dev CLI the way you want — the binary takes one argument (repo root), prints to stdout, and exits 0/1.
@@ -427,16 +427,16 @@ Or integrate it into your dev CLI the way you want — the binary takes one argu
 ## Architecture
 
 ```bash
-strata/
+baft/
 ├── main.go                          # Entry point
 ├── go.mod                           # Standalone module, zero dependencies
 └── internal/
     ├── ui/ui.go                     # Terminal output (✓, ✗, ℹ)
-    └── strata/
+    └── baft/
         ├── language.go              # Language interface + Capsule struct
         ├── graph.go                 # Mermaid parser, glob matching, Graph type
         ├── check.go                 # File walk + rule application
-        ├── strata.go            # Run() — orchestrates discovery + checks
+        ├── baft.go            # Run() — orchestrates discovery + checks
         ├── golang/golang.go         # Go adapter (go.mod, go/parser)
         ├── dart/dart.go             # Dart adapter (pubspec.yaml, regex)
         ├── kotlin/kotlin.go         # Kotlin adapter (build.gradle.kts, regex)

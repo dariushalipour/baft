@@ -3,7 +3,7 @@ package vscereporter
 import (
 	"encoding/json"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 type VSCERenderer struct{}

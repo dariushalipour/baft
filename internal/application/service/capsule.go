@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 // WalkCapsule walks a capsule directory, skipping hidden/vendor dirs,
@@ -45,7 +45,7 @@ func isNotExist(err error) bool {
 	return os.IsNotExist(err)
 }
 
-// WalkAllFiles walks a capsule directory including child STRATA.md
+// WalkAllFiles walks a capsule directory including child BAFT.md
 // directories. Hidden/vendor dirs and non-governed files are still
 // skipped. For each governed file it calls fn with the absolute path
 // and the capsule-relative path (forward-slash).
@@ -70,8 +70,8 @@ func WalkAllFiles(fsys port.FileSystem, capsuleDir string, lang port.Language, f
 }
 
 // GoverningScope returns the directory of the nearest ancestor
-// STRATA.md for the given file, bounded by capsuleDir. Returns capsuleDir
-// if no child STRATA.md is found.
+// BAFT.md for the given file, bounded by capsuleDir. Returns capsuleDir
+// if no child BAFT.md is found.
 func GoverningScope(fsys port.FileSystem, absFile string, capsuleDir string) string {
 	dir := filepath.Dir(absFile)
 	for {
@@ -90,8 +90,8 @@ func GoverningScope(fsys port.FileSystem, absFile string, capsuleDir string) str
 }
 
 // FindConfig walks upward from startDir toward capsuleDir looking for
-// STRATA.md. It returns the absolute path to the nearest ancestor
-// STRATA.md, or capsuleDir/STRATA.md if none is found.
+// BAFT.md. It returns the absolute path to the nearest ancestor
+// BAFT.md, or capsuleDir/BAFT.md if none is found.
 func FindConfig(fsys port.FileSystem, startDir string, capsuleDir string) string {
 	dir := startDir
 	for {
@@ -111,10 +111,10 @@ func FindConfig(fsys port.FileSystem, startDir string, capsuleDir string) string
 }
 
 // FindOrCreateConfigDir walks upward from startDir toward capsuleDir.
-// If STRATA.md already exists in any directory along the way, it
-// returns that directory (config exists). If no STRATA.md is found,
+// If BAFT.md already exists in any directory along the way, it
+// returns that directory (config exists). If no BAFT.md is found,
 // it returns startDir (config should be created there). The second
-// return value is true if STRATA.md already exists.
+// return value is true if BAFT.md already exists.
 func FindOrCreateConfigDir(fsys port.FileSystem, startDir string, capsuleDir string) (configDir string, exists bool) {
 	dir := startDir
 	for {

@@ -1,4 +1,4 @@
-package com.strata.intellij
+package com.baft.intellij
 
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
@@ -18,26 +18,26 @@ import java.io.IOException
 import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
-data class StrataAnnotatorInfo(val projectRoot: String, val filePath: String, val overlayJson: String?)
-data class StrataOverlayFile(val path: String, val content: String)
-data class StrataOverlayPayload(val files: List<StrataOverlayFile>)
+data class BaftAnnotatorInfo(val projectRoot: String, val filePath: String, val overlayJson: String?)
+data class BaftOverlayFile(val path: String, val content: String)
+data class BaftOverlayPayload(val files: List<BaftOverlayFile>)
 
-private val log = Logger.getInstance(StrataAnnotator::class.java)
+private val log = Logger.getInstance(BaftAnnotator::class.java)
 private val gson = Gson()
-private val violationType = object : TypeToken<List<StrataViolation>>() {}.type
+private val violationType = object : TypeToken<List<BaftViolation>>() {}.type
 private val runningProcess = AtomicReference<Process?>(null)
 
-class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolation>>() {
+class BaftAnnotator : ExternalAnnotator<BaftAnnotatorInfo, List<BaftViolation>>() {
 
-    override fun collectInformation(file: PsiFile): StrataAnnotatorInfo? {
+    override fun collectInformation(file: PsiFile): BaftAnnotatorInfo? {
         if (!file.isPhysical || file !== file.originalFile) return null
         if (file.viewProvider.getPsi(file.viewProvider.baseLanguage) !== file) return null
         val root = file.project.basePath ?: return null
         val path = file.virtualFile?.path ?: return null
-        return StrataAnnotatorInfo(root, path, collectOverlayJson(root))
+        return BaftAnnotatorInfo(root, path, collectOverlayJson(root))
     }
 
-    override fun doAnnotate(info: StrataAnnotatorInfo): List<StrataViolation> {
+    override fun doAnnotate(info: BaftAnnotatorInfo): List<BaftViolation> {
         runningProcess.getAndSet(null)?.destroyForcibly()
 
         val process = try {
@@ -53,9 +53,9 @@ class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolat
         } catch (e: IOException) {
             ApplicationManager.getApplication().invokeLater {
                 NotificationGroupManager.getInstance()
-                    .getNotificationGroup("STRATA")
+                    .getNotificationGroup("BAFT")
                     .createNotification(
-                        "STRATA: binary not found in PATH",
+                        "BAFT: binary not found in PATH",
                         NotificationType.ERROR,
                     )
                     .notify(null)
@@ -74,21 +74,21 @@ class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolat
         val stderr = process.errorStream.bufferedReader()
         val stdoutText = process.inputStream.bufferedReader().readText()
 
-        stderr.forEachLine { log.info("strata: $it") }
+        stderr.forEachLine { log.info("baft: $it") }
 
         process.waitFor()
         runningProcess.compareAndSet(process, null)
 
         return try {
-            val all: List<StrataViolation> = gson.fromJson(stdoutText.trim(), violationType) ?: emptyList()
+            val all: List<BaftViolation> = gson.fromJson(stdoutText.trim(), violationType) ?: emptyList()
             all.filter { it.file == info.filePath }
         } catch (e: JsonSyntaxException) {
-            log.warn("STRATA: failed to parse output: $stdoutText")
+            log.warn("BAFT: failed to parse output: $stdoutText")
             emptyList()
         }
     }
 
-    override fun apply(file: PsiFile, violations: List<StrataViolation>, holder: AnnotationHolder) {
+    override fun apply(file: PsiFile, violations: List<BaftViolation>, holder: AnnotationHolder) {
         if (violations.isEmpty()) return
         val doc = FileDocumentManager.getInstance().getDocument(file.virtualFile) ?: return
 
@@ -96,12 +96,12 @@ class StrataAnnotator : ExternalAnnotator<StrataAnnotatorInfo, List<StrataViolat
             val range = toTextRange(doc, v) ?: continue
             holder.newAnnotation(toHighlightSeverity(v.severity), v.message)
                 .range(range)
-                .tooltip("[strata] ${v.rule}: ${v.message}")
+                .tooltip("[baft] ${v.rule}: ${v.message}")
                 .create()
         }
     }
 
-    private fun toTextRange(doc: Document, v: StrataViolation): TextRange? {
+    private fun toTextRange(doc: Document, v: BaftViolation): TextRange? {
         val lineCount = doc.lineCount
         val zeroLine = (v.line - 1).coerceAtLeast(0)
         if (zeroLine >= lineCount) return null
@@ -140,16 +140,16 @@ private fun collectOverlayJson(projectRoot: String): String? {
         val virtualFile = fileDocumentManager.getFile(document) ?: return@mapNotNull null
         val filePath = File(virtualFile.path).toPath().normalize()
         if (!filePath.startsWith(rootPath)) return@mapNotNull null
-        StrataOverlayFile(virtualFile.path, document.text)
+        BaftOverlayFile(virtualFile.path, document.text)
     }.distinctBy { it.path }
     if (files.isEmpty()) return null
-    return gson.toJson(StrataOverlayPayload(files))
+    return gson.toJson(BaftOverlayPayload(files))
 }
 
 private fun findBinary(): String {
     val os = System.getProperty("os.name").lowercase()
     val isWin = os.contains("win")
-    val name = if (isWin) "strata.exe" else "strata"
+    val name = if (isWin) "baft.exe" else "baft"
     val sep = if (isWin) ";" else ":"
     return augmentedPath().split(sep)
         .map { java.io.File(it, name) }

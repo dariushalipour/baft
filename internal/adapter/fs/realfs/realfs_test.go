@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/adapter/languages/rust"
-	"github.com/dariushalipour/strata/internal/application/service"
+	"github.com/dariushalipour/baft/internal/adapter/languages/rust"
+	"github.com/dariushalipour/baft/internal/application/service"
 )
 
 func TestStatSkipsGitIgnored(t *testing.T) {
@@ -19,7 +19,7 @@ func TestStatSkipsGitIgnored(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("sub/\n"), 0o644)
 
 	// Write a file inside the ignored directory
-	ignoredPath := filepath.Join(dir, "sub", "STRATA.md")
+	ignoredPath := filepath.Join(dir, "sub", "BAFT.md")
 	_ = os.WriteFile(ignoredPath, []byte("# ignored"), 0o644)
 
 	// Write a file NOT ignored
@@ -84,23 +84,23 @@ func TestWalkDirSkipsGitIgnored(t *testing.T) {
 	}
 }
 
-func TestDiscoverSkipsGitIgnoredSTRATA(t *testing.T) {
+func TestDiscoverSkipsGitIgnoredBAFT(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create a Rust capsule with a git-ignored STRATA.md
+	// Create a Rust capsule with a git-ignored BAFT.md
 	capsuleDir := filepath.Join(dir, "web", "pkg")
 	_ = os.MkdirAll(capsuleDir, 0o755)
 	_ = os.WriteFile(filepath.Join(capsuleDir, "Cargo.toml"), []byte("[package]\nname = \"web-pkg\"\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(capsuleDir, "STRATA.md"), []byte("# ignored"), 0o644)
+	_ = os.WriteFile(filepath.Join(capsuleDir, "BAFT.md"), []byte("# ignored"), 0o644)
 
-	// Create a Rust capsule with a visible STRATA.md
+	// Create a Rust capsule with a visible BAFT.md
 	capsuleDir2 := filepath.Join(dir, "api", "pkg")
 	_ = os.MkdirAll(capsuleDir2, 0o755)
 	_ = os.WriteFile(filepath.Join(capsuleDir2, "Cargo.toml"), []byte("[package]\nname = \"api-pkg\"\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(capsuleDir2, "STRATA.md"), []byte("# visible"), 0o644)
+	_ = os.WriteFile(filepath.Join(capsuleDir2, "BAFT.md"), []byte("# visible"), 0o644)
 
-	// .gitignore that ignores web/pkg/STRATA.md
-	_ = os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("web/pkg/STRATA.md\n"), 0o644)
+	// .gitignore that ignores web/pkg/BAFT.md
+	_ = os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("web/pkg/BAFT.md\n"), 0o644)
 
 	fsys := New()
 
@@ -112,7 +112,7 @@ func TestDiscoverSkipsGitIgnoredSTRATA(t *testing.T) {
 		t.Fatalf("Discover error: %v", err)
 	}
 
-	// Discover no longer requires STRATA.md, so both capsules are found
+	// Discover no longer requires BAFT.md, so both capsules are found
 	if len(entries) != 2 {
 		t.Fatalf("expected 2 capsules, got %d", len(entries))
 	}

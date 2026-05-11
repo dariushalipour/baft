@@ -1,7 +1,7 @@
 package textreporter
 
 import (
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 const (

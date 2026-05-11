@@ -1,12 +1,12 @@
 {
-  "name": "strata",
-  "displayName": "STRATA",
-  "description": "Architecture violation diagnostics powered by the STRATA CLI",
+  "name": "baft",
+  "displayName": "BAFT",
+  "description": "Architecture violation diagnostics powered by the BAFT CLI",
   "version": "0.0.1",
   "publisher": "dariushalipour",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dariushalipour/strata"
+    "url": "https://github.com/dariushalipour/baft"
   },
   "engines": {
     "vscode": "^1.85.0"

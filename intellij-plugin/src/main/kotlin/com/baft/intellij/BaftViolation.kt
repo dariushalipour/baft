@@ -1,6 +1,6 @@
-package com.strata.intellij
+package com.baft.intellij
 
-data class StrataViolation(
+data class BaftViolation(
     val rule: String = "",
     val severity: String = "",
     val source: String = "",

@@ -3,9 +3,9 @@ package kotlin
 import (
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/adapter/fs/memfs"
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func TestName(t *testing.T) {
@@ -314,7 +314,7 @@ func TestDiscover(t *testing.T) {
 	fs.WriteFile("/src/main/kotlin/com/example/domain/Model.kt", []byte("package com.example.domain\nclass Model"), 0o644)
 	fs.WriteFile("/src/main/kotlin/com/example/api/Controller.kt", []byte("package com.example.api\nclass Controller"), 0o644)
 	fs.WriteFile("/build.gradle.kts", nil, 0o644)
-	fs.WriteFile("/STRATA.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example/domain\"]\n```\n"), 0o644)
+	fs.WriteFile("/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example/domain\"]\n```\n"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
 	RegisterDiscovery(disco)
@@ -329,7 +329,7 @@ func TestDiscover(t *testing.T) {
 		t.Errorf("CapsuleID = %q, want %q", entries[0].Capsule.CapsuleID, "com.example")
 	}
 
-	// No STRATA.md — should still be discovered
+	// No BAFT.md — should still be discovered
 	disco2 := service.NewCapsuleDiscovery()
 	RegisterDiscovery(disco2)
 	fs2 := memfs.New()
@@ -341,7 +341,7 @@ func TestDiscover(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 {
-		t.Fatalf("got %d packages without STRATA.md, want 1", len(entries))
+		t.Fatalf("got %d packages without BAFT.md, want 1", len(entries))
 	}
 
 	// Legacy build.gradle
@@ -351,7 +351,7 @@ func TestDiscover(t *testing.T) {
 	fs3.WriteFile("/src/main/kotlin/com/example/domain/Model.kt", []byte("package com.example.domain\nclass Model"), 0o644)
 	fs3.WriteFile("/src/main/kotlin/com/example/api/Controller.kt", []byte("package com.example.api\nclass Controller"), 0o644)
 	fs3.WriteFile("/build.gradle", nil, 0o644)
-	fs3.WriteFile("/STRATA.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example/domain\"]\n```\n"), 0o644)
+	fs3.WriteFile("/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example/domain\"]\n```\n"), 0o644)
 	entries, err = disco3.Discover(fs3, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -365,10 +365,10 @@ func TestDiscover_SkipsBuildDirs(t *testing.T) {
 	fs := memfs.New()
 	fs.WriteFile("/src/main/kotlin/com/example/Main.kt", nil, 0o644)
 	fs.WriteFile("/build.gradle.kts", nil, 0o644)
-	fs.WriteFile("/STRATA.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
+	fs.WriteFile("/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
 	fs.WriteFile("/build/generated/kotlin/com/example/Generated.kt", nil, 0o644)
 	fs.WriteFile("/build/build.gradle.kts", nil, 0o644)
-	fs.WriteFile("/build/STRATA.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
+	fs.WriteFile("/build/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
 	RegisterDiscovery(disco)
@@ -440,9 +440,9 @@ func TestDiscover_SkipsKotlinCache(t *testing.T) {
 	fs := memfs.New()
 	fs.WriteFile("/src/main/kotlin/com/example/Main.kt", nil, 0o644)
 	fs.WriteFile("/build.gradle.kts", nil, 0o644)
-	fs.WriteFile("/STRATA.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
+	fs.WriteFile("/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
 	fs.WriteFile("/.kotlin/build.gradle.kts", nil, 0o644)
-	fs.WriteFile("/.kotlin/STRATA.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
+	fs.WriteFile("/.kotlin/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
 	RegisterDiscovery(disco)

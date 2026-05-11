@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/adapter/fs/memfs"
-	"github.com/dariushalipour/strata/internal/port"
-	"github.com/dariushalipour/strata/pkg/treeview"
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/port"
+	"github.com/dariushalipour/baft/pkg/treeview"
 )
 
 func buildFS(rootDir string, tree string, files map[string]string) *memfs.FS {

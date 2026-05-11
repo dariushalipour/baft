@@ -3,9 +3,9 @@ package rust
 import (
 	"testing"
 
-	"github.com/dariushalipour/strata/internal/adapter/fs/memfs"
-	"github.com/dariushalipour/strata/internal/application/service"
-	"github.com/dariushalipour/strata/internal/port"
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func TestIsGovernedFile(t *testing.T) {
@@ -522,13 +522,13 @@ name = "my_crate"
 version = "0.1.0"
 edition = "2021"
 `
-	strataMd := "```mermaid\nflowchart TD\n  a[\"src/**\"]\n  b[\"src/domain/**\"]\n  a --> b\n```\n"
+	baftMd := "```mermaid\nflowchart TD\n  a[\"src/**\"]\n  b[\"src/domain/**\"]\n  a --> b\n```\n"
 
 	fs := memfs.New()
 	fs.WriteFile("/my_crate/Cargo.toml", []byte(cargoToml), 0o644)
-	fs.WriteFile("/my_crate/STRATA.md", []byte(strataMd), 0o644)
+	fs.WriteFile("/my_crate/BAFT.md", []byte(baftMd), 0o644)
 	fs.WriteFile("/other_crate/Cargo.toml", []byte(cargoToml), 0o644)
-	fs.WriteFile("/no_cargo/STRATA.md", []byte(strataMd), 0o644)
+	fs.WriteFile("/no_cargo/BAFT.md", []byte(baftMd), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
 	RegisterDiscovery(disco)

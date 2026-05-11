@@ -1,6 +1,6 @@
-<!-- STRATA — Architecture Contract: auth bounded context -->
+<!-- BAFT — Architecture Contract: auth bounded context -->
 <!-- auth/** is governed by this file. -->
-<!-- Cross-context edges from billing or api are governed by src/STRATA.md -->
+<!-- Cross-context edges from billing or api are governed by src/BAFT.md -->
 
 ```mermaid
 flowchart TD
