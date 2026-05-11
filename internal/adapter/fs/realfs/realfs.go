@@ -105,31 +105,41 @@ func (f *FS) isIgnored(path string) bool {
 		return false
 	}
 
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return false
-	}
-
-	repoRoot := f.repoRoot
-	if repoRoot == "" {
-		repoRoot, err = f.findRepoRoot(abs)
+	// Use the path directly if it's already absolute to avoid filepath.Abs call.
+	abs := path
+	if !filepath.IsAbs(path) {
+		var err error
+		abs, err = filepath.Abs(path)
 		if err != nil {
 			return false
 		}
 	}
+
+	repoRoot := f.repoRoot
+	if repoRoot == "" {
+		var err error
+		repoRoot, err = f.findRepoRoot(abs)
+		if err != nil {
+			return false
+		}
+		f.repoRoot = repoRoot
+	}
+
+	// Compute relative path once and cache the result.
+	relKey := abs // Use absolute path as cache key to avoid Rel computation.
+
+	f.cacheMu.RLock()
+	if ignored, ok := f.ignoreCache[relKey]; ok {
+		f.cacheMu.RUnlock()
+		return ignored
+	}
+	f.cacheMu.RUnlock()
 
 	rel, err := filepath.Rel(repoRoot, abs)
 	if err != nil {
 		return false
 	}
 	rel = filepath.ToSlash(rel)
-
-	f.cacheMu.RLock()
-	if ignored, ok := f.ignoreCache[rel]; ok {
-		f.cacheMu.RUnlock()
-		return ignored
-	}
-	f.cacheMu.RUnlock()
 
 	pathParts := strings.Split(rel, "/")
 	isDir := false
@@ -141,7 +151,7 @@ func (f *FS) isIgnored(path string) bool {
 	ignored := f.gitMatcher.Match(pathParts, isDir)
 
 	f.cacheMu.Lock()
-	f.ignoreCache[rel] = ignored
+	f.ignoreCache[relKey] = ignored
 	f.cacheMu.Unlock()
 
 	return ignored

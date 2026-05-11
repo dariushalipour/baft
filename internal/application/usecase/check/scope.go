@@ -126,7 +126,7 @@ func (ch *capsuleChecker) checkFileResult(fsys port.FileSystem, abs, fileRel str
 		}
 	}
 
-	imports, err := ch.lang.ParseImports(fsys, abs)
+	imports, err := ch.parseCache.loadOrParse(ch, abs)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return fileCheckResult{err: err}
@@ -183,7 +183,7 @@ func (ch *capsuleChecker) handleNoNode(fsys port.FileSystem, abs, fileRel, scope
 
 func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel, scopeRel, cfgPath string) []port.Violation {
 	noNode := makeNoNodeViolation(abs, scopeRel, cfgPath)
-	imports, err := ch.lang.ParseImports(fsys, abs)
+	imports, err := ch.parseCache.loadOrParse(ch, abs)
 	if err != nil {
 		if !os.IsNotExist(err) {
 			return []port.Violation{noNode}
@@ -419,25 +419,67 @@ func (ch *capsuleChecker) findOverlappingNodes(g *graph.Graph, cfgPath string) {
 	}
 	sort.Strings(ids)
 
+	scopeDir := filepath.Dir(cfgPath)
+
+	// Collect candidate pairs that have overlapping globs (cheap check).
+	var candidatePairs [][2]string
 	for i := 0; i < len(ids); i++ {
+		aGlob := g.Nodes[ids[i]]
+		if graph.IsFileGlob(aGlob) {
+			continue
+		}
 		for j := i + 1; j < len(ids); j++ {
-			a, b := ids[i], ids[j]
-			aGlob, bGlob := g.Nodes[a], g.Nodes[b]
+			bGlob := g.Nodes[ids[j]]
 			if aGlob == bGlob {
 				continue
 			}
-			if graph.IsFileGlob(aGlob) || graph.IsFileGlob(bGlob) {
+			if graph.IsFileGlob(bGlob) {
 				continue
 			}
 			if !graph.GlobsOverlap(aGlob, bGlob) {
 				continue
 			}
-			scopeDir := filepath.Dir(cfgPath)
-			if witness := ch.findWitnessFile(aGlob, bGlob, scopeDir); witness != "" {
-				ch.res.errors = append(ch.res.errors, makeOverlapError(a, b, cfgPath, g.NodeLines[a], g.NodeLines[b], witness))
-				ch.res.hasOverlapError = true
-			}
+			candidatePairs = append(candidatePairs, [2]string{ids[i], ids[j]})
 		}
+	}
+
+	// Parallelize witness file search across candidate pairs.
+	// The book recommends bounded concurrency for independent tasks.
+	numWorkers := min(runtime.NumCPU(), len(candidatePairs))
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+
+	type overlapResult struct {
+		witness string
+		i       string
+		j       string
+	}
+	overlapChan := make(chan overlapResult, len(candidatePairs))
+
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for _, pair := range candidatePairs {
+				a, b := pair[0], pair[1]
+				aGlob, bGlob := g.Nodes[a], g.Nodes[b]
+				if witness := ch.findWitnessFile(aGlob, bGlob, scopeDir); witness != "" {
+					overlapChan <- overlapResult{witness: witness, i: a, j: b}
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(overlapChan)
+	}()
+
+	for r := range overlapChan {
+		ch.res.errors = append(ch.res.errors, makeOverlapError(r.i, r.j, cfgPath, g.NodeLines[r.i], g.NodeLines[r.j], r.witness))
+		ch.res.hasOverlapError = true
 	}
 }
 
@@ -572,4 +614,42 @@ func hasScopedConfig(fsys port.FileSystem, capsuleDir string) bool {
 		return nil
 	})
 	return found
+}
+
+// parseCache provides thread-safe caching of ParseImports results.
+// This avoids re-parsing the same file multiple times during check operations.
+type parseCache struct {
+	mu    sync.RWMutex
+	cache map[string]*port.ParsedImports
+}
+
+func newParseCache() *parseCache {
+	return &parseCache{cache: make(map[string]*port.ParsedImports)}
+}
+
+func (pc *parseCache) get(path string) (*port.ParsedImports, bool) {
+	pc.mu.RLock()
+	entry, ok := pc.cache[path]
+	pc.mu.RUnlock()
+	return entry, ok
+}
+
+func (pc *parseCache) set(path string, imports *port.ParsedImports) {
+	pc.mu.Lock()
+	pc.cache[path] = imports
+	pc.mu.Unlock()
+}
+
+func (pc *parseCache) loadOrParse(ch *capsuleChecker, abs string) ([]port.ImportSpec, error) {
+	if entry, ok := pc.get(abs); ok {
+		return entry.Imports, nil
+	}
+
+	imports, err := ch.lang.ParseImports(ch.fsys, abs)
+	if err != nil {
+		return nil, err
+	}
+	// Store in cache for future lookups.
+	pc.set(abs, &port.ParsedImports{Imports: imports, Hash: ""})
+	return imports, nil
 }

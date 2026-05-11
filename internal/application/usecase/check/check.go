@@ -72,6 +72,7 @@ type capsuleChecker struct {
 	configDir         string
 	configDirAbs      string
 	scopeCache        *scopeCache
+	parseCache        *parseCache
 	nestedCapsuleDirs []string
 	configContext
 }
@@ -94,6 +95,7 @@ func newCapsuleChecker(
 		configDir:         configDir,
 		configDirAbs:      configDirAbs,
 		scopeCache:        newScopeCache(fsys, repo),
+		parseCache:        newParseCache(),
 		nestedCapsuleDirs: nestedCapsuleDirs,
 		configContext:     ctx,
 	}

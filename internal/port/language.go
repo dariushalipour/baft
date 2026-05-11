@@ -27,6 +27,12 @@ type Language interface {
 	SupportsFileGlobs() bool
 }
 
+// ParsedImports caches the result of ParseImports for a given file path.
+type ParsedImports struct {
+	Imports []ImportSpec
+	Hash    string
+}
+
 // ShouldSkipDir returns true for directory names that should never be
 // walked during package discovery (build artifacts, dependencies, etc.).
 func ShouldSkipDir(name string) bool {

@@ -38,6 +38,9 @@ type Graph struct {
 	fileCache map[string]string
 	// cacheMu protects dirCache and fileCache writes.
 	cacheMu sync.RWMutex
+	// dirNodes and fileNodes hold pre-partitioned node IDs for fast iteration.
+	dirNodes  []string
+	fileNodes []string
 }
 
 func (g *Graph) IsEndophobic(nodeID string) bool {
@@ -55,6 +58,9 @@ func (g *Graph) buildNodeInfos() {
 	if g.nodeInfos == nil {
 		g.nodeInfos = make(map[string]*nodeInfo, len(g.Nodes))
 	}
+	// Pre-allocate partition slices to avoid repeated resizing.
+	g.dirNodes = make([]string, 0, len(g.Nodes))
+	g.fileNodes = make([]string, 0, len(g.Nodes))
 	for id, pattern := range g.Nodes {
 		ni := &nodeInfo{
 			pattern:    pattern,
@@ -66,6 +72,11 @@ func (g *Graph) buildNodeInfos() {
 		ni.hasDirGlob = !ni.isFileGlob
 		ni.specificity = globSpecificityFast(ni.segments)
 		g.nodeInfos[id] = ni
+		if ni.isFileGlob {
+			g.fileNodes = append(g.fileNodes, id)
+		} else {
+			g.dirNodes = append(g.dirNodes, id)
+		}
 	}
 }
 
@@ -132,10 +143,8 @@ func (g *Graph) findMostSpecificDir(dirPath string) string {
 	bestID := ""
 	bestScore := -1
 	dirSegs := splitPath(dirPath)
-	for id, ni := range g.nodeInfos {
-		if ni.isFileGlob {
-			continue
-		}
+	for _, id := range g.dirNodes {
+		ni := g.nodeInfos[id]
 		if matchDirGlobSegments(ni.segments, ni.hasWildcard, dirSegs) {
 			if ni.specificity > bestScore {
 				bestID = id
@@ -150,10 +159,8 @@ func (g *Graph) findMostSpecificFile(filePath string) string {
 	bestID := ""
 	bestScore := -1
 	pathSegs := splitPath(filePath)
-	for id, ni := range g.nodeInfos {
-		if !ni.isFileGlob {
-			continue
-		}
+	for _, id := range g.fileNodes {
+		ni := g.nodeInfos[id]
 		if matchFileGlobSegments(ni.segments, ni.hasWildcard, pathSegs) {
 			if ni.specificity > bestScore {
 				bestID = id
@@ -218,7 +225,7 @@ func matchDirGlobSegments(patternSegs []string, patternHasWildcard bool, dirSegs
 		}
 		minLen := len(prefix)
 		if patternHasWildcard && len(prefix) > 0 {
-			if strings.Contains(prefix[len(prefix)-1], "*") {
+			if stringsContainsByte(prefix[len(prefix)-1], '*') {
 				minLen++
 			}
 		}
@@ -253,23 +260,138 @@ func MatchSegment(segPattern, segment string) bool {
 }
 
 // matchSegmentFast is the internal fast path for segment matching.
+// Uses byte-level operations to avoid string allocations.
 func matchSegmentFast(segPattern, segment string) bool {
-	if !strings.Contains(segPattern, "*") {
+	if !stringsContainsByte(segPattern, '*') {
 		return segPattern == segment
 	}
-	parts := strings.Split(segPattern, "*")
-	if parts[0] != "" && !strings.HasPrefix(segment, parts[0]) {
-		return false
+	p := segPattern
+	s := segment
+
+	// Find first and last '*' positions.
+	firstStar := -1
+	lastStar := -1
+	for i := 0; i < len(p); i++ {
+		if p[i] == '*' {
+			if firstStar == -1 {
+				firstStar = i
+			}
+			lastStar = i
+		}
 	}
-	remaining := segment[len(parts[0]):]
-	for i := 1; i < len(parts)-1; i++ {
-		idx := strings.Index(remaining, parts[i])
-		if idx < 0 {
+
+	// Single wildcard: simple prefix + suffix check.
+	if firstStar == lastStar && firstStar != -1 {
+		if firstStar > 0 && !strHasPrefix(s, p[:firstStar]) {
 			return false
 		}
-		remaining = remaining[idx+len(parts[i]):]
+		suffixLen := len(p) - lastStar - 1
+		if suffixLen > 0 {
+			if len(s) < firstStar+suffixLen {
+				return false
+			}
+			return strHasSuffix(s, p[len(p)-suffixLen:])
+		}
+		return true
 	}
-	return strings.HasSuffix(remaining, parts[len(parts)-1])
+
+	// Multiple wildcards: check prefix, middle parts, and suffix.
+	if firstStar > 0 && !strHasPrefix(s, p[:firstStar]) {
+		return false
+	}
+	remaining := s[firstStar+1:]
+
+	// Extract middle parts (between wildcards) and check each.
+	for i := firstStar + 1; i <= lastStar; {
+		// Skip '*'
+		if p[i] == '*' {
+			i++
+			continue
+		}
+		// Find end of this middle part.
+		end := i
+		for end <= lastStar && p[end] != '*' {
+			end++
+		}
+		if end > i {
+			middle := p[i:end]
+			idx := strIndex(remaining, middle)
+			if idx < 0 {
+				return false
+			}
+			remaining = remaining[idx+len(middle):]
+		}
+		i = end + 1
+	}
+
+	// Check suffix after last wildcard.
+	suffixLen := len(p) - lastStar - 1
+	if suffixLen > 0 {
+		return strHasSuffix(remaining, p[len(p)-suffixLen:])
+	}
+	return true
+}
+
+// strHasPrefix checks if s starts with prefix using byte-level comparison.
+func strHasPrefix(s, prefix string) bool {
+	if len(s) < len(prefix) {
+		return false
+	}
+	for i := 0; i < len(prefix); i++ {
+		if s[i] != prefix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// strHasSuffix checks if s ends with suffix using byte-level comparison.
+func strHasSuffix(s, suffix string) bool {
+	if len(s) < len(suffix) {
+		return false
+	}
+	sStart := len(s) - len(suffix)
+	for i := 0; i < len(suffix); i++ {
+		if s[sStart+i] != suffix[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// strIndex finds the first occurrence of sep in s, returns -1 if not found.
+func strIndex(s, sep string) int {
+	if len(sep) == 0 {
+		return 0
+	}
+	if len(sep) > len(s) {
+		return -1
+	}
+	for i := 0; i <= len(s)-len(sep); i++ {
+		if s[i] == sep[0] {
+			match := true
+			for j := 1; j < len(sep); j++ {
+				if s[i+j] != sep[j] {
+					match = false
+					break
+				}
+			}
+			if match {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// stringsContainsByte checks if s contains the given byte.
+func stringsContainsByte(s string, b byte) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == b {
+			return true
+		}
+	}
+	return false
 }
 
 // GlobSpecificity returns a score where higher means more specific.
@@ -285,7 +407,7 @@ func globSpecificityFast(segments []string) int {
 		switch {
 		case segment == "**":
 			score += 1
-		case strings.Contains(segment, "*"):
+		case stringsContainsByte(segment, '*'):
 			score += 3
 		default:
 			score += 10
@@ -476,8 +598,8 @@ func pairCanOverlap(a, b string) bool {
 	if a == b {
 		return true
 	}
-	aWild := strings.Contains(a, "*")
-	bWild := strings.Contains(b, "*")
+	aWild := stringsContainsByte(a, '*')
+	bWild := stringsContainsByte(b, '*')
 	if !aWild && !bWild {
 		return false
 	}
@@ -490,19 +612,55 @@ func pairCanOverlap(a, b string) bool {
 		wild, literal = b, a
 	}
 
-	parts := strings.Split(wild, "*")
-	if parts[0] != "" && !strings.HasPrefix(literal, parts[0]) {
+	// Find first and last '*' positions.
+	firstStar := -1
+	lastStar := -1
+	for i := 0; i < len(wild); i++ {
+		if wild[i] == '*' {
+			if firstStar == -1 {
+				firstStar = i
+			}
+			lastStar = i
+		}
+	}
+
+	// Check prefix.
+	if firstStar > 0 && !strHasPrefix(literal, wild[:firstStar]) {
 		return false
 	}
-	if parts[len(parts)-1] != "" && !strings.HasSuffix(literal, parts[len(parts)-1]) {
-		return false
-	}
-	middle := literal[len(parts[0]) : len(literal)-len(parts[len(parts)-1])]
-	for i := 1; i < len(parts)-1; i++ {
-		if !strings.Contains(middle, parts[i]) {
+	// Check suffix.
+	suffixLen := len(wild) - lastStar - 1
+	if suffixLen > 0 {
+		if len(literal) < firstStar+suffixLen {
 			return false
 		}
-		middle = middle[strings.Index(middle, parts[i])+len(parts[i]):]
+		if !strHasSuffix(literal, wild[len(wild)-suffixLen:]) {
+			return false
+		}
+	}
+
+	// Check middle parts.
+	if lastStar-firstStar > 1 {
+		remaining := literal[firstStar+1 : len(literal)-suffixLen]
+		for i := firstStar + 1; i <= lastStar; {
+			if wild[i] == '*' {
+				i++
+				continue
+			}
+			end := i
+			for end <= lastStar && wild[end] != '*' {
+				end++
+			}
+			if end > i {
+				middle := wild[i:end]
+				idx := strIndex(remaining, middle)
+				if idx < 0 {
+					return false
+				}
+				remaining = remaining[idx+len(middle):]
+			}
+			i = end + 1
+		}
 	}
 	return true
 }
@@ -533,7 +691,7 @@ func splitPath(p string) []string {
 // hasWildcardInSegments checks if any segment contains '*'.
 func hasWildcardInSegments(segments []string) bool {
 	for _, s := range segments {
-		if strings.Contains(s, "*") {
+		if stringsContainsByte(s, '*') {
 			return true
 		}
 	}
