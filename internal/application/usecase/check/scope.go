@@ -286,13 +286,15 @@ func (ch *capsuleChecker) checkCrossScope(srcAbs, fileRel string, spec port.Impo
 	targetAbs := absPath(ch.capsule.Dir, targetPath)
 
 	targetRel := relToSlash(scopeDir, targetAbs)
-	dst := scopeGraph.NodeForPath(targetRel)
-	if dst != "" {
-		if !scopeGraph.Allows(src, dst) {
-			v := makeRelationViolation(srcAbs, fileRel, spec, src, targetRel, dst, cfgPath)
-			return []port.Violation{v}
+	if !escapesScope(targetRel) {
+		dst := scopeGraph.NodeForPath(targetRel)
+		if dst != "" {
+			if !scopeGraph.Allows(src, dst) {
+				v := makeRelationViolation(srcAbs, fileRel, spec, src, targetRel, dst, cfgPath)
+				return []port.Violation{v}
+			}
+			return nil
 		}
-		return nil
 	}
 
 	for _, anc := range ancestorConfigs(ch.fsys, scopeDir, ch.capsule.Dir, ch.scopeCache) {
@@ -322,11 +324,11 @@ func (ch *capsuleChecker) checkCrossScope(srcAbs, fileRel string, spec port.Impo
 		}
 	}
 
-	if !ch.intermediateConfigExists(scopeDir) {
-		v := makeImportNoNodeViolation(srcAbs, fileRel, spec, cfgPath)
-		return []port.Violation{v}
-	}
 	return nil
+}
+
+func escapesScope(rel string) bool {
+	return rel == ".." || strings.HasPrefix(rel, "../")
 }
 
 func (ch *capsuleChecker) resolveScope(scopeDir string) (string, *graph.Graph) {

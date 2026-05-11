@@ -2103,3 +2103,95 @@ Feature: Architecture rule checking
     When the check runs from "/Users/jane/baft"
     Then 2 capsules are discovered
     And 1 violation is reported
+    And the violation is:
+      """violations
+      /Users/jane/baft/sub: domain/model.go is governed but matches no node in /Users/jane/baft/BAFT.md
+      """
+
+  Scenario: Scoped config without parent config treats out-of-scope imports as external
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      └─ billing/
+         ├─ api/
+         │  ├─ BAFT.md
+         │  └─ handler.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "billing/api/BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        api["&ast;&ast;"]
+      ```
+      """
+    Given file "billing/api/handler.go" has content:
+      """go
+      package api
+      
+      import "example.com/billing/domain"
+      """
+    Given file "billing/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 relation is examined
+    And 1 files are encountered
+    And 1 files are scanned
+    And 0 violations are reported
+    And 0 errors are reported
+
+  Scenario: Scoped config child imports from parent scope with one allowed and one violation
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      └─ billing/
+         ├─ go.mod
+         ├─ api/
+         │  ├─ BAFT.md
+         │  ├─ core/
+         │  │  └─ logger.go
+         │  ├─ external/
+         │  │  └─ crypto.go
+         │  └─ usecase/
+         │     ├─ BAFT.md
+         │     └─ create_order.go
+      """
+    Given file "billing/go.mod" has content "module example.com/app"
+    Given file "billing/api/BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        usecase["usecase/&ast;&ast;"] --> core["core/&ast;&ast;"]
+        external["external/&ast;&ast;"]
+      ```
+      """
+    Given file "billing/api/usecase/BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        usecase["&ast;&ast;"]
+      ```
+      """
+    Given file "billing/api/usecase/create_order.go" has content:
+      """go
+      package usecase
+      
+      import "example.com/app/api/core"
+      import "example.com/app/api/external"
+      """
+    Given file "billing/api/core/logger.go" has content "package core"
+    Given file "billing/api/external/crypto.go" has content "package external"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 2 relations are examined
+    And 3 files are encountered
+    And 3 files are scanned
+    And 1 violations are reported
+    And the violations are:
+      """violations
+      /Users/jane/baft/billing: api/usecase/create_order.go:4:8 (usecase) → api/external (external) — relation not allowed (add edge in /Users/jane/baft/billing/api/BAFT.md or move the file)
+      """
+    And 0 errors are reported
