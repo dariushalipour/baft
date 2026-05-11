@@ -1,6 +1,7 @@
 package rust
 
 import (
+	"bytes"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -41,32 +42,61 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 		return nil, err
 	}
 
-	lines := strings.Split(string(data), "\n")
 	seen := make(map[string]bool)
-	var imports []port.ImportSpec
+	// Estimate capacity from approximate line count.
+	approxLines := bytes.Count(data, []byte{'\n'}) + 1
+	imports := make([]port.ImportSpec, 0, approxLines/3)
 
-	for lineIdx, line := range lines {
-		lineNum := lineIdx + 1
-		if m := useRe.FindStringSubmatchIndex(line); m != nil {
-			spec := strings.TrimSpace(line[m[4]:m[5]])
+	lineNum := 1
+	lineStart := 0
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' {
+			lineStr := string(data[lineStart:i])
+			if m := useRe.FindStringSubmatchIndex(lineStr); m != nil {
+				spec := strings.TrimSpace(lineStr[m[4]:m[5]])
+				if !seen[spec] {
+					seen[spec] = true
+					col := m[4] + 1
+					imports = append(imports, port.ImportSpec{Path: spec, Line: lineNum, Col: col, ColEnd: col + len(spec)})
+				}
+			} else if m := modRe.FindStringSubmatchIndex(lineStr); m != nil {
+				modName := lineStr[m[4]:m[5]]
+				if !seen[modName] {
+					seen[modName] = true
+					col := m[4] + 1
+					imports = append(imports, port.ImportSpec{Path: modName, Line: lineNum, Col: col, ColEnd: col + len(modName)})
+				}
+			} else if m := externCrateRe.FindStringSubmatchIndex(lineStr); m != nil {
+				crateName := lineStr[m[4]:m[5]]
+				if !seen[crateName] {
+					seen[crateName] = true
+					col := m[4] + 1
+					imports = append(imports, port.ImportSpec{Path: crateName, Line: lineNum, Col: col, ColEnd: col + len(crateName)})
+				}
+			}
+			lineNum++
+			lineStart = i + 1
+		}
+	}
+	// Handle last line without newline.
+	if lineStart < len(data) {
+		lineStr := string(data[lineStart:])
+		if m := useRe.FindStringSubmatchIndex(lineStr); m != nil {
+			spec := strings.TrimSpace(lineStr[m[4]:m[5]])
 			if !seen[spec] {
 				seen[spec] = true
 				col := m[4] + 1
 				imports = append(imports, port.ImportSpec{Path: spec, Line: lineNum, Col: col, ColEnd: col + len(spec)})
 			}
-			continue
-		}
-		if m := modRe.FindStringSubmatchIndex(line); m != nil {
-			modName := line[m[4]:m[5]]
+		} else if m := modRe.FindStringSubmatchIndex(lineStr); m != nil {
+			modName := lineStr[m[4]:m[5]]
 			if !seen[modName] {
 				seen[modName] = true
 				col := m[4] + 1
 				imports = append(imports, port.ImportSpec{Path: modName, Line: lineNum, Col: col, ColEnd: col + len(modName)})
 			}
-			continue
-		}
-		if m := externCrateRe.FindStringSubmatchIndex(line); m != nil {
-			crateName := line[m[4]:m[5]]
+		} else if m := externCrateRe.FindStringSubmatchIndex(lineStr); m != nil {
+			crateName := lineStr[m[4]:m[5]]
 			if !seen[crateName] {
 				seen[crateName] = true
 				col := m[4] + 1
@@ -176,15 +206,35 @@ func readCargoToml(fsys port.FileSystem, path string) (string, error) {
 	}
 
 	inPackage := false
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
+	lineStart := 0
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' {
+			line := strings.TrimSpace(string(data[lineStart:i]))
+			if line == "[package]" {
+				inPackage = true
+				lineStart = i + 1
+				continue
+			}
+			if len(line) > 0 && line[0] == '[' {
+				if line != "[package]" && !strings.HasPrefix(line, "[package") {
+					inPackage = false
+				}
+			}
+			if inPackage {
+				if m := cargoNameRe.FindStringSubmatch(line); m != nil {
+					return m[1], nil
+				}
+			}
+			lineStart = i + 1
+		}
+	}
+	// Handle last line without newline.
+	if lineStart < len(data) {
+		line := strings.TrimSpace(string(data[lineStart:]))
 		if line == "[package]" {
 			inPackage = true
-			continue
-		}
-		if strings.HasPrefix(line, "[") && !strings.HasPrefix(line, "[package") {
+		} else if len(line) > 0 && line[0] == '[' {
 			inPackage = false
-			continue
 		}
 		if inPackage {
 			if m := cargoNameRe.FindStringSubmatch(line); m != nil {

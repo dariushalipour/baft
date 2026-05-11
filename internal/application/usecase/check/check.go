@@ -14,12 +14,15 @@
 package check
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/application/service"
@@ -101,7 +104,26 @@ type capsuleEntry struct {
 	lang    port.Language
 }
 
+type capsuleWork struct {
+	index      int
+	capsule    port.Capsule
+	lang       port.Language
+	label      string
+	nestedDirs []string
+}
+
+type capsuleResultItem struct {
+	index  int
+	label  string
+	result *capsuleResult
+	err    error
+}
+
 func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) *port.CheckResult {
+	return RunWithContext(context.Background(), fsys, rootDir, languages, repo, discovery)
+}
+
+func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) *port.CheckResult {
 	entries, err := discovery.Discover(fsys, rootDir)
 	if err != nil {
 		return &port.CheckResult{Errors: []string{"discovery: " + err.Error()}}
@@ -116,27 +138,88 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 		return port.Label(capsules[i].capsule, rootDir) < port.Label(capsules[j].capsule, rootDir)
 	})
 
-	var result port.CheckResult
-	seenConfigErrors := map[string]bool{}
-	for _, c := range capsules {
+	// Build work items with their original indices for deterministic output ordering
+	workItems := make([]capsuleWork, 0, len(capsules))
+	for i, c := range capsules {
 		label := port.Label(c.capsule, rootDir)
 		nestedDirs := nestedCapsuleDirs(capsules, c.capsule.Dir)
-		capsuleRes, err := checkCapsule(fsys, c.capsule, c.lang, repo, rootDir, nestedDirs)
-		if err != nil {
-			result.Errors = append(result.Errors, label+": "+err.Error())
-			result.Capsules = append(result.Capsules, port.CapsuleResult{Label: label})
+		workItems = append(workItems, capsuleWork{
+			index:      i,
+			capsule:    c.capsule,
+			lang:       c.lang,
+			label:      label,
+			nestedDirs: nestedDirs,
+		})
+	}
+
+	// Use fan-out pattern: distribute work items via a channel to a pool of workers,
+	// collect via result channel. The book recommends worker pools for independent
+	// tasks to bound concurrency and avoid overwhelming the system.
+	numWorkers := min(runtime.NumCPU(), len(workItems))
+	workChan := make(chan capsuleWork, len(workItems))
+	results := make(chan capsuleResultItem, len(workItems))
+
+	for _, w := range workItems {
+		workChan <- w
+	}
+	close(workChan)
+
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for work := range workChan {
+				capsuleRes, err := checkCapsule(ctx, fsys, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
+				results <- capsuleResultItem{
+					index:  work.index,
+					label:  work.label,
+					result: capsuleRes,
+					err:    err,
+				}
+			}
+		}()
+	}
+
+	// Close channel once all workers are done
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect all results
+	collected := make([]capsuleResultItem, 0, len(workItems))
+	for r := range results {
+		collected = append(collected, r)
+	}
+
+	// Build result in original sorted order for deterministic output
+	sort.Slice(collected, func(i, j int) bool {
+		return collected[i].index < collected[j].index
+	})
+
+	var result port.CheckResult
+	// Pre-allocate slices with estimated capacity.
+	result.Errors = make([]string, 0, len(collected)*2)
+	result.Capsules = make([]port.CapsuleResult, 0, len(collected))
+	result.Violations = make([]string, 0, len(collected)*5)
+	seenConfigErrors := map[string]bool{}
+	for _, r := range collected {
+		if r.err != nil {
+			result.Errors = append(result.Errors, r.label+": "+r.err.Error())
+			result.Capsules = append(result.Capsules, port.CapsuleResult{Label: r.label})
 			continue
 		}
-		if capsuleRes == nil {
+		if r.result == nil {
 			continue
 		}
-		capsuleRes.errors = dedupeConfigErrors(capsuleRes.errors, seenConfigErrors)
-		result.Capsules = append(result.Capsules, capsuleRes.toPublic(label))
-		for _, v := range capsuleRes.violations {
-			result.Violations = append(result.Violations, label+": "+v.Message)
+		r.result.errors = dedupeConfigErrors(r.result.errors, seenConfigErrors)
+		result.Capsules = append(result.Capsules, r.result.toPublic(r.label))
+		for _, v := range r.result.violations {
+			result.Violations = append(result.Violations, r.label+": "+v.Message)
 		}
-		for _, e := range capsuleRes.errors {
-			result.Errors = append(result.Errors, label+": "+e.Message)
+		for _, e := range r.result.errors {
+			result.Errors = append(result.Errors, r.label+": "+e.Message)
 		}
 	}
 	return &result
@@ -188,19 +271,19 @@ func nestedCapsuleDirs(capsules []capsuleEntry, capsuleDir string) []string {
 	return nested
 }
 
-func checkCapsule(fsys port.FileSystem, capsule port.Capsule, lang port.Language, repo port.GraphRepository, configDir string, nestedDirs []string) (*capsuleResult, error) {
-	ctx, err := loadCapsuleConfig(fsys, repo, configDir, capsule.Dir)
+func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsule, lang port.Language, repo port.GraphRepository, configDir string, nestedDirs []string) (*capsuleResult, error) {
+	cfgCtx, err := loadCapsuleConfig(fsys, repo, configDir, capsule.Dir)
 	if err != nil {
 		return nil, err
 	}
-	if ctx.loadErr != nil {
-		return &capsuleResult{errors: []port.Violation{*ctx.loadErr}}, nil
+	if cfgCtx.loadErr != nil {
+		return &capsuleResult{errors: []port.Violation{*cfgCtx.loadErr}}, nil
 	}
-	if !ctx.hasRootConfig && !hasScopedConfig(fsys, capsule.Dir) {
+	if !cfgCtx.hasRootConfig && !hasScopedConfig(fsys, capsule.Dir) {
 		return nil, nil
 	}
-	chk := newCapsuleChecker(fsys, capsule, lang, repo, configDir, ctx, nestedDirs)
-	if err := chk.walk(fsys, capsule.Dir); err != nil {
+	chk := newCapsuleChecker(fsys, capsule, lang, repo, configDir, cfgCtx, nestedDirs)
+	if err := chk.walk(ctx, fsys, capsule.Dir); err != nil {
 		return nil, err
 	}
 	chk.validateAll()
@@ -270,4 +353,12 @@ func loadCapsuleConfig(fsys port.FileSystem, repo port.GraphRepository, configDi
 		return ctx, nil
 	}
 	return ctx, nil
+}
+
+// min returns the smaller of a or b.
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

@@ -15,7 +15,15 @@ type Language struct{}
 func (Language) Name() string { return "go" }
 
 func (Language) IsGovernedFile(rel string) bool {
-	if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+	if len(rel) < 3 {
+		return false
+	}
+	// Check .go suffix efficiently.
+	if rel[len(rel)-3:] != ".go" {
+		return false
+	}
+	// Check _test.go suffix efficiently.
+	if len(rel) >= 8 && rel[len(rel)-8:] == "_test.go" {
 		return false
 	}
 	return true
@@ -65,10 +73,21 @@ func readGoModulePath(fsys port.FileSystem, path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "module ") {
-			return strings.TrimSpace(strings.TrimPrefix(line, "module")), nil
+	lineStart := 0
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' {
+			line := strings.TrimSpace(string(data[lineStart:i]))
+			if len(line) >= 7 && line[:7] == "module " {
+				return strings.TrimSpace(line[7:]), nil
+			}
+			lineStart = i + 1
+		}
+	}
+	// Handle last line without newline.
+	if lineStart < len(data) {
+		line := strings.TrimSpace(string(data[lineStart:]))
+		if len(line) >= 7 && line[:7] == "module " {
+			return strings.TrimSpace(line[7:]), nil
 		}
 	}
 	return "", fmt.Errorf("no module line in %s", path)

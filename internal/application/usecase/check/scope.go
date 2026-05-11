@@ -1,9 +1,11 @@
 package check
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -13,8 +15,19 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-func (ch *capsuleChecker) walk(fsys port.FileSystem, capsuleDir string) error {
-	return service.WalkAllFiles(fsys, capsuleDir, ch.lang, func(abs, rel string) error {
+// fileWork represents a single file to be checked.
+type fileWork struct {
+	abs      string
+	rel      string
+	scopeDir string
+}
+
+func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsuleDir string) error {
+	// Collect all files to check first, then process in parallel.
+	// This avoids holding filesystem locks during the parallel phase.
+	var filesToCheck []fileWork
+
+	err := service.WalkAllFiles(fsys, capsuleDir, ch.lang, func(abs, rel string) error {
 		if abs != ch.configDirAbs && !strings.HasPrefix(abs, ch.configDirAbs+string(filepath.Separator)) {
 			return nil
 		}
@@ -24,36 +37,130 @@ func (ch *capsuleChecker) walk(fsys port.FileSystem, capsuleDir string) error {
 			}
 		}
 		scopeDir := service.GoverningScope(fsys, abs, ch.capsule.Dir)
-		return ch.checkFile(fsys, abs, rel, scopeDir)
+		filesToCheck = append(filesToCheck, fileWork{abs: abs, rel: rel, scopeDir: scopeDir})
+		return nil
 	})
-}
+	if err != nil {
+		return err
+	}
 
-func (ch *capsuleChecker) checkFile(fsys port.FileSystem, abs, fileRel string, scopeDir string) error {
-	cfgPath, scopeGraph := ch.resolveScope(scopeDir)
-	if scopeGraph == nil {
+	if len(filesToCheck) == 0 {
 		return nil
 	}
 
+	// Use a worker pool to process files in parallel.
+	// The book recommends bounded concurrency via worker pools
+	// to avoid overwhelming the system with too many goroutines.
+	numWorkers := min(runtime.NumCPU(), len(filesToCheck))
+	workChan := make(chan fileWork, len(filesToCheck))
+	results := make(chan fileCheckResult, len(filesToCheck))
+
+	for _, fw := range filesToCheck {
+		workChan <- fw
+	}
+	close(workChan)
+
+	var wg sync.WaitGroup
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for fw := range workChan {
+				select {
+				case results <- ch.checkFileResult(fsys, fw.abs, fw.rel, fw.scopeDir):
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Aggregate results from all workers
+	for res := range results {
+		if res.err != nil {
+			return res.err
+		}
+		ch.mergeFileResult(res)
+	}
+
+	return nil
+}
+
+type fileCheckResult struct {
+	filesEncountered int
+	filesScanned     int
+	relations        int
+	violations       []port.Violation
+	err              error
+}
+
+func (ch *capsuleChecker) checkFile(fsys port.FileSystem, abs, fileRel string, scopeDir string) error {
+	res := ch.checkFileResult(fsys, abs, fileRel, scopeDir)
+	if res.err != nil {
+		return res.err
+	}
+	ch.mergeFileResult(res)
+	return nil
+}
+
+func (ch *capsuleChecker) checkFileResult(fsys port.FileSystem, abs, fileRel string, scopeDir string) fileCheckResult {
+	cfgPath, scopeGraph := ch.resolveScope(scopeDir)
+	if scopeGraph == nil {
+		return fileCheckResult{}
+	}
+
 	scopeRel := relToSlash(scopeDir, abs)
-	ch.res.filesEncountered++
+	filesEncountered := 1
 
 	src := scopeGraph.NodeForPath(scopeRel)
 	if src == "" {
-		return ch.handleNoNode(fsys, abs, fileRel, scopeRel, cfgPath)
+		violations := ch.handleNoNodeResult(fsys, abs, fileRel, scopeRel, cfgPath)
+		return fileCheckResult{
+			filesEncountered: filesEncountered,
+			violations:       violations,
+		}
 	}
 
 	imports, err := ch.lang.ParseImports(fsys, abs)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return err
+			return fileCheckResult{err: err}
 		}
 	} else {
-		ch.res.filesScanned++
+		filesScanned := 1
+		var relations int
+		// Pre-allocate with estimated capacity to avoid repeated allocations.
+		violations := make([]port.Violation, 0, len(imports))
 		for _, spec := range imports {
-			ch.checkImport(spec, abs, fileRel, scopeRel, cfgPath, scopeGraph, src, scopeDir)
+			r, v := ch.checkImportResult(spec, abs, fileRel, scopeRel, cfgPath, scopeGraph, src, scopeDir)
+			relations += r
+			if len(v) > 0 {
+				violations = append(violations, v...)
+			}
+		}
+		return fileCheckResult{
+			filesEncountered: filesEncountered,
+			filesScanned:     filesScanned,
+			relations:        relations,
+			violations:       violations,
 		}
 	}
-	return nil
+
+	return fileCheckResult{
+		filesEncountered: filesEncountered,
+	}
+}
+
+func (ch *capsuleChecker) mergeFileResult(res fileCheckResult) {
+	ch.res.filesEncountered += res.filesEncountered
+	ch.res.filesScanned += res.filesScanned
+	ch.res.relations += res.relations
+	ch.res.violations = append(ch.res.violations, res.violations...)
 }
 
 func (ch *capsuleChecker) handleNoNode(fsys port.FileSystem, abs, fileRel, scopeRel, cfgPath string) error {
@@ -74,6 +181,27 @@ func (ch *capsuleChecker) handleNoNode(fsys port.FileSystem, abs, fileRel, scope
 	return nil
 }
 
+func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel, scopeRel, cfgPath string) []port.Violation {
+	noNode := makeNoNodeViolation(abs, scopeRel, cfgPath)
+	imports, err := ch.lang.ParseImports(fsys, abs)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return []port.Violation{noNode}
+		}
+		return []port.Violation{noNode}
+	}
+	// Pre-allocate with capacity for the no-node violation plus imports.
+	violations := make([]port.Violation, 0, 1+len(imports))
+	violations = append(violations, noNode)
+	for _, spec := range imports {
+		_, internal := ch.lang.ResolveInternalTarget(fsys, spec, ch.capsule, fileRel)
+		if internal {
+			violations = append(violations, makeImportNoNodeViolation(abs, scopeRel, spec, cfgPath))
+		}
+	}
+	return violations
+}
+
 func (ch *capsuleChecker) checkImport(spec port.ImportSpec, abs, fileRel, scopeRel, cfgPath string, scopeGraph *graph.Graph, src, scopeDir string) {
 	targetPath, internal := ch.lang.ResolveInternalTarget(ch.fsys, spec, ch.capsule, fileRel)
 	if !internal {
@@ -89,6 +217,22 @@ func (ch *capsuleChecker) checkImport(spec port.ImportSpec, abs, fileRel, scopeR
 	} else {
 		v := ch.checkCrossScope(abs, fileRel, spec, src, targetPath, cfgPath, scopeGraph, scopeDir)
 		ch.res.violations = append(ch.res.violations, v...)
+	}
+}
+
+func (ch *capsuleChecker) checkImportResult(spec port.ImportSpec, abs, fileRel, scopeRel, cfgPath string, scopeGraph *graph.Graph, src, scopeDir string) (int, []port.Violation) {
+	targetPath, internal := ch.lang.ResolveInternalTarget(ch.fsys, spec, ch.capsule, fileRel)
+	if !internal {
+		return 0, nil
+	}
+
+	targetAbs := absPath(ch.capsule.Dir, targetPath)
+	targetScope := service.GoverningScope(ch.fsys, targetAbs, ch.capsule.Dir)
+
+	if scopeDir == targetScope {
+		return 1, ch.checkInScopeResult(abs, scopeRel, cfgPath, scopeDir, scopeGraph, spec, src, targetAbs)
+	} else {
+		return 1, ch.checkCrossScope(abs, fileRel, spec, src, targetPath, cfgPath, scopeGraph, scopeDir)
 	}
 }
 
@@ -110,6 +254,27 @@ func (ch *capsuleChecker) checkInScope(abs, scopeRel, cfgPath, scopeDir string, 
 	}
 }
 
+func (ch *capsuleChecker) checkInScopeResult(abs, scopeRel, cfgPath, scopeDir string, scopeGraph *graph.Graph, spec port.ImportSpec, src string, targetAbs string) []port.Violation {
+	scopeTargetRel := relToSlash(scopeDir, targetAbs)
+	dst := scopeGraph.NodeForPath(scopeTargetRel)
+	if dst == "" {
+		v := makeImportNoNodeViolation(abs, scopeRel, spec, cfgPath)
+		return []port.Violation{v}
+	}
+	if dst == src {
+		if scopeGraph.IsEndophobic(src) {
+			v := makeEndophobicViolation(abs, scopeRel, spec, scopeTargetRel, src, cfgPath)
+			return []port.Violation{v}
+		}
+		return nil
+	}
+	if !scopeGraph.Allows(src, dst) {
+		v := makeRelationViolation(abs, scopeRel, spec, src, scopeTargetRel, dst, cfgPath)
+		return []port.Violation{v}
+	}
+	return nil
+}
+
 func (ch *capsuleChecker) checkCrossScope(srcAbs, fileRel string, spec port.ImportSpec, src, targetPath, cfgPath string, scopeGraph *graph.Graph, scopeDir string) []port.Violation {
 	targetAbs := absPath(ch.capsule.Dir, targetPath)
 
@@ -117,7 +282,8 @@ func (ch *capsuleChecker) checkCrossScope(srcAbs, fileRel string, spec port.Impo
 	dst := scopeGraph.NodeForPath(targetRel)
 	if dst != "" {
 		if !scopeGraph.Allows(src, dst) {
-			return []port.Violation{makeRelationViolation(srcAbs, fileRel, spec, src, targetRel, dst, cfgPath)}
+			v := makeRelationViolation(srcAbs, fileRel, spec, src, targetRel, dst, cfgPath)
+			return []port.Violation{v}
 		}
 		return nil
 	}
@@ -129,7 +295,8 @@ func (ch *capsuleChecker) checkCrossScope(srcAbs, fileRel string, spec port.Impo
 		dstA := anc.graph.NodeForPath(dstRel)
 		if srcA != "" && dstA != "" {
 			if !anc.graph.Allows(srcA, dstA) {
-				return []port.Violation{makeRelationViolation(srcAbs, fileRel, spec, srcA, targetPath, dstA, anc.cfgPath)}
+				v := makeRelationViolation(srcAbs, fileRel, spec, srcA, targetPath, dstA, anc.cfgPath)
+				return []port.Violation{v}
 			}
 			return nil
 		}
@@ -141,14 +308,16 @@ func (ch *capsuleChecker) checkCrossScope(srcAbs, fileRel string, spec port.Impo
 		if srcParent != "" && dstParent != "" {
 			if !ch.rootGraph.Allows(srcParent, dstParent) {
 				parentTargetRel := relToSlash(ch.capsule.Dir, targetAbs)
-				return []port.Violation{makeRelationViolation(srcAbs, fileRel, spec, srcParent, parentTargetRel, dstParent, ch.configPathAbs)}
+				v := makeRelationViolation(srcAbs, fileRel, spec, srcParent, parentTargetRel, dstParent, ch.configPathAbs)
+				return []port.Violation{v}
 			}
 			return nil
 		}
 	}
 
 	if !ch.intermediateConfigExists(scopeDir) {
-		return []port.Violation{makeImportNoNodeViolation(srcAbs, fileRel, spec, cfgPath)}
+		v := makeImportNoNodeViolation(srcAbs, fileRel, spec, cfgPath)
+		return []port.Violation{v}
 	}
 	return nil
 }
@@ -272,6 +441,7 @@ func (ch *capsuleChecker) findOverlappingNodes(g *graph.Graph, cfgPath string) {
 	}
 }
 
+// findWitnessFile checks if a single file matches both globs.
 func (ch *capsuleChecker) findWitnessFile(aGlob, bGlob string, baseDir string) string {
 	var witness string
 	_ = service.WalkAllFiles(ch.fsys, baseDir, ch.lang, func(abs, rel string) error {

@@ -1,14 +1,20 @@
 package dart
 
 import (
+	"bytes"
 	"fmt"
 	"path"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
 )
+
+// lineOffsetsCache is a cache for byte-offset→line/col maps per file path.
+var lineOffsetsCache sync.Map
 
 type Language struct{}
 
@@ -40,28 +46,50 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	}
 	indices := directiveRe.FindAllSubmatchIndex(data, -1)
 	out := make([]port.ImportSpec, 0, len(indices))
+
+	lineOffsets, ok := lineOffsetsCache.Load(absPath)
+	if !ok {
+		lineOffsets = makeLineOffsets(data)
+		lineOffsetsCache.Store(absPath, lineOffsets)
+	}
+
 	for _, m := range indices {
 		p := string(data[m[2]:m[3]])
-		line, col := byteOffsetToLineCol(data, m[2])
+		line, col := offsetToLineCol(lineOffsets.([]int), data, m[2])
 		out = append(out, port.ImportSpec{Path: p, Line: line, Col: col, ColEnd: col + len(p)})
 	}
 	return out, nil
 }
 
-func byteOffsetToLineCol(data []byte, offset int) (int, int) {
+// makeLineOffsets precomputes the byte offset of each line start for O(1) line/col lookup.
+func makeLineOffsets(data []byte) []int {
+	offsets := make([]int, 0, bytes.Count(data, []byte{'\n'})+1)
+	offsets = append(offsets, 0)
+	for i := 0; i < len(data); i++ {
+		if data[i] == '\n' {
+			offsets = append(offsets, i+1)
+		}
+	}
+	return offsets
+}
+
+// offsetToLineCol converts a byte offset to line/col using precomputed line offsets.
+// Both line and col are 1-indexed.
+func offsetToLineCol(lineOffsets []int, data []byte, offset int) (int, int) {
 	if offset > len(data) {
 		offset = len(data)
 	}
-	line, col := 1, 1
-	for i := 0; i < offset; i++ {
-		if data[i] == '\n' {
-			line++
-			col = 1
-		} else {
-			col++
-		}
+	if offset < 0 {
+		offset = 0
 	}
-	return line, col
+	idx := sort.Search(len(lineOffsets), func(i int) bool {
+		return lineOffsets[i] > offset
+	})
+	line := idx - 1
+	if line < 0 {
+		line = 0
+	}
+	return line + 1, offset - lineOffsets[line] + 1
 }
 
 func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
