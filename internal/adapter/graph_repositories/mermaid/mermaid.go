@@ -24,6 +24,9 @@ var (
 		"]", "_rsqb_",
 		"{", "_lbrace_",
 		"}", "_rbrace_",
+		"+", "_plus_",
+		"?", "_qmark_",
+		",", "_comma_",
 	)
 
 	nodeIdDecodeReplacer = strings.NewReplacer(
@@ -36,6 +39,9 @@ var (
 		"_rsqb_", "]",
 		"_lbrace_", "{",
 		"_rbrace_", "}",
+		"_plus_", "+",
+		"_qmark_", "?",
+		"_comma_", ",",
 	)
 
 	globDecodeReplacer = strings.NewReplacer(
