@@ -62,6 +62,61 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("line %d: unrecognized line in mermaid block: %q", e.Line, e.Raw)
 }
 
+// parseErrors holds multiple ParseError instances and implements error.
+type parseErrors []ParseError
+
+func (pe parseErrors) Error() string {
+	msgs := make([]string, len(pe))
+	for i, e := range pe {
+		msgs[i] = e.Msg
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// ParseErrorWithNext allows chaining via Unwrap for errors.As compatibility.
+type ParseErrorWithNext struct {
+	Msg  string
+	Line int
+	Raw  string
+	Next error
+}
+
+func (e *ParseErrorWithNext) Error() string {
+	if e.Msg != "" {
+		return e.Msg
+	}
+	return fmt.Sprintf("line %d: unrecognized line in mermaid block: %q", e.Line, e.Raw)
+}
+
+func (e *ParseErrorWithNext) Unwrap() error { return e.Next }
+
+// toChain converts parseErrors into a linked chain of ParseErrorWithNext
+// so that errors.As can walk through every element.
+func (pe parseErrors) toChain() *ParseErrorWithNext {
+	if len(pe) == 0 {
+		return nil
+	}
+	// Sort for deterministic output: by line, then message.
+	sort.Slice(pe, func(i, j int) bool {
+		if pe[i].Line != pe[j].Line {
+			return pe[i].Line < pe[j].Line
+		}
+		return pe[i].Msg < pe[j].Msg
+	})
+	// Build chain from last to first so Unwrap points to the next error.
+	var head *ParseErrorWithNext
+	for i := len(pe) - 1; i >= 0; i-- {
+		e := &pe[i]
+		head = &ParseErrorWithNext{
+			Msg:  e.Msg,
+			Line: e.Line,
+			Raw:  e.Raw,
+			Next: head,
+		}
+	}
+	return head
+}
+
 // Save produces a mermaid flowchart from the Graph.
 // Directory nodes (non-file globs) get a "/**" suffix for mermaid display.
 func (r *MermaidRepository) Save(g *graph.Graph) string {
@@ -183,14 +238,30 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	if len(g.Nodes) == 0 {
 		return nil, &ParseError{Msg: "mermaid block declared no nodes"}
 	}
+	var allErrs parseErrors
 	if err := checkEmptyGlobs(g); err != nil {
-		return nil, err
+		if pe, ok := err.(parseErrors); ok {
+			allErrs = append(allErrs, pe...)
+		} else {
+			allErrs = append(allErrs, *err.(*ParseError))
+		}
 	}
 	if err := checkUndefinedEdgeNodes(g); err != nil {
-		return nil, err
+		if pe, ok := err.(parseErrors); ok {
+			allErrs = append(allErrs, pe...)
+		} else {
+			allErrs = append(allErrs, *err.(*ParseError))
+		}
 	}
 	if err := checkCycles(g); err != nil {
-		return nil, err
+		if pe, ok := err.(parseErrors); ok {
+			allErrs = append(allErrs, pe...)
+		} else {
+			allErrs = append(allErrs, *err.(*ParseError))
+		}
+	}
+	if len(allErrs) > 0 {
+		return nil, allErrs.toChain()
 	}
 	return g, nil
 }
@@ -336,13 +407,17 @@ func extractMermaidBlock(md string) (string, int, error) {
 }
 
 func checkEmptyGlobs(g *graph.Graph) error {
+	var errs parseErrors
 	for id, glob := range g.Nodes {
 		if glob == "" {
-			return &ParseError{
+			errs = append(errs, ParseError{
 				Line: g.NodeLines[id],
 				Msg:  fmt.Sprintf("node %q has empty glob", id),
-			}
+			})
 		}
+	}
+	if len(errs) > 0 {
+		return errs
 	}
 	return nil
 }
@@ -386,17 +461,21 @@ func quotedEncode(s string) string {
 }
 
 func checkUndefinedEdgeNodes(g *graph.Graph) error {
+	var errs parseErrors
 	for src, dsts := range g.Edges {
 		for dst := range dsts {
 			if _, ok := g.Nodes[src]; !ok {
 				line := g.EdgeLines[src+"\t"+dst]
-				return &ParseError{Line: line, Msg: fmt.Sprintf("edge references undefined node %q", src)}
+				errs = append(errs, ParseError{Line: line, Msg: fmt.Sprintf("edge references undefined node %q", src)})
 			}
 			if _, ok := g.Nodes[dst]; !ok {
 				line := g.EdgeLines[src+"\t"+dst]
-				return &ParseError{Line: line, Msg: fmt.Sprintf("edge references undefined node %q", dst)}
+				errs = append(errs, ParseError{Line: line, Msg: fmt.Sprintf("edge references undefined node %q", dst)})
 			}
 		}
+	}
+	if len(errs) > 0 {
+		return errs
 	}
 	return nil
 }
@@ -414,8 +493,11 @@ func checkCycles(g *graph.Graph) error {
 	}
 	// Pre-allocate path with capacity for all nodes.
 	path := make([]string, 0, len(g.Nodes))
-	var dfs func(node string) error
-	dfs = func(node string) error {
+	var errs parseErrors
+	var seenCycles map[string]struct{}
+	seenCycles = make(map[string]struct{})
+	var dfs func(node string)
+	dfs = func(node string) {
 		color[node] = gray
 		path = append(path, node)
 		for dst := range g.Edges[node] {
@@ -438,18 +520,19 @@ func checkCycles(g *graph.Graph) error {
 						cycleStr += path[i]
 					}
 					cycleStr += " \u2192 " + dst
-					line := g.EdgeLines[path[len(path)-1]+"\t"+dst]
-					return &ParseError{Line: line, Msg: "cycle detected: " + cycleStr}
+					// Deduplicate cycles by their canonical string representation.
+					if _, ok := seenCycles[cycleStr]; !ok {
+						seenCycles[cycleStr] = struct{}{}
+						line := g.EdgeLines[path[len(path)-1]+"\t"+dst]
+						errs = append(errs, ParseError{Line: line, Msg: "cycle detected: " + cycleStr})
+					}
 				}
 			} else if c == white {
-				if err := dfs(dst); err != nil {
-					return err
-				}
+				dfs(dst)
 			}
 		}
 		path = path[:len(path)-1]
 		color[node] = black
-		return nil
 	}
 	ids := make([]string, 0, len(g.Nodes))
 	for id := range g.Nodes {
@@ -458,10 +541,11 @@ func checkCycles(g *graph.Graph) error {
 	sort.Strings(ids)
 	for _, id := range ids {
 		if color[id] == white {
-			if err := dfs(id); err != nil {
-				return err
-			}
+			dfs(id)
 		}
+	}
+	if len(errs) > 0 {
+		return errs
 	}
 	return nil
 }

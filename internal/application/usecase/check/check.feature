@@ -1815,6 +1815,63 @@ Feature: Architecture rule checking
       /Users/jane/baft: cycle detected: app → domain → app (/Users/jane/baft/BAFT.md:6)
       """
 
+  Scenario: Multiple mermaid validation errors are all reported without short-circuiting
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app[""]
+        domain[""]
+        infra["internal/infrastructure/&ast;&ast;"]
+        util["internal/util/&ast;&ast;"]
+        app --> domain
+        domain --> app
+        app --> infra
+        infra --> util
+        util --> infra
+        util --> nonexistent
+        util --> missing
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/domain/order.go" has content:
+      """go
+      package domain
+      """
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 0 relations are examined
+    And 0 files are encountered
+    And 0 files are scanned
+    And 0 violations are reported
+    And 6 errors are reported
+    And the errors are:
+      """errors
+      /Users/jane/baft: node "app" has empty glob (/Users/jane/baft/BAFT.md:3)
+      /Users/jane/baft: node "domain" has empty glob (/Users/jane/baft/BAFT.md:4)
+      /Users/jane/baft: cycle detected: app → domain → app (/Users/jane/baft/BAFT.md:8)
+      /Users/jane/baft: cycle detected: infra → util → infra (/Users/jane/baft/BAFT.md:11)
+      /Users/jane/baft: edge references undefined node "nonexistent" (/Users/jane/baft/BAFT.md:12)
+      /Users/jane/baft: edge references undefined node "missing" (/Users/jane/baft/BAFT.md:13)
+      """
+
   Scenario: Edge references undefined node is reported as an error
     Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree

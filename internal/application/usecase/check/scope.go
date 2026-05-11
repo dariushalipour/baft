@@ -363,8 +363,8 @@ func (ch *capsuleChecker) validateAll() {
 		ch.validateGraph(ch.rootGraph, ch.configPathAbs)
 	}
 	ch.scopeCache.iterate(func(entry *scopeEntry) {
-		if entry.loadErr != nil {
-			ch.res.errors = append(ch.res.errors, *entry.loadErr)
+		if len(entry.loadErr) > 0 {
+			ch.res.errors = append(ch.res.errors, entry.loadErr...)
 			return
 		}
 		ch.validateGraph(entry.graph, entry.cfgPath)
@@ -517,7 +517,7 @@ type scopeCache struct {
 type scopeEntry struct {
 	graph   *graph.Graph
 	cfgPath string
-	loadErr *port.Violation
+	loadErr []port.Violation
 }
 
 func newScopeCache(fsys port.FileSystem, repo port.GraphRepository) *scopeCache {
@@ -536,13 +536,11 @@ func (sc *scopeCache) load(scopeDir string) (*scopeEntry, error) {
 	e := &scopeEntry{cfgPath: cfg}
 	data, err := sc.fsys.ReadFile(cfg)
 	if err != nil {
-		loadErr := makeConfigLoadError(cfg, err)
-		e.loadErr = &loadErr
+		e.loadErr = makeConfigLoadErrors(cfg, err)
 	} else {
 		g, loadErr := sc.repo.Load(string(data))
 		if loadErr != nil {
-			v := makeConfigLoadError(cfg, loadErr)
-			e.loadErr = &v
+			e.loadErr = makeConfigLoadErrors(cfg, loadErr)
 		} else {
 			e.graph = g
 		}
@@ -586,7 +584,7 @@ func ancestorConfigs(fsys port.FileSystem, scopeDir, capsuleDir string, sc *scop
 			return false
 		}
 		entry, serr := sc.load(parentDir)
-		if serr != nil || entry.loadErr != nil || entry.graph == nil {
+		if serr != nil || len(entry.loadErr) > 0 || entry.graph == nil {
 			return true
 		}
 		result = append(result, ancestorConfig{dir: parentDir, graph: entry.graph, cfgPath: entry.cfgPath})

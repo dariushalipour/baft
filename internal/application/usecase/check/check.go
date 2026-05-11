@@ -61,7 +61,7 @@ type configContext struct {
 	rootGraph     *graph.Graph
 	hasRootConfig bool
 	configPathAbs string
-	loadErr       *port.Violation
+	loadErr       []port.Violation
 }
 
 type capsuleChecker struct {
@@ -278,8 +278,8 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 	if err != nil {
 		return nil, err
 	}
-	if cfgCtx.loadErr != nil {
-		return &capsuleResult{errors: []port.Violation{*cfgCtx.loadErr}}, nil
+	if len(cfgCtx.loadErr) > 0 {
+		return &capsuleResult{errors: cfgCtx.loadErr}, nil
 	}
 	if !cfgCtx.hasRootConfig && !hasScopedConfig(fsys, capsule.Dir) {
 		return nil, nil
@@ -304,16 +304,52 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 	return chk.res, nil
 }
 
-func makeConfigLoadError(cfgPath string, err error) port.Violation {
-	v := port.Violation{
-		Rule:     "config-load-error",
-		Severity: "error",
-		Source:   "baft",
-		File:     cfgPath,
+func makeConfigLoadErrors(cfgPath string, err error) []port.Violation {
+	var violations []port.Violation
+
+	// Check if it's a chain of ParseErrorWithNext (from multiple validation errors).
+	var chain *mermaid.ParseErrorWithNext
+	if errors.As(err, &chain) {
+		for cur := chain; cur != nil; {
+			v := port.Violation{
+				Rule:     "config-load-error",
+				Severity: "error",
+				Source:   "baft",
+				File:     cfgPath,
+			}
+			if cur.Raw != "" {
+				v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(cur.Raw), cfgPath, cur.Line)
+			} else if cur.Line > 0 {
+				v.Message = fmt.Sprintf("%s (%s:%d)", cur.Msg, cfgPath, cur.Line)
+			} else {
+				v.Message = fmt.Sprintf("%s (%s)", cur.Msg, cfgPath)
+			}
+			if cur.Line > 0 {
+				v.Line = cur.Line
+			}
+			violations = append(violations, v)
+			if cur.Next == nil {
+				break
+			}
+			var nextChain *mermaid.ParseErrorWithNext
+			if errors.As(cur.Next, &nextChain) {
+				cur = nextChain
+			} else {
+				break
+			}
+		}
+		return violations
 	}
 
+	// Single ParseError.
 	var pe *mermaid.ParseError
 	if errors.As(err, &pe) {
+		v := port.Violation{
+			Rule:     "config-load-error",
+			Severity: "error",
+			Source:   "baft",
+			File:     cfgPath,
+		}
 		if pe.Raw != "" {
 			v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(pe.Raw), cfgPath, pe.Line)
 		} else if pe.Line > 0 {
@@ -324,14 +360,20 @@ func makeConfigLoadError(cfgPath string, err error) port.Violation {
 		if pe.Line > 0 {
 			v.Line = pe.Line
 		}
-		return v
+		return []port.Violation{v}
 	}
 
+	v := port.Violation{
+		Rule:     "config-load-error",
+		Severity: "error",
+		Source:   "baft",
+		File:     cfgPath,
+	}
 	v.Message = err.Error()
 	if !strings.Contains(v.Message, cfgPath) {
 		v.Message = fmt.Sprintf("%s (%s)", v.Message, cfgPath)
 	}
-	return v
+	return []port.Violation{v}
 }
 
 func loadCapsuleConfig(fsys port.FileSystem, repo port.GraphRepository, configDir, capsuleDir string) (configContext, error) {
@@ -343,15 +385,13 @@ func loadCapsuleConfig(fsys port.FileSystem, repo port.GraphRepository, configDi
 		if os.IsNotExist(err) {
 			return ctx, nil
 		}
-		loadErr := makeConfigLoadError(ctx.configPathAbs, err)
-		ctx.loadErr = &loadErr
+		ctx.loadErr = makeConfigLoadErrors(ctx.configPathAbs, err)
 		return ctx, nil
 	}
 	ctx.hasRootConfig = true
 	ctx.rootGraph, err = repo.Load(string(raw))
 	if err != nil {
-		loadErr := makeConfigLoadError(ctx.configPathAbs, err)
-		ctx.loadErr = &loadErr
+		ctx.loadErr = makeConfigLoadErrors(ctx.configPathAbs, err)
 		return ctx, nil
 	}
 	return ctx, nil

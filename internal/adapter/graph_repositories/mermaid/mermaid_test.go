@@ -609,3 +609,160 @@ func rawToGraph(nodes map[string]string, edges map[string]map[string]bool) *grap
 
 	return g
 }
+
+func TestCheckCycles_SimpleCycle(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  app["internal/application/&ast;&ast;"]` + "\n" +
+		`  domain["internal/domain/&ast;&ast;"]` + "\n" +
+		`  app --> domain` + "\n" +
+		`  domain --> app` + "\n" +
+		"```\n"
+
+	_, err := (&MermaidRepository{}).Load(md)
+	if err == nil {
+		t.Fatal("expected error for cycle")
+	}
+	if got := err.Error(); !strings.Contains(got, "cycle detected") {
+		t.Fatalf("expected cycle error, got: %q", got)
+	}
+}
+
+func TestCheckCycles_MultipleCycles(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  a["a/&ast;&ast;"]` + "\n" +
+		`  b["b/&ast;&ast;"]` + "\n" +
+		`  c["c/&ast;&ast;"]` + "\n" +
+		`  d["d/&ast;&ast;"]` + "\n" +
+		`  a --> b` + "\n" +
+		`  b --> a` + "\n" +
+		`  c --> d` + "\n" +
+		`  d --> c` + "\n" +
+		"```\n"
+
+	_, err := (&MermaidRepository{}).Load(md)
+	if err == nil {
+		t.Fatal("expected error for cycles")
+	}
+	// Walk the chain to count all cycle errors.
+	var count int
+	pwn, ok := err.(*ParseErrorWithNext)
+	for ok && pwn != nil {
+		if strings.Contains(pwn.Error(), "cycle detected") {
+			count++
+		}
+		if pwn.Next == nil {
+			break
+		}
+		pwn, ok = pwn.Next.(*ParseErrorWithNext)
+	}
+	if count < 2 {
+		t.Fatalf("expected at least 2 cycles detected, got %d", count)
+	}
+}
+
+func TestCheckCycles_NoCycle(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  a["a/&ast;&ast;"]` + "\n" +
+		`  b["b/&ast;&ast;"]` + "\n" +
+		`  c["c/&ast;&ast;"]` + "\n" +
+		`  a --> b` + "\n" +
+		`  b --> c` + "\n" +
+		"```\n"
+
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(g.Nodes) != 3 {
+		t.Fatalf("expected 3 nodes, got %d", len(g.Nodes))
+	}
+}
+
+func TestCheckCycles_LargeCycle(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  a["a/&ast;&ast;"]` + "\n" +
+		`  b["b/&ast;&ast;"]` + "\n" +
+		`  c["c/&ast;&ast;"]` + "\n" +
+		`  d["d/&ast;&ast;"]` + "\n" +
+		`  a --> b` + "\n" +
+		`  b --> c` + "\n" +
+		`  c --> d` + "\n" +
+		`  d --> a` + "\n" +
+		"```\n"
+
+	_, err := (&MermaidRepository{}).Load(md)
+	if err == nil {
+		t.Fatal("expected error for cycle")
+	}
+	if got := err.Error(); !strings.Contains(got, "cycle detected") {
+		t.Fatalf("expected cycle error, got: %q", got)
+	}
+}
+
+func TestCheckCycles_DuplicateCycleNotReportedTwice(t *testing.T) {
+	// A single cycle should not be reported multiple times.
+	md := "```mermaid\nflowchart TD\n" +
+		`  a["a/&ast;&ast;"]` + "\n" +
+		`  b["b/&ast;&ast;"]` + "\n" +
+		`  a --> b` + "\n" +
+		`  b --> a` + "\n" +
+		"```\n"
+
+	_, err := (&MermaidRepository{}).Load(md)
+	if err == nil {
+		t.Fatal("expected error for cycle")
+	}
+	errMsg := err.Error()
+	count := strings.Count(errMsg, "cycle detected")
+	if count != 1 {
+		t.Fatalf("expected exactly 1 cycle detected, got %d: %q", count, errMsg)
+	}
+}
+
+func TestLoad_CollectsAllValidationErrors(t *testing.T) {
+	// A graph with both empty globs and cycles should report all errors,
+	// not just the first one found.
+	md := "```mermaid\nflowchart TD\n" +
+		`  a[""]` + "\n" +
+		`  b["b/&ast;&ast;"]` + "\n" +
+		`  a --> b` + "\n" +
+		`  b --> a` + "\n" +
+		"```\n"
+
+	_, err := (&MermaidRepository{}).Load(md)
+	if err == nil {
+		t.Fatal("expected errors for empty glob and cycle")
+	}
+	// Walk the chain to check all errors are present.
+	var allMsgs string
+	pwn, ok := err.(*ParseErrorWithNext)
+	for ok && pwn != nil {
+		allMsgs += pwn.Error()
+		if pwn.Next == nil {
+			break
+		}
+		pwn, ok = pwn.Next.(*ParseErrorWithNext)
+	}
+	if !strings.Contains(allMsgs, "empty glob") {
+		t.Fatalf("expected empty glob error, got: %q", allMsgs)
+	}
+	if !strings.Contains(allMsgs, "cycle detected") {
+		t.Fatalf("expected cycle error, got: %q", allMsgs)
+	}
+}
+
+func TestCheckCycles_SelfCycle(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  a["a/&ast;&ast;"]` + "\n" +
+		`  a --> a` + "\n" +
+		"```\n"
+
+	_, err := (&MermaidRepository{}).Load(md)
+	if err == nil {
+		t.Fatal("expected error for self-cycle")
+	}
+	// Self-cycles are caught at parse time before cycle detection.
+	if got := err.Error(); !strings.Contains(got, "same node") {
+		t.Fatalf("expected same-node error, got: %q", got)
+	}
+}
