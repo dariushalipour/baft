@@ -36,8 +36,11 @@ var checkUsageMD string
 //go:embed docs/draft-usage.md
 var draftUsageMD string
 
-//go:embed docs/spec.md
-var specMD string
+//go:embed docs/manual.md
+var manualMD string
+
+//go:embed docs/help-intro.md
+var helpIntroMD string
 
 func main() {
 	args := os.Args[1:]
@@ -58,6 +61,8 @@ func main() {
 		runCheck(args[1:])
 	case "draft":
 		runDraft(args[1:])
+	case "manual":
+		runManual(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\nRun 'baft --help' for usage\n", args[0])
 		os.Exit(1)
@@ -209,10 +214,29 @@ func runDraft(args []string) {
 	}
 }
 
+func runManual(args []string) {
+	for _, a := range args {
+		switch a {
+		case "--help", "-h":
+			printManual()
+			os.Exit(0)
+		default:
+			fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft manual' for the BAFT.md manual\n", a)
+			os.Exit(1)
+		}
+	}
+
+	printManual()
+}
+
 func printUsage() {
-	fmt.Print(specMD)
+	fmt.Print(helpIntroMD)
 	fmt.Println()
 	fmt.Print(usageMD)
+}
+
+func printManual() {
+	fmt.Print(manualMD)
 }
 
 func printCheckUsage() {

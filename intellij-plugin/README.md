@@ -1,66 +1,65 @@
 # BAFT for IntelliJ
 
-Architecture violation diagnostics powered by the [BAFT](https://github.com/dariushalipour/baft) CLI.
+Fast, multilingual architecture enforcement from Mermaid diagrams, surfaced directly in IntelliJ.
 
-Violations appear as red squiggles in the editor and as entries in the Problems tool window — no configuration required beyond having `baft` installed.
+This plugin does not implement architecture rules itself. It runs the [BAFT](https://github.com/dariushalipour/baft) CLI, reads its diagnostics, and turns violations into editor annotations.
 
----
+## What You Get
+
+- Automatic diagnostics for projects that have a `BAFT.md`
+- Live updates while you type, including unsaved files
+- No plugin-specific architecture logic or duplicate rule system
+- The CLI stays the single source of truth
 
 ## Requirements
 
-- **IntelliJ IDEA** 2024.1+ (or any IntelliJ-based IDE)
-- **`baft` CLI** installed and available in your `PATH`
+- IntelliJ IDEA 2024.1+ or another IntelliJ-based IDE
+- `baft` installed and available in `PATH`
 
----
-
-## Install the CLI
+## Install BAFT
 
 ```bash
 go install github.com/dariushalipour/baft@latest
 ```
 
-This places the `baft` binary in your Go bin directory (usually `$HOME/go/bin`).
+That usually installs `baft` into `$HOME/go/bin`.
 
-### Make sure `baft` is in your PATH
+If needed, add it to `PATH`.
 
-Add the Go bin directory to your shell's `PATH` if you haven't already.
-
-**zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
+For `zsh` or `bash`:
 
 ```bash
 export PATH="$HOME/go/bin:$PATH"
 ```
 
-**fish** — add to `~/.config/fish/config.fish`:
+For `fish`:
 
 ```fish
 fish_add_path $HOME/go/bin
 ```
 
-Then reload your shell or open a new terminal and verify:
+Then verify:
 
 ```bash
 baft --version
 ```
 
----
+## How It Works
 
-## How it works
+The plugin runs:
 
-The plugin uses IntelliJ's `ExternalAnnotator` pipeline to run `baft check --reporter=intellij .` from the project root. When there are unsaved files in the project, it adds `--overlay-stdin` and streams the current in-memory document contents to the CLI so diagnostics stay live while you type.
+```bash
+baft check --reporter=intellij .
+```
 
-The plugin parses the JSON output and publishes annotations. No architecture logic lives in the plugin — the CLI is the single source of truth.
-
----
+When a file is unsaved, the plugin adds `--overlay-stdin` and streams the current in-memory document contents to the CLI. That keeps diagnostics aligned with what is on screen, not just what is on disk.
 
 ## Usage
 
-Open any project that has a `BAFT.md` manifest. Violations appear automatically as red squiggles and refresh as you edit. Click any squiggle to see the rule name and message; the Problems tool window lists all violations across the project.
-
----
+Open a project that contains a supported module and a `BAFT.md`. Violations appear automatically as annotations in the editor and as entries in the Problems tool window.
 
 ## Troubleshooting
 
 **"BAFT: binary not found in PATH"**
 
-The plugin cannot find `baft`. Install it with `go install` (see above) and ensure `$HOME/go/bin` is in your `PATH`. If you installed it elsewhere, add that directory to `PATH` instead.
+The plugin cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.

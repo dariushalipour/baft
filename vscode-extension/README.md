@@ -1,66 +1,65 @@
 # BAFT for VS Code
 
-Architecture violation diagnostics powered by the [BAFT](https://github.com/dariushalipour/baft) CLI.
+Fast, multilingual architecture enforcement from Mermaid diagrams, surfaced directly in VS Code.
 
-Violations appear as red squiggles in the editor and as entries in the Problems panel — no configuration required beyond having `baft` installed.
+This extension does not implement architecture rules itself. It runs the [BAFT](https://github.com/dariushalipour/baft) CLI, reads its diagnostics, and turns violations into red squiggles and Problems entries.
 
----
+## What You Get
+
+- Automatic diagnostics for projects that have a `BAFT.md`
+- Live updates while you type, including unsaved changes
+- No extension-specific configuration
+- The CLI stays the single source of truth
 
 ## Requirements
 
-- **VS Code** 1.85+
-- **`baft` CLI** installed and available in your `PATH`
+- VS Code 1.85+
+- `baft` installed and available in `PATH`
 
----
-
-## Install the CLI
+## Install BAFT
 
 ```bash
 go install github.com/dariushalipour/baft@latest
 ```
 
-This places the `baft` binary in your Go bin directory (usually `$HOME/go/bin`).
+That usually installs `baft` into `$HOME/go/bin`.
 
-### Make sure `baft` is in your PATH
+If needed, add it to `PATH`.
 
-Add the Go bin directory to your shell's `PATH` if you haven't already.
-
-**zsh / bash** — add to `~/.zshrc` or `~/.bashrc`:
+For `zsh` or `bash`:
 
 ```bash
 export PATH="$HOME/go/bin:$PATH"
 ```
 
-**fish** — add to `~/.config/fish/config.fish`:
+For `fish`:
 
 ```fish
 fish_add_path $HOME/go/bin
 ```
 
-Then reload your shell or open a new terminal and verify:
+Then verify:
 
 ```bash
 baft --version
 ```
 
----
+## How It Works
 
-## How it works
+On save, and shortly after edits stop, the extension runs:
 
-On every save, and 750 ms after edits stop, the extension runs `baft check --reporter=vsce .` from the workspace root. When there are dirty files in that workspace folder, it adds `--overlay-stdin` and streams the current unsaved buffer contents to the CLI so diagnostics stay live while you type.
+```bash
+baft check --reporter=vsce .
+```
 
-The extension parses the JSON output and publishes diagnostics. No architecture logic lives in the extension — the CLI is the single source of truth.
-
----
+When a file is dirty, the extension adds `--overlay-stdin` and streams the current unsaved buffer contents to the CLI. That keeps diagnostics accurate without requiring you to save first.
 
 ## Usage
 
-Open any project that has a `BAFT.md` manifest. Violations appear automatically. No commands to run, no settings to configure.
-
----
+Open a workspace that contains a supported project and a `BAFT.md`. Violations appear automatically in the editor and in the Problems panel.
 
 ## Troubleshooting
 
 **"BAFT: binary not found in PATH"**
 
-The extension cannot find `baft`. Install it with `go install` (see above) and ensure `$HOME/go/bin` is in your `PATH`. If you installed it elsewhere, add that directory to `PATH` instead.
+VS Code cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.

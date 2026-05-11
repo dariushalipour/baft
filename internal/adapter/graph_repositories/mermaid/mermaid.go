@@ -32,11 +32,10 @@ func (e *ParseError) Error() string {
 func (r *MermaidRepository) Save(g *graph.Graph) string {
 	var sb strings.Builder
 
-	sb.WriteString("<!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->\n")
-	sb.WriteString("<!-- Layers & allowed imports are both documentation and enforcement. -->\n")
-	sb.WriteString("<!-- Run `baft` for the complete specification. -->\n")
-	sb.WriteString("<!-- Install: `go install github.com/dariushalipour/baft@latest` -->\n")
-	sb.WriteString("<!-- (ensure ~/go/bin is in your PATH) -->\n")
+	sb.WriteString("<!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->\n")
+	sb.WriteString("<!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->\n")
+	sb.WriteString("<!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->\n")
+	sb.WriteString("<!-- Check this contract with `baft check .` -->\n")
 	sb.WriteString("\n")
 	sb.WriteString("```mermaid\n")
 	sb.WriteString("flowchart TD\n")

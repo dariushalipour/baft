@@ -3,6 +3,7 @@ Usage: baft <command> [arguments]
 Commands:
   check [flags] [root-dir]   Check packages for architecture violations
   draft [root-dir]           Generate BAFT.md from current dependency reality
+  manual                     Print the BAFT.md manual for working in BAFT-governed code
 
 Flags:
   --version, -v               Print version

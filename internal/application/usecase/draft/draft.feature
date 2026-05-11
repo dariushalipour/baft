@@ -55,11 +55,10 @@ Feature: Draft BAFT.md from actual imports
       """
     And "services/BAFT.md" is expected to have content:
       """config
-      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
-      <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `baft` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
-      <!-- (ensure ~/go/bin is in your PATH) -->
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
       
       ```mermaid
       flowchart TD
@@ -69,11 +68,10 @@ Feature: Draft BAFT.md from actual imports
       """
     And "libs/BAFT.md" is expected to have content:
       """config
-      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
-      <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `baft` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
-      <!-- (ensure ~/go/bin is in your PATH) -->
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
       
       ```mermaid
       flowchart TD
@@ -141,11 +139,10 @@ Feature: Draft BAFT.md from actual imports
     And capsule 1 has 2 edges
     And "BAFT.md" is expected to have content:
       """config
-      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
-      <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `baft` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
-      <!-- (ensure ~/go/bin is in your PATH) -->
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
       
       ```mermaid
       flowchart TD
@@ -229,11 +226,10 @@ Feature: Draft BAFT.md from actual imports
     And capsule 1 has 2 files scanned
     And "BAFT.md" is expected to have content:
       """config
-      <!-- BAFT — Architecture Contract: Human-maintained. Edit this file to change rules. -->
-      <!-- Layers & allowed imports are both documentation and enforcement. -->
-      <!-- Run `baft` for the complete specification. -->
-      <!-- Install: `go install github.com/dariushalipour/baft@latest` -->
-      <!-- (ensure ~/go/bin is in your PATH) -->
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
       
       ```mermaid
       flowchart TD
