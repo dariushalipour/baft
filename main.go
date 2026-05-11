@@ -14,6 +14,7 @@ import (
 	"github.com/dariushalipour/strata/internal/adapter/languages/kotlin"
 	"github.com/dariushalipour/strata/internal/adapter/languages/rust"
 	"github.com/dariushalipour/strata/internal/adapter/languages/typescript"
+	"github.com/dariushalipour/strata/internal/adapter/reporters/intellijreporter"
 	"github.com/dariushalipour/strata/internal/adapter/reporters/jsonreporter"
 	"github.com/dariushalipour/strata/internal/adapter/reporters/textreporter"
 	"github.com/dariushalipour/strata/internal/adapter/reporters/vscereporter"
@@ -90,7 +91,7 @@ func runCheck(args []string) {
 		root = "."
 	}
 
-	if reporterName != "text" && reporterName != "json" && reporterName != "vsce" {
+	if reporterName != "text" && reporterName != "json" && reporterName != "vsce" && reporterName != "intellij" {
 		fmt.Fprintf(os.Stderr, "unknown reporter: %s\n\nRun 'strata check --help' for usage\n", reporterName)
 		os.Exit(1)
 	}
@@ -123,6 +124,8 @@ func runCheck(args []string) {
 		renderer = &jsonreporter.JSONRenderer{}
 	case "vsce":
 		renderer = &vscereporter.VSCERenderer{}
+	case "intellij":
+		renderer = &intellijreporter.IntelliJRenderer{}
 	default:
 		renderer = &textreporter.TextRenderer{}
 	}

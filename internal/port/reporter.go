@@ -15,6 +15,7 @@ type Violation struct {
 	Line      int    `json:"line"`
 	Column    int    `json:"column"`
 	ColumnEnd int    `json:"columnEnd,omitempty"`
+	LineEnd   int    `json:"lineEnd,omitempty"`
 }
 
 // CheckResultRenderer renders a RunResult to a string.

@@ -28,10 +28,13 @@ func (r *TextRenderer) Render(result *port.CheckResult) string {
 	}
 
 	for _, c := range result.Capsules {
-		if len(c.Violations) > 0 {
+		if len(c.Violations) > 0 || len(c.Errors) > 0 {
 			out += red("✗ "+c.Label) + "\n"
 			for _, v := range c.Violations {
 				out += "    " + v.Message + "\n"
+			}
+			for _, e := range c.Errors {
+				out += "    " + e.Message + "\n"
 			}
 		} else {
 			out += green("✓ "+c.Label) + "\n"

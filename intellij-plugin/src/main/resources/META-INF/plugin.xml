@@ -1,0 +1,28 @@
+<idea-plugin>
+    <id>com.strata.intellij</id>
+    <name>STRATA</name>
+    <version>0.1.0</version>
+    <vendor>dariushalipour</vendor>
+
+    <description>
+        Surfaces STRATA architecture violations as editor diagnostics (red squiggles and Problems view entries).
+        Requires the strata CLI to be installed and available in PATH.
+    </description>
+
+    <idea-version since-build="241"/>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <notificationGroup id="STRATA" displayType="BALLOON"/>
+        <externalAnnotator
+            language=""
+            implementationClass="com.strata.intellij.StrataAnnotator"/>
+    </extensions>
+
+    <applicationListeners>
+        <listener
+            class="com.strata.intellij.StrataSaveListener"
+            topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+    </applicationListeners>
+</idea-plugin>
