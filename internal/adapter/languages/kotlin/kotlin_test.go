@@ -209,7 +209,7 @@ func TestHasBuildScript(t *testing.T) {
 
 	// Empty dir should not have a package
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	entries, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +317,7 @@ func TestDiscover(t *testing.T) {
 	fs.WriteFile("/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example/domain\"]\n```\n"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	entries, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -331,7 +331,7 @@ func TestDiscover(t *testing.T) {
 
 	// No BAFT.md — should still be discovered
 	disco2 := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco2)
+	Language{}.Register(disco2)
 	fs2 := memfs.New()
 	fs2.WriteFile("/src/main/kotlin/com/example/domain/Model.kt", []byte("package com.example.domain\nclass Model"), 0o644)
 	fs2.WriteFile("/src/main/kotlin/com/example/api/Controller.kt", []byte("package com.example.api\nclass Controller"), 0o644)
@@ -346,7 +346,7 @@ func TestDiscover(t *testing.T) {
 
 	// Legacy build.gradle
 	disco3 := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco3)
+	Language{}.Register(disco3)
 	fs3 := memfs.New()
 	fs3.WriteFile("/src/main/kotlin/com/example/domain/Model.kt", []byte("package com.example.domain\nclass Model"), 0o644)
 	fs3.WriteFile("/src/main/kotlin/com/example/api/Controller.kt", []byte("package com.example.api\nclass Controller"), 0o644)
@@ -371,7 +371,7 @@ func TestDiscover_SkipsBuildDirs(t *testing.T) {
 	fs.WriteFile("/build/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	entries, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -391,7 +391,7 @@ func TestDiscoverDraft_MultiModuleWithRoot(t *testing.T) {
 	fs.WriteFile("/module-c/build.gradle.kts", nil, 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	entries, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -423,7 +423,7 @@ func TestDiscoverDraft_RootProjectNoSource(t *testing.T) {
 	fs.WriteFile("/core/build.gradle.kts", nil, 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	entries, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -445,13 +445,33 @@ func TestDiscover_SkipsKotlinCache(t *testing.T) {
 	fs.WriteFile("/.kotlin/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example\"]\n```\n"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	entries, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(entries) != 1 {
 		t.Fatalf("got %d packages, want 1 (.kotlin dir should be skipped)", len(entries))
+	}
+}
+
+func TestSkipDirs(t *testing.T) {
+	l := Language{}
+	skip := l.SkipDirs()
+	if len(skip) != 2 {
+		t.Errorf("expected 2 skip dirs, got %d", len(skip))
+	}
+	for _, dir := range []string{"build", ".kotlin"} {
+		found := false
+		for _, s := range skip {
+			if s == dir {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in skip dirs", dir)
+		}
 	}
 }
 

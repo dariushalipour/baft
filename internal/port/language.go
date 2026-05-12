@@ -25,6 +25,8 @@ type Language interface {
 	ParseImports(fileSystem FileSystem, absPath string) ([]ImportSpec, error)
 	ResolveInternalTarget(fileSystem FileSystem, spec ImportSpec, c Capsule, fileRel string) (targetDir string, internal bool)
 	SupportsFileGlobs() bool
+	SkipDirs() []string
+	Register(d CapsuleDiscovery)
 }
 
 // ParsedImports caches the result of ParseImports for a given file path.
@@ -33,19 +35,27 @@ type ParsedImports struct {
 	Hash    string
 }
 
+// ManifestInfo describes how to find and parse a build manifest for a language.
+type ManifestInfo struct {
+	// Names are the file names to look for (e.g. ["go.mod"], ["build.gradle.kts", "build.gradle"]).
+	Names []string
+	// ParseFunc reads a manifest file and extracts the capsule identifier.
+	ParseFunc func(fsys FileSystem, path string) (string, error)
+}
+
+// CapsuleDiscovery is the minimal interface needed for language registration.
+// It is implemented by service.CapsuleDiscovery to avoid circular imports.
+type CapsuleDiscovery interface {
+	Register(name string, info ManifestInfo)
+	RegisterSkipDirs(langName string, skipDirs []string)
+}
+
 // ShouldSkipDir returns true for directory names that should never be
-// walked during package discovery (build artifacts, dependencies, etc.).
+// walked during package discovery. Language-specific dirs are delegated to
+// each language's SkipDirs() method. Only global/common dirs remain here.
 func ShouldSkipDir(name string) bool {
 	switch name {
 	case ".git", ".hg", ".svn":
-		return true
-	case "node_modules", "vendor", ".venv", "venv":
-		return true
-	case "build", "dist", "out", "target", ".next", ".kotlin":
-		return true
-	case ".dart_tool", ".pub", ".nuxt", ".svelte-kit":
-		return true
-	case "__pycache__", ".pytest_cache", ".tox":
 		return true
 	case ".idea", ".vscode", ".vs":
 		return true

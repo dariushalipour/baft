@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -156,9 +155,9 @@ func isInternalCapsule(spec, basePkg string) bool {
 }
 
 func (Language) SupportsFileGlobs() bool { return false }
-
-func RegisterDiscovery(d *service.CapsuleDiscovery) {
-	d.Register("kotlin", service.ManifestInfo{
+func (Language) SkipDirs() []string      { return []string{"build", ".kotlin"} }
+func (Language) Register(d port.CapsuleDiscovery) {
+	d.Register("kotlin", port.ManifestInfo{
 		Names: []string{"build.gradle.kts", "build.gradle"},
 		ParseFunc: func(fsys port.FileSystem, path string) (string, error) {
 			// ParseFunc only needs the directory containing the manifest.
@@ -167,6 +166,7 @@ func RegisterDiscovery(d *service.CapsuleDiscovery) {
 			return findBaseCapsule(fsys, dir)
 		},
 	})
+	d.RegisterSkipDirs("kotlin", Language{}.SkipDirs())
 }
 
 func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {

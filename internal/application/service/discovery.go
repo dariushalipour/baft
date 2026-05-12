@@ -8,21 +8,6 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-// ManifestInfo describes how to find and parse a build manifest for a language.
-type ManifestInfo struct {
-	// Names are the file names to look for (e.g. ["go.mod"], ["build.gradle.kts", "build.gradle"]).
-	Names []string
-	// ParseFunc reads a manifest file and extracts the capsule identifier.
-	// It returns an empty string when the manifest is valid but has no capsule ID
-	// (e.g. a package.json without a "name" field). In that case the caller
-	// may choose to skip the capsule entirely.
-	// If ParseFunc returns a non-empty capsule ID alongside an error, the error
-	// is ignored and the capsule is included (this accommodates parsers like
-	// Kotlin's findBaseCapsule that return errors for edge cases but still
-	// produce a valid capsule ID).
-	ParseFunc func(fsys port.FileSystem, path string) (string, error)
-}
-
 // CapsuleEntry is a capsule discovered by the discovery service, paired with
 // the language name it belongs to.
 type CapsuleEntry struct {
@@ -35,19 +20,34 @@ type CapsuleEntry struct {
 // duplicated across language adapters. Each language registers with it by
 // providing manifest file names and a parser function.
 type CapsuleDiscovery struct {
-	manifests map[string]ManifestInfo // lang name -> manifest info
+	manifests map[string]port.ManifestInfo // lang name -> manifest info
+	skipDirs  map[string]bool              // aggregated skip directories from all registered languages
 }
 
 // NewCapsuleDiscovery returns a new CapsuleDiscovery instance.
 func NewCapsuleDiscovery() *CapsuleDiscovery {
 	return &CapsuleDiscovery{
-		manifests: make(map[string]ManifestInfo),
+		manifests: make(map[string]port.ManifestInfo),
+		skipDirs:  make(map[string]bool),
 	}
 }
 
 // Register adds a language's manifest info to the discovery service.
-func (d *CapsuleDiscovery) Register(name string, info ManifestInfo) {
+func (d *CapsuleDiscovery) Register(name string, info port.ManifestInfo) {
 	d.manifests[name] = info
+}
+
+// RegisterSkipDirs adds language-specific directories to skip during discovery.
+func (d *CapsuleDiscovery) RegisterSkipDirs(langName string, skipDirs []string) {
+	for _, dir := range skipDirs {
+		d.skipDirs[dir] = true
+	}
+	_ = langName
+}
+
+// SkipDirs returns the aggregated set of directories to skip during discovery.
+func (d *CapsuleDiscovery) SkipDirs() map[string]bool {
+	return d.skipDirs
 }
 
 // checkManifest attempts to find and parse a manifest file in the given directory.

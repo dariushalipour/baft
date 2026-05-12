@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -198,12 +197,13 @@ func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec
 }
 
 func (Language) SupportsFileGlobs() bool { return false }
-
-func RegisterDiscovery(d *service.CapsuleDiscovery) {
-	d.Register("rust", service.ManifestInfo{
+func (Language) SkipDirs() []string      { return []string{"target"} }
+func (Language) Register(d port.CapsuleDiscovery) {
+	d.Register("rust", port.ManifestInfo{
 		Names:     []string{"Cargo.toml"},
 		ParseFunc: readCargoToml,
 	})
+	d.RegisterSkipDirs("rust", Language{}.SkipDirs())
 }
 
 func readCargoToml(fsys port.FileSystem, path string) (string, error) {

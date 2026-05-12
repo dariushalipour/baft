@@ -76,8 +76,9 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			w.Workspace.FSys = steps.BuildFS(w.GetWorkspace())
 
 			discovery := service.NewCapsuleDiscovery()
-			golang.RegisterDiscovery(discovery)
-			typescript.RegisterDiscovery(discovery)
+			for _, lang := range w.Workspace.Langs {
+				lang.Register(discovery)
+			}
 
 			result, runErr := RunWith(w.Workspace.FSys, rootDir, w.Workspace.Langs, &mermaid.MermaidRepository{}, discovery, &w.logBuf)
 			if runErr != nil {
@@ -258,3 +259,7 @@ func (l *langWithMissingFiles) ResolveInternalTarget(fsys port.FileSystem, spec 
 	return l.base.ResolveInternalTarget(fsys, spec, c, rel)
 }
 func (l *langWithMissingFiles) SupportsFileGlobs() bool { return l.base.SupportsFileGlobs() }
+func (l *langWithMissingFiles) SkipDirs() []string      { return l.base.SkipDirs() }
+func (l *langWithMissingFiles) Register(d port.CapsuleDiscovery) {
+	l.base.Register(d)
+}

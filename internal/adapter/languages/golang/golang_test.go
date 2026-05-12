@@ -208,3 +208,11 @@ func TestReadGoModulePath(t *testing.T) {
 		})
 	}
 }
+
+func TestSkipDirs(t *testing.T) {
+	l := Language{}
+	skip := l.SkipDirs()
+	if len(skip) != 1 || skip[0] != "vendor" {
+		t.Errorf("expected SkipDirs() = [\"vendor\"], got %v", skip)
+	}
+}

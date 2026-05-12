@@ -6,7 +6,6 @@ import (
 	"go/token"
 	"strings"
 
-	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -63,12 +62,13 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 }
 
 func (Language) SupportsFileGlobs() bool { return false }
-
-func RegisterDiscovery(d *service.CapsuleDiscovery) {
-	d.Register("go", service.ManifestInfo{
+func (Language) SkipDirs() []string      { return []string{"vendor"} }
+func (Language) Register(d port.CapsuleDiscovery) {
+	d.Register("go", port.ManifestInfo{
 		Names:     []string{"go.mod"},
 		ParseFunc: readGoModulePath,
 	})
+	d.RegisterSkipDirs("go", Language{}.SkipDirs())
 }
 
 func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {

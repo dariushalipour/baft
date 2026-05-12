@@ -97,7 +97,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 		{
 			name: "no manifest in the tree yields no capsules",
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
 			},
 			root:  "/root",
 			wantN: 0,
@@ -111,7 +111,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/go.mod": "module example.com/root",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
 			},
 			root:  "/root",
 			wantN: 1,
@@ -133,7 +133,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/sub/go.mod": "module example.com/sub",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
 			},
 			root:  "/root",
 			wantN: 1,
@@ -157,7 +157,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/subdir/.gitkeep": "",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
 			},
 			root:  "/root/subdir",
 			wantN: 1,
@@ -185,7 +185,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/c/go.mod": "module example.com/c",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
 			},
 			root:  "/root",
 			wantN: 3,
@@ -211,7 +211,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/sub/go.mod": "module example.com/sub",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
 			},
 			root:  "/root",
 			wantN: 2,
@@ -225,8 +225,8 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/go.mod": "module example.com/root",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
-				d.Register("dart", ManifestInfo{Names: []string{"pubspec.yaml"}, ParseFunc: parsePubspec})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: goModParser()})
+				d.Register("dart", port.ManifestInfo{Names: []string{"pubspec.yaml"}, ParseFunc: parsePubspec})
 			},
 			root:  "/root",
 			wantN: 1,
@@ -247,7 +247,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/go.mod": "module ",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: emptyParser()})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: emptyParser()})
 			},
 			root:  "/root",
 			wantN: 0,
@@ -261,7 +261,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 				"/root/go.mod": "module ",
 			},
 			register: func(d *CapsuleDiscovery) {
-				d.Register("go", ManifestInfo{Names: []string{"go.mod"}, ParseFunc: errorParser("example.com/capsule")})
+				d.Register("go", port.ManifestInfo{Names: []string{"go.mod"}, ParseFunc: errorParser("example.com/capsule")})
 			},
 			root:  "/root",
 			wantN: 1,
@@ -316,5 +316,42 @@ func TestCapsuleDiscovery(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCapsuleDiscoverySkipDirs(t *testing.T) {
+	d := NewCapsuleDiscovery()
+
+	if len(d.SkipDirs()) != 0 {
+		t.Errorf("expected empty skip dirs initially, got %d", len(d.SkipDirs()))
+	}
+
+	d.RegisterSkipDirs("go", []string{"vendor"})
+	d.RegisterSkipDirs("typescript", []string{"node_modules"})
+	d.RegisterSkipDirs("rust", []string{"target"})
+
+	skipDirs := d.SkipDirs()
+	if len(skipDirs) != 3 {
+		t.Errorf("expected 3 skip dirs, got %d", len(skipDirs))
+	}
+	for _, dir := range []string{"vendor", "node_modules", "target"} {
+		if !skipDirs[dir] {
+			t.Errorf("expected %q to be in skip dirs", dir)
+		}
+	}
+
+	d.RegisterSkipDirs("go", []string{"vendor"})
+	if len(d.SkipDirs()) != 3 {
+		t.Errorf("expected 3 skip dirs after duplicate registration, got %d", len(d.SkipDirs()))
+	}
+
+	d.RegisterSkipDirs("dart", []string{".dart_tool", ".pub"})
+	if len(d.SkipDirs()) != 5 {
+		t.Errorf("expected 5 skip dirs after adding dart dirs, got %d", len(d.SkipDirs()))
+	}
+	for _, dir := range []string{".dart_tool", ".pub"} {
+		if !d.SkipDirs()[dir] {
+			t.Errorf("expected %q to be in skip dirs", dir)
+		}
 	}
 }

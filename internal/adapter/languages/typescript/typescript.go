@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -241,12 +240,13 @@ func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string 
 }
 
 func (Language) SupportsFileGlobs() bool { return true }
-
-func RegisterDiscovery(d *service.CapsuleDiscovery) {
-	d.Register("typescript", service.ManifestInfo{
+func (Language) SkipDirs() []string      { return []string{"node_modules"} }
+func (Language) Register(d port.CapsuleDiscovery) {
+	d.Register("typescript", port.ManifestInfo{
 		Names:     []string{"package.json"},
 		ParseFunc: readCapsuleName,
 	})
+	d.RegisterSkipDirs("typescript", Language{}.SkipDirs())
 }
 
 type packageJSON struct {

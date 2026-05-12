@@ -105,3 +105,23 @@ func TestReadPubspecName(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestSkipDirs(t *testing.T) {
+	l := Language{}
+	skip := l.SkipDirs()
+	if len(skip) != 2 {
+		t.Errorf("expected 2 skip dirs, got %d", len(skip))
+	}
+	for _, dir := range []string{".dart_tool", ".pub"} {
+		found := false
+		for _, s := range skip {
+			if s == dir {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in skip dirs", dir)
+		}
+	}
+}

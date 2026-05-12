@@ -12,8 +12,6 @@ import (
 	"github.com/cucumber/godog"
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
-	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
-	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/steps"
 )
@@ -48,8 +46,9 @@ func InitializeScenario(sc *godog.ScenarioContext) {
 			w.Workspace.FSys = steps.BuildFS(w.GetWorkspace())
 
 			discovery := service.NewCapsuleDiscovery()
-			golang.RegisterDiscovery(discovery)
-			typescript.RegisterDiscovery(discovery)
+			for _, lang := range w.Workspace.Langs {
+				lang.Register(discovery)
+			}
 
 			result := Run(w.Workspace.FSys, rootDir, w.Workspace.Langs, &mermaid.MermaidRepository{}, discovery)
 			if result == nil {

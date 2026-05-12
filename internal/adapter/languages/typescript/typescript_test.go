@@ -362,7 +362,7 @@ func TestDiscoverSkipsNamelessPackage(t *testing.T) {
 	fs.WriteFile("/core/BAFT.md", []byte("# Core"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	got, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -387,7 +387,7 @@ func TestDiscoverDraftSkipsNamelessPackage(t *testing.T) {
 	fs.WriteFile("/core/package.json", []byte(`{"name": "@baft/core"}`), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	got, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -410,7 +410,7 @@ func TestDiscoverAllNamelessSkipped(t *testing.T) {
 	}
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	got, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -613,5 +613,13 @@ func TestResolveInternalTarget_JSExtensions(t *testing.T) {
 			t.Errorf("ResolveInternalTarget(%q, file=%q) = (%q, %v), want (%q, %v)",
 				c.spec, c.fileRel, gotPath, gotIntl, c.wantPath, c.wantIntl)
 		}
+	}
+}
+
+func TestSkipDirs(t *testing.T) {
+	l := Language{}
+	skip := l.SkipDirs()
+	if len(skip) != 1 || skip[0] != "node_modules" {
+		t.Errorf("expected SkipDirs() = [\"node_modules\"], got %v", skip)
 	}
 }

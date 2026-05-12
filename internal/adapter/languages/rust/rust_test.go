@@ -516,6 +516,14 @@ func TestSupportsFileGlobs(t *testing.T) {
 	}
 }
 
+func TestSkipDirs(t *testing.T) {
+	l := Language{}
+	skip := l.SkipDirs()
+	if len(skip) != 1 || skip[0] != "target" {
+		t.Errorf("expected SkipDirs() = [\"target\"], got %v", skip)
+	}
+}
+
 func TestDiscover(t *testing.T) {
 	cargoToml := `[package]
 name = "my_crate"
@@ -531,7 +539,7 @@ edition = "2021"
 	fs.WriteFile("/no_cargo/BAFT.md", []byte(baftMd), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	RegisterDiscovery(disco)
+	Language{}.Register(disco)
 	got, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)

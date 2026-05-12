@@ -18,12 +18,27 @@ type FS struct {
 	ignoreCache   map[string]bool
 	repoRoot      string
 	patternsReady bool
+	skipDirs      map[string]bool
 }
 
 // New returns a FileSystem that wraps the real OS file system.
 func New() *FS {
 	return &FS{
 		ignoreCache: make(map[string]bool),
+		skipDirs:    make(map[string]bool),
+	}
+}
+
+// SetSkipDirs sets the set of directories to skip during WalkDir.
+// These are merged with the global defaults from port.ShouldSkipDir.
+func (f *FS) SetSkipDirs(dirs map[string]bool) {
+	f.cacheMu.Lock()
+	defer f.cacheMu.Unlock()
+	if f.skipDirs == nil {
+		f.skipDirs = make(map[string]bool)
+	}
+	for d := range dirs {
+		f.skipDirs[d] = true
 	}
 }
 
@@ -164,8 +179,16 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 		if werr != nil {
 			return werr
 		}
-		if d.IsDir() && port.ShouldSkipDir(d.Name()) {
-			return fs.SkipDir
+		if d.IsDir() {
+			if port.ShouldSkipDir(d.Name()) {
+				return fs.SkipDir
+			}
+			f.cacheMu.RLock()
+			if f.skipDirs[d.Name()] {
+				f.cacheMu.RUnlock()
+				return fs.SkipDir
+			}
+			f.cacheMu.RUnlock()
 		}
 		if f.isIgnored(abs) {
 			if d.IsDir() {

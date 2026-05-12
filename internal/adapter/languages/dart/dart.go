@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -118,12 +117,13 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 }
 
 func (Language) SupportsFileGlobs() bool { return true }
-
-func RegisterDiscovery(d *service.CapsuleDiscovery) {
-	d.Register("dart", service.ManifestInfo{
+func (Language) SkipDirs() []string      { return []string{".dart_tool", ".pub"} }
+func (Language) Register(d port.CapsuleDiscovery) {
+	d.Register("dart", port.ManifestInfo{
 		Names:     []string{"pubspec.yaml"},
 		ParseFunc: readPubspecName,
 	})
+	d.RegisterSkipDirs("dart", Language{}.SkipDirs())
 }
 
 var pubspecNameRe = regexp.MustCompile(`(?m)^name\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$`)

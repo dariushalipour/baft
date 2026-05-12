@@ -119,20 +119,10 @@ func runCheck(args []string) {
 
 	discovery := service.NewCapsuleDiscovery()
 	for _, lang := range languages {
-		switch lang.Name() {
-		case "go":
-			golang.RegisterDiscovery(discovery)
-		case "dart":
-			dart.RegisterDiscovery(discovery)
-		case "kotlin":
-			kotlin.RegisterDiscovery(discovery)
-		case "typescript":
-			typescript.RegisterDiscovery(discovery)
-		case "rust":
-			rust.RegisterDiscovery(discovery)
-		}
+		lang.Register(discovery)
 	}
 
+	fs.(*realfs.FS).SetSkipDirs(discovery.SkipDirs())
 	result := check.Run(fs, root, languages, repo, discovery)
 
 	var renderer port.CheckResultRenderer
@@ -185,20 +175,10 @@ func runDraft(args []string) {
 
 	discovery := service.NewCapsuleDiscovery()
 	for _, lang := range languages {
-		switch lang.Name() {
-		case "go":
-			golang.RegisterDiscovery(discovery)
-		case "dart":
-			dart.RegisterDiscovery(discovery)
-		case "kotlin":
-			kotlin.RegisterDiscovery(discovery)
-		case "typescript":
-			typescript.RegisterDiscovery(discovery)
-		case "rust":
-			rust.RegisterDiscovery(discovery)
-		}
+		lang.Register(discovery)
 	}
 
+	fs.SetSkipDirs(discovery.SkipDirs())
 	result, err := draft.Run(fs, root, languages, repo, discovery)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)

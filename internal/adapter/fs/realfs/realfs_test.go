@@ -106,7 +106,7 @@ func TestDiscoverSkipsGitIgnoredBAFT(t *testing.T) {
 
 	// Use Rust Discover — it should only find api/pkg, not web/pkg
 	disco := service.NewCapsuleDiscovery()
-	rust.RegisterDiscovery(disco)
+	rust.Language{}.Register(disco)
 	entries, err := disco.Discover(fsys, dir)
 	if err != nil {
 		t.Fatalf("Discover error: %v", err)
