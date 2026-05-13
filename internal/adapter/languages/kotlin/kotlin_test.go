@@ -20,7 +20,7 @@ func TestSupportsFileGlobs(t *testing.T) {
 	}
 }
 
-func TestIsGovernedFile(t *testing.T) {
+func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
 		// Main source — kotlin
@@ -86,8 +86,8 @@ func TestIsGovernedFile(t *testing.T) {
 		"gradle/wrapper/gradle-wrapper.kt": false,
 	}
 	for rel, want := range cases {
-		if got := l.IsGovernedFile(rel); got != want {
-			t.Errorf("IsGovernedFile(%q) = %v, want %v", rel, got, want)
+		if got := l.IsScannableFile(rel); got != want {
+			t.Errorf("IsScannableFile(%q) = %v, want %v", rel, got, want)
 		}
 	}
 }
@@ -400,15 +400,15 @@ func TestDiscoverDraft_MultiModuleWithRoot(t *testing.T) {
 		t.Fatalf("got %d packages, want 2 (root and module-c should be skipped)", len(entries))
 	}
 
-	if port.Label(entries[0].Capsule, "/") != entries[0].Capsule.Dir {
-		t.Errorf("pkgs[0] label = %q, want %q", port.Label(entries[0].Capsule, "/"), entries[0].Capsule.Dir)
+	if port.Label(entries[0].Capsule) != entries[0].Capsule.Dir {
+		t.Errorf("pkgs[0] label = %q, want %q", port.Label(entries[0].Capsule), entries[0].Capsule.Dir)
 	}
 	if entries[0].Capsule.CapsuleID != "com.example.a" {
 		t.Errorf("pkgs[0].CapsuleID = %q, want %q", entries[0].Capsule.CapsuleID, "com.example.a")
 	}
 
-	if port.Label(entries[1].Capsule, "/") != entries[1].Capsule.Dir {
-		t.Errorf("pkgs[1] label = %q, want %q", port.Label(entries[1].Capsule, "/"), entries[1].Capsule.Dir)
+	if port.Label(entries[1].Capsule) != entries[1].Capsule.Dir {
+		t.Errorf("pkgs[1] label = %q, want %q", port.Label(entries[1].Capsule), entries[1].Capsule.Dir)
 	}
 	if entries[1].Capsule.CapsuleID != "com.example.b" {
 		t.Errorf("pkgs[1].CapsuleID = %q, want %q", entries[1].Capsule.CapsuleID, "com.example.b")
@@ -431,8 +431,8 @@ func TestDiscoverDraft_RootProjectNoSource(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("got %d packages, want 1", len(entries))
 	}
-	if port.Label(entries[0].Capsule, "/") != entries[0].Capsule.Dir {
-		t.Errorf("pkgs[0] label = %q, want %q", port.Label(entries[0].Capsule, "/"), entries[0].Capsule.Dir)
+	if port.Label(entries[0].Capsule) != entries[0].Capsule.Dir {
+		t.Errorf("pkgs[0] label = %q, want %q", port.Label(entries[0].Capsule), entries[0].Capsule.Dir)
 	}
 }
 
@@ -452,26 +452,6 @@ func TestDiscover_SkipsKotlinCache(t *testing.T) {
 	}
 	if len(entries) != 1 {
 		t.Fatalf("got %d packages, want 1 (.kotlin dir should be skipped)", len(entries))
-	}
-}
-
-func TestSkipDirs(t *testing.T) {
-	l := Language{}
-	skip := l.SkipDirs()
-	if len(skip) != 2 {
-		t.Errorf("expected 2 skip dirs, got %d", len(skip))
-	}
-	for _, dir := range []string{"build", ".kotlin"} {
-		found := false
-		for _, s := range skip {
-			if s == dir {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected %q in skip dirs", dir)
-		}
 	}
 }
 

@@ -48,10 +48,10 @@ Feature: Draft BAFT.md from actual imports
     When the draft runs from "/Users/jane/baft"
     Then the draft succeeds
     And 2 capsules are drafted
-    And 1 error is reported
+    And 1 errors and 0 violations are reported
     And the error is:
       """
-        /Users/jane/baft/empty: capsule at /Users/jane/baft/empty has no governed files to draft
+        /Users/jane/baft/empty: capsule at /Users/jane/baft/empty has no scannable files to draft
       """
     And "services/BAFT.md" is expected to have content:
       """config
@@ -438,5 +438,74 @@ Feature: Draft BAFT.md from actual imports
         shared_slash_utils_dot_ts["shared/utils.ts"]
       
         billing --> shared_slash_utils_dot_ts
+      ```
+      """
+
+  Scenario: Draft ignores files matching .gitignore and .baftignore
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ .gitignore
+      ├─ .baftignore
+      └─ internal/
+         ├─ application/
+         │  ├─ order.go
+         │  ├─ generated.go
+         │  └─ vendor.go
+         └─ domain/
+            └─ model.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file ".gitignore" has content:
+      """ignore
+      internal/application/generated.go
+      """
+    Given file ".baftignore" has content:
+      """ignore
+      internal/application/vendor.go
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+      
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/application/generated.go" has content:
+      """go
+      package application
+      
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/application/vendor.go" has content:
+      """go
+      package application
+      
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/domain/model.go" has content:
+      """go
+      package domain
+      type User struct{}
+      """
+    Given the draft uses the "go" language adapter
+    When the draft runs from "/Users/jane/baft"
+    Then the draft succeeds
+    And 1 capsule is drafted
+    And capsule 1 has 2 files scanned
+    And capsule 1 has 2 nodes
+    And capsule 1 has 1 edge
+    And "BAFT.md" is expected to have content:
+      """config
+      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
+      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
+      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Check this contract with `baft check .` -->
+      
+      ```mermaid
+      flowchart TD
+        internal_slash_application["internal/application/&ast;&ast;"]
+        internal_slash_domain["internal/domain/&ast;&ast;"]
+      
+        internal_slash_application --> internal_slash_domain
       ```
       """

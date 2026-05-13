@@ -8,36 +8,32 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-func TestIsGovernedFile(t *testing.T) {
+func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
-		// Governed
+		// Scannable: any .rs file
 		"src/main.rs":               true,
 		"src/lib.rs":                true,
 		"src/domain/model.rs":       true,
 		"src/api/handler.rs":        true,
 		"src/deep/nested/module.rs": true,
+		"tests/integration.rs":      true,
+		"benches/benchmark.rs":      true,
+		"examples/demo.rs":          true,
+		"build.rs":                  true,
+		"src/bin/cli.rs":            true,
+		"src/examples/demo.rs":      true,
 
-		// Not governed: wrong extension
+		// Not scannable: wrong extension
 		"src/lib.toml":    false,
 		"README.md":       false,
 		"src/config.json": false,
-
-		// Not governed: outside src/
-		"tests/integration.rs": false,
-		"benches/benchmark.rs": false,
-		"examples/demo.rs":     false,
-		"build.rs":             false,
-		"Cargo.toml":           false,
-
-		// Not governed: bins and examples under src/
-		"src/bin/cli.rs":       false,
-		"src/examples/demo.rs": false,
+		"Cargo.toml":      false,
 	}
 	for rel, want := range cases {
 		t.Run(rel, func(t *testing.T) {
-			if got := l.IsGovernedFile(rel); got != want {
-				t.Errorf("IsGovernedFile(%q) = %v, want %v", rel, got, want)
+			if got := l.IsScannableFile(rel); got != want {
+				t.Errorf("IsScannableFile(%q) = %v, want %v", rel, got, want)
 			}
 		})
 	}
@@ -480,6 +476,21 @@ func TestReadCargoToml(t *testing.T) {
 			content: "",
 			wantErr: true,
 		},
+		{
+			label:   "inline table version",
+			content: "[package]\nname = \"my_crate\"\nversion = { workspace = true }\nedition = \"2021\"\n",
+			want:    "my_crate",
+		},
+		{
+			label:   "inline table with multiple fields",
+			content: "[package]\nname = \"my_crate\"\nversion = \"0.1.0\"\nauthors = { workspace = true }\nedition = \"2021\"\n",
+			want:    "my_crate",
+		},
+		{
+			label:   "name as inline table",
+			content: "[package]\nname = { value = \"my_crate\" }\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+			want:    "my_crate",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
@@ -516,14 +527,6 @@ func TestSupportsFileGlobs(t *testing.T) {
 	}
 }
 
-func TestSkipDirs(t *testing.T) {
-	l := Language{}
-	skip := l.SkipDirs()
-	if len(skip) != 1 || skip[0] != "target" {
-		t.Errorf("expected SkipDirs() = [\"target\"], got %v", skip)
-	}
-}
-
 func TestDiscover(t *testing.T) {
 	cargoToml := `[package]
 name = "my_crate"
@@ -547,10 +550,10 @@ edition = "2021"
 	if len(got) != 2 {
 		t.Fatalf("got %d packages, want 2 (my_crate and other_crate)", len(got))
 	}
-	if port.Label(got[0].Capsule, "/") != got[0].Capsule.Dir {
-		t.Errorf("got label %q, want %q", port.Label(got[0].Capsule, "/"), got[0].Capsule.Dir)
+	if port.Label(got[0].Capsule) != got[0].Capsule.Dir {
+		t.Errorf("got label %q, want %q", port.Label(got[0].Capsule), got[0].Capsule.Dir)
 	}
-	if port.Label(got[1].Capsule, "/") != got[1].Capsule.Dir {
-		t.Errorf("got label %q, want %q", port.Label(got[1].Capsule, "/"), got[1].Capsule.Dir)
+	if port.Label(got[1].Capsule) != got[1].Capsule.Dir {
+		t.Errorf("got label %q, want %q", port.Label(got[1].Capsule), got[1].Capsule.Dir)
 	}
 }

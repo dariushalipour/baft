@@ -352,17 +352,20 @@ func (p *pattern) simpleNameMatch(path []string, isDir bool) bool {
 }
 
 func (p *pattern) globMatch(path []string, isDir bool) bool {
+	path = append(append([]string(nil), path...), "")
+	defer func() { path[len(path)-1] = "" }()
+
 	matched := false
 	canTraverse := false
 	trailingStar := false
-	for i, pattern := range p.pattern {
-		if pattern == "" {
+	for i, pat := range p.pattern {
+		if pat == "" {
 			canTraverse = false
 			continue
 		}
-		if pattern == zeroToManyDirs {
+		if pat == zeroToManyDirs {
 			if i == len(p.pattern)-1 {
-				if len(path) > 0 || isDir {
+				if len(path) > 1 || isDir {
 					matched = true
 					trailingStar = true
 				}
@@ -371,34 +374,48 @@ func (p *pattern) globMatch(path []string, isDir bool) bool {
 			canTraverse = true
 			continue
 		}
-		if len(path) == 0 {
+		if len(path) <= 1 {
 			return false
 		}
 		if canTraverse {
 			canTraverse = false
-			for len(path) > 0 {
+			for len(path) > 1 {
 				e := path[0]
 				path = path[1:]
-				if wildmatch(pattern, e) {
+				if wildmatch(pat, e) {
 					matched = true
 					break
-				} else if len(path) == 0 {
+				} else if len(path) == 1 {
 					matched = false
 				}
 			}
 		} else {
-			if !wildmatch(pattern, path[0]) {
+			if !wildmatch(pat, path[0]) {
 				return false
 			}
 			matched = true
 			path = path[1:]
-			if len(path) == 0 && i < len(p.pattern)-1 {
+			if len(path) == 1 && i < len(p.pattern)-1 {
+				// Check if remaining pattern is only "**" — if so, allow early termination.
+				if !stillHasMore(p.pattern, i) {
+					break
+				}
 				matched = false
 			}
 		}
 	}
-	if matched && p.dirOnly && !isDir && (len(path) == 0 || trailingStar) {
+	if matched && p.dirOnly && !isDir && (len(path) == 1 || trailingStar) {
 		matched = false
 	}
 	return matched
+}
+
+// stillHasMore reports whether p[i+1:] contains any non-empty, non-"**" segments.
+func stillHasMore(p []string, i int) bool {
+	for j := i + 1; j < len(p); j++ {
+		if p[j] != "" && p[j] != zeroToManyDirs {
+			return true
+		}
+	}
+	return false
 }

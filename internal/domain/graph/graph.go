@@ -190,10 +190,8 @@ func (g *Graph) EdgeCount() int {
 
 func (g *Graph) FileGlobNodes() []string {
 	g.ensureNodeInfos()
-	ids := make([]string, 0, len(g.fileNodes))
-	for _, id := range g.fileNodes {
-		ids = append(ids, id)
-	}
+	ids := make([]string, len(g.fileNodes))
+	copy(ids, g.fileNodes)
 	sort.Strings(ids)
 	return ids
 }
@@ -725,8 +723,6 @@ func NewGraph(nodes map[string]string, edges map[string]map[string]bool) *Graph 
 		Classes:   map[string]map[string]bool{},
 		NodeLines: map[string]int{},
 		EdgeLines: map[string]int{},
-		dirCache:  make(map[string]string, len(nodes)),
-		fileCache: make(map[string]string, len(nodes)),
 	}
 
 	for id, glob := range nodes {

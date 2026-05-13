@@ -512,8 +512,7 @@ func checkCycles(g *graph.Graph) error {
 	// Pre-allocate path with capacity for all nodes.
 	path := make([]string, 0, len(g.Nodes))
 	var errs parseErrors
-	var seenCycles map[string]struct{}
-	seenCycles = make(map[string]struct{})
+	seenCycles := make(map[string]struct{})
 	var dfs func(node string)
 	dfs = func(node string) {
 		color[node] = gray

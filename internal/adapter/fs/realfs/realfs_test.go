@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/adapter/languages/rust"
 	"github.com/dariushalipour/baft/internal/application/service"
 )
@@ -28,14 +29,23 @@ func TestStatSkipsGitIgnored(t *testing.T) {
 
 	fsys := New()
 
+	// Wrap with ignorefs to get gitignore behavior
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           dir,
+		BaseIgnoreEntries: map[string]bool{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Not-ignored file should be statable
-	_, err := fsys.Stat(notIgnoredPath)
+	_, err = wrapped.Stat(notIgnoredPath)
 	if err != nil {
 		t.Fatalf("expected not-ignored file to be statable, got: %v", err)
 	}
 
 	// Git-ignored file should NOT be statable
-	_, err = fsys.Stat(ignoredPath)
+	_, err = wrapped.Stat(ignoredPath)
 	if !os.IsNotExist(err) {
 		t.Fatalf("expected git-ignored file to return ErrNotExist, got: %v", err)
 	}
@@ -50,12 +60,21 @@ func TestReadFileSkipsGitIgnored(t *testing.T) {
 
 	fsys := New()
 
-	_, err := fsys.ReadFile(filepath.Join(dir, "visible.txt"))
+	// Wrap with ignorefs to get gitignore behavior
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           dir,
+		BaseIgnoreEntries: map[string]bool{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = wrapped.ReadFile(filepath.Join(dir, "visible.txt"))
 	if err != nil {
 		t.Fatalf("expected visible file to be readable, got: %v", err)
 	}
 
-	_, err = fsys.ReadFile(filepath.Join(dir, "ignored.txt"))
+	_, err = wrapped.ReadFile(filepath.Join(dir, "ignored.txt"))
 	if !os.IsNotExist(err) {
 		t.Fatalf("expected git-ignored file to return ErrNotExist, got: %v", err)
 	}
@@ -70,8 +89,17 @@ func TestWalkDirSkipsGitIgnored(t *testing.T) {
 
 	fsys := New()
 
+	// Wrap with ignorefs to get gitignore behavior
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           dir,
+		BaseIgnoreEntries: map[string]bool{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	seen := make(map[string]bool)
-	_ = fsys.WalkDir(dir, func(abs string, d fs.DirEntry) error {
+	_ = wrapped.WalkDir(dir, func(abs string, d fs.DirEntry) error {
 		seen[abs] = true
 		return nil
 	})
@@ -104,10 +132,19 @@ func TestDiscoverSkipsGitIgnoredBAFT(t *testing.T) {
 
 	fsys := New()
 
+	// Wrap with ignorefs to get gitignore behavior
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           dir,
+		BaseIgnoreEntries: map[string]bool{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	// Use Rust Discover — it should only find api/pkg, not web/pkg
 	disco := service.NewCapsuleDiscovery()
 	rust.Language{}.Register(disco)
-	entries, err := disco.Discover(fsys, dir)
+	entries, err := disco.Discover(wrapped, dir)
 	if err != nil {
 		t.Fatalf("Discover error: %v", err)
 	}

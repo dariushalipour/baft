@@ -9,27 +9,32 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-func TestIsGovernedFile(t *testing.T) {
+func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
+		// .ts and .tsx are scannable
 		"src/app.ts":                true,
 		"src/components/Button.tsx": true,
-		"src/lib/utils/format.ts":   true,
-		"src/models/user.d.ts":      false,
-		"src/models/user.d.tsx":     false,
-		"src/app.test.ts":           false,
-		"src/app.spec.ts":           false,
-		"src/app.test.tsx":          false,
-		"src/app.spec.tsx":          false,
-		"test/some.test.ts":         false,
-		"bin/cli.ts":                true,
-		"src/app.md":                false,
 		"src/deep/nested/ok.tsx":    true,
 		"src/sub/module/index.ts":   true,
+		"src/app.test.ts":           true,
+		"src/app.spec.ts":           true,
+		"src/app.test.tsx":          true,
+		"src/app.spec.tsx":          true,
+
+		// .d.ts / .d.tsx declaration files are also scannable
+		"src/models/user.d.ts":  true,
+		"src/models/user.d.tsx": true,
+
+		// .js, .jsx, .json and everything else are not scannable
+		"src/app.js":   false,
+		"src/app.jsx":  false,
+		"src/app.json": false,
+		"src/app.md":   false,
 	}
 	for rel, want := range cases {
-		if got := l.IsGovernedFile(rel); got != want {
-			t.Errorf("IsGovernedFile(%q) = %v, want %v", rel, got, want)
+		if got := l.IsScannableFile(rel); got != want {
+			t.Errorf("IsScannableFile(%q) = %v, want %v", rel, got, want)
 		}
 	}
 }
@@ -48,7 +53,7 @@ import axios from 'axios';
 `
 	fs := memfs.New()
 	fs.WriteFile("/sample.ts", []byte(src), 0o644)
-	got, err := Language{}.ParseImports(fs, "/sample.ts")
+	got, err := (&Language{}).ParseImports(fs, "/sample.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +119,7 @@ import Foo = require('./import-require');
 `
 	fs := memfs.New()
 	fs.WriteFile("/sample.ts", []byte(src), 0o644)
-	got, err := Language{}.ParseImports(fs, "/sample.ts")
+	got, err := (&Language{}).ParseImports(fs, "/sample.ts")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +173,7 @@ import Foo = require('./import-require');
 }
 
 func TestResolveInternalTarget(t *testing.T) {
-	l := Language{}
+	l := &Language{}
 
 	t.Run("relative imports", func(t *testing.T) {
 		capsule := port.Capsule{CapsuleID: "@baft/app"}
@@ -217,9 +222,8 @@ func TestResolveInternalTarget(t *testing.T) {
 }
 
 func TestResolveInternalTargetWithTsconfig(t *testing.T) {
-	l := Language{}
-
 	t.Run("paths with baseUrl", func(t *testing.T) {
+		l := &Language{}
 		tsconfig := `{
 			"compilerOptions": {
 				"baseUrl": "src",
@@ -256,6 +260,7 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 	})
 
 	t.Run("paths without baseUrl", func(t *testing.T) {
+		l := &Language{}
 		tsconfig := `{
 			"compilerOptions": {
 				"paths": {
@@ -274,6 +279,7 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 	})
 
 	t.Run("extends parent tsconfig", func(t *testing.T) {
+		l := &Language{}
 		parentTsconfig := `{
 			"compilerOptions": {
 				"baseUrl": ".",
@@ -295,7 +301,6 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 		fs.WriteFile("/tsconfig.json", []byte(childTsconfig), 0o644)
 
 		capsule := port.Capsule{CapsuleID: "my-app", Dir: "/"}
-		l := Language{}
 
 		gotPath, gotIntl := l.ResolveInternalTarget(fs, port.ImportSpec{Path: "@src/lib/utils"}, capsule, "src/app.ts")
 		if gotPath != "src/lib/utils" || !gotIntl {
@@ -309,6 +314,7 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 	})
 
 	t.Run("no tsconfig falls back to package name", func(t *testing.T) {
+		l := &Language{}
 		capsule := port.Capsule{CapsuleID: "@my/app", Dir: "/"}
 
 		gotPath, gotIntl := l.ResolveInternalTarget(memfs.New(), port.ImportSpec{Path: "@my/app/lib/utils"}, capsule, "src/app.ts")
@@ -362,7 +368,7 @@ func TestDiscoverSkipsNamelessPackage(t *testing.T) {
 	fs.WriteFile("/core/BAFT.md", []byte("# Core"), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	Language{}.Register(disco)
+	(&Language{}).Register(disco)
 	got, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -372,8 +378,8 @@ func TestDiscoverSkipsNamelessPackage(t *testing.T) {
 		t.Fatalf("expected 1 package, got %d", len(got))
 	}
 
-	if port.Label(got[0].Capsule, "/") != got[0].Capsule.Dir {
-		t.Errorf("expected label %q, got %q", got[0].Capsule.Dir, port.Label(got[0].Capsule, "/"))
+	if port.Label(got[0].Capsule) != got[0].Capsule.Dir {
+		t.Errorf("expected label %q, got %q", got[0].Capsule.Dir, port.Label(got[0].Capsule))
 	}
 
 	if got[0].Capsule.CapsuleID != "@baft/core" {
@@ -387,7 +393,7 @@ func TestDiscoverDraftSkipsNamelessPackage(t *testing.T) {
 	fs.WriteFile("/core/package.json", []byte(`{"name": "@baft/core"}`), 0o644)
 
 	disco := service.NewCapsuleDiscovery()
-	Language{}.Register(disco)
+	(&Language{}).Register(disco)
 	got, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -397,8 +403,8 @@ func TestDiscoverDraftSkipsNamelessPackage(t *testing.T) {
 		t.Fatalf("expected 1 package, got %d", len(got))
 	}
 
-	if port.Label(got[0].Capsule, "/") != got[0].Capsule.Dir {
-		t.Errorf("expected label %q, got %q", got[0].Capsule.Dir, port.Label(got[0].Capsule, "/"))
+	if port.Label(got[0].Capsule) != got[0].Capsule.Dir {
+		t.Errorf("expected label %q, got %q", got[0].Capsule.Dir, port.Label(got[0].Capsule))
 	}
 }
 
@@ -410,7 +416,7 @@ func TestDiscoverAllNamelessSkipped(t *testing.T) {
 	}
 
 	disco := service.NewCapsuleDiscovery()
-	Language{}.Register(disco)
+	(&Language{}).Register(disco)
 	got, err := disco.Discover(fs, "/")
 	if err != nil {
 		t.Fatal(err)
@@ -585,7 +591,7 @@ func TestResolveInternalTarget_JSExtensions(t *testing.T) {
 	}
 
 	capsule := port.Capsule{CapsuleID: "cojajs-coja", Dir: "/"}
-	l := Language{}
+	l := &Language{}
 
 	cases := []struct {
 		spec     string
@@ -613,13 +619,5 @@ func TestResolveInternalTarget_JSExtensions(t *testing.T) {
 			t.Errorf("ResolveInternalTarget(%q, file=%q) = (%q, %v), want (%q, %v)",
 				c.spec, c.fileRel, gotPath, gotIntl, c.wantPath, c.wantIntl)
 		}
-	}
-}
-
-func TestSkipDirs(t *testing.T) {
-	l := Language{}
-	skip := l.SkipDirs()
-	if len(skip) != 1 || skip[0] != "node_modules" {
-		t.Errorf("expected SkipDirs() = [\"node_modules\"], got %v", skip)
 	}
 }

@@ -1,0 +1,16 @@
+Usage: baft check [flags] [root-dir]
+
+Check packages for architecture violations.
+
+Flags:
+  --lang <name>       Language filter (can be repeated): go, typescript, dart, kotlin, rust
+  --reporter=<name>   Output reporter format. Options:
+                        text    Human-readable, colorized terminal output (default)
+                        json    Pretty-printed JSON of the full check result (capsules, violations, warnings, errors)
+                        vsce    Compact JSON array of diagnostics for the VS Code extension
+                        vsce, intellij  Compact JSON array of diagnostics (identical format); the difference is which editor extension consumes it
+  --overlay-stdin     Read an unsaved-file overlay payload from stdin before checking.
+                      The payload is a JSON object of the form `{"files":[{"path":"...","content":"..."}]}`.
+                      Baft uses an in-memory overlay filesystem so that checks are performed against the unsaved (dirty) buffer contents rather than the on-disk version.
+                      This flag is used by the VS Code and IntelliJ editor integrations to pass live file contents.
+  --help, -h          Show this help

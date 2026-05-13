@@ -6,6 +6,10 @@ type Matcher interface {
 	// inclusion or exclusion is found, not further matching is performed.
 	// Returns true if the path is ignored.
 	Match(path []string, isDir bool) bool
+
+	// MatchResult returns the highest-priority match result for the path,
+	// or NoMatch if no pattern matched.
+	MatchResult(path []string, isDir bool) MatchResult
 }
 
 type matcher struct {
@@ -21,10 +25,21 @@ func NewMatcher(ps []Pattern) Matcher {
 }
 
 func (m *matcher) Match(path []string, isDir bool) bool {
+	switch m.MatchResult(path, isDir) {
+	case Exclude:
+		return true
+	case Include:
+		return false
+	default:
+		return false
+	}
+}
+
+func (m *matcher) MatchResult(path []string, isDir bool) MatchResult {
 	for i := len(m.patterns) - 1; i >= 0; i-- {
 		if match := m.patterns[i].Match(path, isDir); match > NoMatch {
-			return match == Exclude
+			return match
 		}
 	}
-	return false
+	return NoMatch
 }

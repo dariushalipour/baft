@@ -5,6 +5,8 @@ A `BAFT.md` file contains one Mermaid flowchart that:
 - defines allowed imports with arrows
 - can mark nodes `:::endophobic` to forbid same-node imports
 
+Files matching `.baftignore` (gitignore syntax) are invisible to Baft entirely.
+
 Typical workflow:
 1. Write `BAFT.md` by hand, or generate a draft with `baft draft .`
 2. Run `baft check .`

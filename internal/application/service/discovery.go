@@ -20,34 +20,29 @@ type CapsuleEntry struct {
 // duplicated across language adapters. Each language registers with it by
 // providing manifest file names and a parser function.
 type CapsuleDiscovery struct {
-	manifests map[string]port.ManifestInfo // lang name -> manifest info
-	skipDirs  map[string]bool              // aggregated skip directories from all registered languages
+	manifests         map[string]port.ManifestInfo // lang name -> manifest info
+	baseIgnoreEntries map[string]bool              // aggregated base ignore entries from all registered languages
 }
 
 // NewCapsuleDiscovery returns a new CapsuleDiscovery instance.
 func NewCapsuleDiscovery() *CapsuleDiscovery {
 	return &CapsuleDiscovery{
-		manifests: make(map[string]port.ManifestInfo),
-		skipDirs:  make(map[string]bool),
+		manifests:         make(map[string]port.ManifestInfo),
+		baseIgnoreEntries: make(map[string]bool),
 	}
 }
 
 // Register adds a language's manifest info to the discovery service.
 func (d *CapsuleDiscovery) Register(name string, info port.ManifestInfo) {
 	d.manifests[name] = info
-}
-
-// RegisterSkipDirs adds language-specific directories to skip during discovery.
-func (d *CapsuleDiscovery) RegisterSkipDirs(langName string, skipDirs []string) {
-	for _, dir := range skipDirs {
-		d.skipDirs[dir] = true
+	for _, dir := range info.BaseIgnoreEntries {
+		d.baseIgnoreEntries[dir] = true
 	}
-	_ = langName
 }
 
-// SkipDirs returns the aggregated set of directories to skip during discovery.
-func (d *CapsuleDiscovery) SkipDirs() map[string]bool {
-	return d.skipDirs
+// BaseIgnoreEntries returns the aggregated set of base ignore entries.
+func (d *CapsuleDiscovery) BaseIgnoreEntries() map[string]bool {
+	return d.baseIgnoreEntries
 }
 
 // checkManifest attempts to find and parse a manifest file in the given directory.

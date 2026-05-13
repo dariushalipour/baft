@@ -7,19 +7,15 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/dariushalipour/baft/internal/port"
 )
-
-// lineOffsetsCache is a cache for byte-offset→line/col maps per file path.
-var lineOffsetsCache sync.Map
 
 type Language struct{}
 
 func (Language) Name() string { return "dart" }
 
-func (Language) IsGovernedFile(rel string) bool {
+func (Language) IsScannableFile(rel string) bool {
 	if !strings.HasSuffix(rel, ".dart") {
 		return false
 	}
@@ -45,16 +41,11 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	}
 	indices := directiveRe.FindAllSubmatchIndex(data, -1)
 	out := make([]port.ImportSpec, 0, len(indices))
-
-	lineOffsets, ok := lineOffsetsCache.Load(absPath)
-	if !ok {
-		lineOffsets = makeLineOffsets(data)
-		lineOffsetsCache.Store(absPath, lineOffsets)
-	}
+	lineOffsets := makeLineOffsets(data)
 
 	for _, m := range indices {
 		p := string(data[m[2]:m[3]])
-		line, col := offsetToLineCol(lineOffsets.([]int), data, m[2])
+		line, col := offsetToLineCol(lineOffsets, data, m[2])
 		out = append(out, port.ImportSpec{Path: p, Line: line, Col: col, ColEnd: col + len(p)})
 	}
 	return out, nil
@@ -117,13 +108,12 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 }
 
 func (Language) SupportsFileGlobs() bool { return true }
-func (Language) SkipDirs() []string      { return []string{".dart_tool", ".pub"} }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("dart", port.ManifestInfo{
-		Names:     []string{"pubspec.yaml"},
-		ParseFunc: readPubspecName,
+		Names:             []string{"pubspec.yaml"},
+		ParseFunc:         readPubspecName,
+		BaseIgnoreEntries: []string{".dart_tool", ".pub"},
 	})
-	d.RegisterSkipDirs("dart", Language{}.SkipDirs())
 }
 
 var pubspecNameRe = regexp.MustCompile(`(?m)^name\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$`)

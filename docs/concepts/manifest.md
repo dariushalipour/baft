@@ -20,22 +20,20 @@ ecosystem semantics are real and complete.
 
 Every major ecosystem has a term for its build manifest:
 
-| Ecosystem | Term used |
-|-----------|-----------|
-| Go        | module file |
+| Ecosystem                   | Term used        |
+| --------------------------- | ---------------- |
+| Go                          | module file      |
 | JavaScript/TypeScript (npm) | package manifest |
-| Rust      | manifest |
-| Dart      | pubspec |
-| Kotlin/Java (Gradle) | build script |
+| Rust                        | manifest         |
+| Dart                        | pubspec          |
+| Kotlin/Java (Gradle)        | build script     |
 
 These terms are not interchangeable. They carry language-specific baggage:
 
 - **Module file** in Go refers specifically to `go.mod` and its `module`
   directive. It does not map to npm's `package.json` or Cargo's
   `Cargo.toml`.
-- **Package manifest** in npm is a JSON file. In Python, "package" can
-  refer to both the distribution unit (`setup.py`, `pyproject.toml`) and
-  the import namespace.
+- **Package manifest** in npm is a JSON file.
 - **Manifest** in Rust is the Cargo convention, but Rust also has
   `Cargo.lock` (a resolved dependency file) and `Cargo.toml` (the actual
   manifest). The term overlaps with "crate manifest" and "workspace
@@ -75,7 +73,7 @@ A Manifest is not:
 - **A build configuration in Baft.** The tooling does not execute build
   tools or interpret build logic. It reads manifests as raw text or JSON
   to extract identity. It does not run `go build`, `npm install`, `cargo
-  build`, `dart pub get`, or `gradle build`.
+build`, `dart pub get`, or `gradle build`.
 - **A dependency resolver in Baft.** The tooling does not read lockfiles
   (`go.sum`, `package-lock.json`, `Cargo.lock`, `pubspec.lock`) or
   resolve external dependencies. External dependency information is not
@@ -157,7 +155,7 @@ monorepo/
 ```
 
 Each `package.json` defines a separate Capsule. The monorepo structure
-is metadata *around* the Capsules, not a Capsule itself.
+is metadata _around_ the Capsules, not a Capsule itself.
 
 A workspace root manifest that declares a collection of packages but does
 not itself declare a module identifier is not a Capsule. It is a container
@@ -183,7 +181,7 @@ different file format entirely (`.deps.json`, `.runtimeconfig.json`).
 
 **Module descriptor** carries Java/JPMS connotations that are misleading.
 
-**Package manifest** overlaps with "package" in npm, Python, and Dart,
+**Package manifest** overlaps with "package" in npm and Dart,
 but those terms mean different things in different ecosystems.
 
 **Manifest** was chosen because:
@@ -201,10 +199,10 @@ but those terms mean different things in different ecosystems.
 
 ## Mapping summary
 
-| Ecosystem | Manifest | Capsule |
-|-----------|----------|---------|
-| Go | `go.mod` (`module` line) | Go module |
-| npm/TypeScript | `package.json` (`name` field) | npm package |
-| Rust | `Cargo.toml` (`[package]` → `name`) | Cargo crate/package |
-| Dart | `pubspec.yaml` (`name:` line) | Dart package |
-| Gradle/Kotlin | `build.gradle.kts` (source path common prefix) | Gradle module |
+| Ecosystem      | Manifest                                       | Capsule             |
+| -------------- | ---------------------------------------------- | ------------------- |
+| Go             | `go.mod` (`module` line)                       | Go module           |
+| npm/TypeScript | `package.json` (`name` field)                  | npm package         |
+| Rust           | `Cargo.toml` (`[package]` → `name`)            | Cargo crate/package |
+| Dart           | `pubspec.yaml` (`name:` line)                  | Dart package        |
+| Gradle/Kotlin  | `build.gradle.kts` (source path common prefix) | Gradle module       |

@@ -2,34 +2,32 @@
 
 Fast, multilingual architecture enforcement from Mermaid diagrams.
 
-Baft reads a Mermaid flowchart from `BAFT.md`, treats nodes as glob-matched slices of a capsule and arrows as the allow-list for cross-node imports, then verifies that your code respects the contract.
+Baft turns your architecture diagrams into executable contracts. It reads a Mermaid flowchart from `BAFT.md`, maps nodes to code via glob patterns, and verifies that your imports respect the defined boundaries.
 
-One diagram. One source of truth. One fast check.
+One diagram. One source of truth. Zero drift.
 
 ## Why
 
-Architecture diagrams usually drift into fiction.
+Architecture diagrams usually drift into fiction:
 
-- They live in slides, docs, or PR descriptions.
-- They stop matching the code a week later.
-- Review catches some violations, then misses the next five.
+- They live in slides or docs, far from the code.
+- They stop matching reality a week after they're drawn.
+- Manual PR reviews miss subtle architectural violations.
 
-Baft fixes that by making the diagram executable.
+Baft fixes this by making the diagram the actual enforcement mechanism.
 
 ## What Baft Is
 
-- A standalone CLI
-- Fast architecture checking for real codebases
-- Multilingual support for Go, TypeScript, Dart, Kotlin, and Rust
-- Deterministic output with no heuristics or inference
-- Zero-config capsule discovery from standard project manifests
+- **Executable Architecture:** A standalone CLI that ensures your code matches your design.
+- **Multilingual:** Native support for Go, TypeScript, Dart, Kotlin, and Rust.
+- **Deterministic:** No heuristics or inference—just strict glob matching and import analysis.
+- **Zero-Config:** Automatically discovers capsules from standard project manifests.
 
 ## What Baft Is Not
 
-- Not a linter
-- Not a general-purpose dependency visualizer
-- Not a framework or build system
-- Not a replacement for language-specific analyzers like `go vet`, `dart analyze`, or `clippy`
+- **Not a linter:** It doesn't care about style, only about structural boundaries.
+- **Not a visualizer:** It enforces a diagram you provide; it doesn't generate one from scratch (though it can `draft` one).
+- **Not a framework:** It sits on top of your existing build system and language analyzers.
 
 ## Quick Start
 
@@ -123,11 +121,11 @@ That draft is intentionally too literal. It is a starting point, not the final a
 
 1. Baft discovers capsules from standard manifests such as `go.mod`, `package.json`, `pubspec.yaml`, `build.gradle.kts`, and `Cargo.toml`.
 2. For each capsule with a `BAFT.md`, it parses the Mermaid flowchart.
-3. Node globs claim governed files.
+3. Node globs claim tracked files.
 4. Arrows become the allow-list for cross-node imports.
 5. Language adapters resolve internal imports and Baft reports every undeclared edge.
 
-Nested capsules are supported. A child directory with its own `BAFT.md` is treated as an independent bounded context, while the parent contract governs cross-context edges between children.
+Nested capsules are supported. A child directory with its own `BAFT.md` is treated as an independent bounded context, while the parent contract tracks cross-context edges between children.
 
 ## Contract Model
 
@@ -136,6 +134,8 @@ Nested capsules are supported. A child directory with its own `BAFT.md` is treat
 - **Self-imports:** allowed by default
 - **Endophobic node:** `:::endophobic` disables same-node imports
 - **Most specific match wins:** file-shaped globs beat directory-shaped globs
+
+**Ignoring Files:** Use a `.baftignore` file (standard gitignore syntax) to exclude files or directories from the check. This is useful for generated code or temporary files that shouldn't be tracked by the contract.
 
 TypeScript and Dart support file-shaped nodes. Go, Kotlin, and Rust require directory-shaped nodes.
 
@@ -166,9 +166,6 @@ Baft can scan a multilingual repository in one run as long as each capsule has a
 ## Docs
 
 - [Manual](docs/manual.md)
-- [CLI usage](docs/usage.md)
-- [Check command](docs/check-usage.md)
-- [Draft command](docs/draft-usage.md)
 - [Capsules](docs/concepts/capsule.md)
 - [Manifest discovery](docs/concepts/manifest.md)
 - [Language notes](docs/concepts/language.md)
@@ -185,4 +182,3 @@ Baft can scan a multilingual repository in one run as long as each capsule has a
 
 - [Contributing](CONTRIBUTING.md)
 - `go test ./...`
-```bash

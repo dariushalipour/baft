@@ -17,7 +17,7 @@ func formatRelation(fileRel string, spec port.ImportSpec, src, targetRel, dst, c
 }
 
 func formatNoNode(scopeRel, cfgPath string) string {
-	return fmt.Sprintf("%s is governed but matches no node in %s", scopeRel, cfgPath)
+	return fmt.Sprintf("%s is tracked by %s but matches no node", scopeRel, cfgPath)
 }
 
 func formatImportNoNode(scopeRel string, spec port.ImportSpec, cfgPath string) string {

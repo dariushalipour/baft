@@ -19,30 +19,27 @@ type Language struct {
 	tsconfigCache sync.Map
 }
 
-func (Language) Name() string { return "typescript" }
+func (l *Language) Name() string { return "typescript" }
 
-func (Language) IsGovernedFile(rel string) bool {
-	if !strings.HasSuffix(rel, ".ts") && !strings.HasSuffix(rel, ".tsx") {
+func (l *Language) IsScannableFile(rel string) bool {
+	n := len(rel)
+	if n < 3 {
 		return false
 	}
-	if strings.HasSuffix(rel, ".d.ts") || strings.HasSuffix(rel, ".d.tsx") {
-		return false
+	if rel[n-3:] == ".ts" {
+		return true
 	}
-	base := path.Base(rel)
-	if strings.HasSuffix(base, ".test.ts") || strings.HasSuffix(base, ".test.tsx") {
-		return false
+	if n >= 4 && rel[n-4:] == ".tsx" {
+		return true
 	}
-	if strings.HasSuffix(base, ".spec.ts") || strings.HasSuffix(base, ".spec.tsx") {
-		return false
-	}
-	return true
+	return false
 }
 
 // Combined import regex: matches all four import patterns in a single pass.
 // Group 1: single-quoted path, Group 2: double-quoted path.
 var combinedImportRe = regexp.MustCompile(`(?m)(?:^\s*(?:import|export)\s+.*?|^\s*import\s+\w+\s*=\s*require\s*\(|\bimport\s*\(|\brequire\s*\()('([^']+)'|\"([^\"]+)\")`)
 
-func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
+func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
 	data, err := fsys.ReadFile(absPath)
 	if err != nil {
 		return nil, err
@@ -113,7 +110,7 @@ func offsetToLineCol(lineOffsets []int, data []byte, offset int) (int, int) {
 	return line + 1, offset - lineOffsets[line] + 1
 }
 
-func (l Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
+func (l *Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
 	if strings.HasPrefix(spec.Path, ".") {
 		base := path.Dir(fileRel)
 		full := path.Clean(path.Join(base, spec.Path))
@@ -125,7 +122,7 @@ func (l Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSp
 
 	tsconfig, err := l.resolveTsconfigCached(fsys, c.Dir)
 	if err != nil || tsconfig == nil {
-		resolved, ok := resolveByCapsuleName(spec.Path, c, fileRel)
+		resolved, ok := resolveByCapsuleName(spec.Path, c)
 		if ok {
 			resolved = resolveExtension(fsys, resolved, c.Dir)
 		}
@@ -136,14 +133,14 @@ func (l Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSp
 		return resolveExtension(fsys, resolved, c.Dir), true
 	}
 
-	resolved, ok := resolveByCapsuleName(spec.Path, c, fileRel)
+	resolved, ok := resolveByCapsuleName(spec.Path, c)
 	if ok {
 		resolved = resolveExtension(fsys, resolved, c.Dir)
 	}
 	return resolved, ok
 }
 
-func (l Language) resolveTsconfigCached(fsys port.FileSystem, capsuleDir string) (*tsconfig, error) {
+func (l *Language) resolveTsconfigCached(fsys port.FileSystem, capsuleDir string) (*tsconfig, error) {
 	if cached, ok := l.tsconfigCache.Load(capsuleDir); ok {
 		return cached.(*tsconfig), nil
 	}
@@ -160,7 +157,7 @@ func (l Language) resolveTsconfigCached(fsys port.FileSystem, capsuleDir string)
 	return cfg, nil
 }
 
-func resolveByCapsuleName(spec string, c port.Capsule, fileRel string) (string, bool) {
+func resolveByCapsuleName(spec string, c port.Capsule) (string, bool) {
 	pkgName := c.CapsuleID
 	if pkgName == "" {
 		return "", false
@@ -239,14 +236,13 @@ func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string 
 	return resolved
 }
 
-func (Language) SupportsFileGlobs() bool { return true }
-func (Language) SkipDirs() []string      { return []string{"node_modules"} }
-func (Language) Register(d port.CapsuleDiscovery) {
+func (l *Language) SupportsFileGlobs() bool { return true }
+func (l *Language) Register(d port.CapsuleDiscovery) {
 	d.Register("typescript", port.ManifestInfo{
-		Names:     []string{"package.json"},
-		ParseFunc: readCapsuleName,
+		Names:             []string{"package.json"},
+		ParseFunc:         readCapsuleName,
+		BaseIgnoreEntries: []string{"node_modules", "*.d.ts", "*.d.tsx", "*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"},
 	})
-	d.RegisterSkipDirs("typescript", Language{}.SkipDirs())
 }
 
 type packageJSON struct {

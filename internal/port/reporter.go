@@ -27,6 +27,7 @@ type CheckResultRenderer interface {
 type CheckResult struct {
 	Capsules   []CapsuleResult `json:"capsules,omitempty"`
 	Violations []string        `json:"violations,omitempty"`
+	Warnings   []string        `json:"warnings,omitempty"`
 	Errors     []string        `json:"errors,omitempty"`
 }
 

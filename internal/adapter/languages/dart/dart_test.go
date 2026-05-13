@@ -7,7 +7,7 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-func TestIsGovernedFile(t *testing.T) {
+func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
 		"lib/app.dart":                    true,
@@ -22,8 +22,8 @@ func TestIsGovernedFile(t *testing.T) {
 		"lib/src/deep/nested/ok.dart":     true,
 	}
 	for rel, want := range cases {
-		if got := l.IsGovernedFile(rel); got != want {
-			t.Errorf("IsGovernedFile(%q) = %v, want %v", rel, got, want)
+		if got := l.IsScannableFile(rel); got != want {
+			t.Errorf("IsScannableFile(%q) = %v, want %v", rel, got, want)
 		}
 	}
 }
@@ -103,25 +103,5 @@ func TestReadPubspecName(t *testing.T) {
 	}
 	if got != "my_app" {
 		t.Fatalf("got %q", got)
-	}
-}
-
-func TestSkipDirs(t *testing.T) {
-	l := Language{}
-	skip := l.SkipDirs()
-	if len(skip) != 2 {
-		t.Errorf("expected 2 skip dirs, got %d", len(skip))
-	}
-	for _, dir := range []string{".dart_tool", ".pub"} {
-		found := false
-		for _, s := range skip {
-			if s == dir {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("expected %q in skip dirs", dir)
-		}
 	}
 }

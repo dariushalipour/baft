@@ -27,20 +27,20 @@ import (
 
 var version string // set by -ldflags at build time
 
-//go:embed docs/usage.md
-var usageMD string
+//go:embed docs/cli-assets/usage.txt
+var usageText string
 
-//go:embed docs/check-usage.md
-var checkUsageMD string
+//go:embed docs/cli-assets/check-usage.txt
+var checkUsageText string
 
-//go:embed docs/draft-usage.md
-var draftUsageMD string
+//go:embed docs/cli-assets/draft-usage.txt
+var draftUsageText string
+
+//go:embed docs/cli-assets/help-intro.txt
+var helpIntroText string
 
 //go:embed docs/manual.md
-var manualMD string
-
-//go:embed docs/help-intro.md
-var helpIntroMD string
+var manualText string
 
 func main() {
 	args := os.Args[1:]
@@ -75,7 +75,8 @@ func runCheck(args []string) {
 	var langs []string
 	var overlayStdin bool
 
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch a {
 		case "--help", "-h":
 			printCheckUsage()
@@ -86,7 +87,17 @@ func runCheck(args []string) {
 			if strings.HasPrefix(a, "--reporter=") {
 				reporterName = strings.TrimPrefix(a, "--reporter=")
 			} else if strings.HasPrefix(a, "--lang") {
-				langs = append(langs, strings.TrimPrefix(a, "--lang"))
+				val := strings.TrimPrefix(a, "--lang")
+				if val == "" {
+					if i+1 < len(args) {
+						i++
+						val = args[i]
+					} else {
+						fmt.Fprintf(os.Stderr, "--lang requires a value\n\nRun 'baft check --help' for usage\n")
+						os.Exit(1)
+					}
+				}
+				langs = append(langs, val)
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft check --help' for usage\n", a)
 				os.Exit(1)
@@ -122,7 +133,6 @@ func runCheck(args []string) {
 		lang.Register(discovery)
 	}
 
-	fs.(*realfs.FS).SetSkipDirs(discovery.SkipDirs())
 	result := check.Run(fs, root, languages, repo, discovery)
 
 	var renderer port.CheckResultRenderer
@@ -148,14 +158,25 @@ func runDraft(args []string) {
 	var root string
 	var langs []string
 
-	for _, a := range args {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
 		switch a {
 		case "--help", "-h":
 			printDraftUsage()
 			os.Exit(0)
 		default:
 			if strings.HasPrefix(a, "--lang") {
-				langs = append(langs, strings.TrimPrefix(a, "--lang"))
+				val := strings.TrimPrefix(a, "--lang")
+				if val == "" {
+					if i+1 < len(args) {
+						i++
+						val = args[i]
+					} else {
+						fmt.Fprintf(os.Stderr, "--lang requires a value\n\nRun 'baft draft --help' for usage\n")
+						os.Exit(1)
+					}
+				}
+				langs = append(langs, val)
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft draft --help' for usage\n", a)
 				os.Exit(1)
@@ -178,7 +199,6 @@ func runDraft(args []string) {
 		lang.Register(discovery)
 	}
 
-	fs.SetSkipDirs(discovery.SkipDirs())
 	result, err := draft.Run(fs, root, languages, repo, discovery)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -190,7 +210,7 @@ func runDraft(args []string) {
 	}
 
 	for _, c := range result.Capsules {
-		fmt.Printf("drafted: %s (%d files, %d nodes, %d edges)\n", c.ConfigPath, c.FilesScanned, c.Nodes, c.Edges)
+		fmt.Printf("drafted: %s (%d files, %d nodes, %d edges)\n", c.ContractPath, c.FilesScanned, c.Nodes, c.Edges)
 	}
 }
 
@@ -210,21 +230,21 @@ func runManual(args []string) {
 }
 
 func printUsage() {
-	fmt.Print(helpIntroMD)
+	fmt.Print(helpIntroText)
 	fmt.Println()
-	fmt.Print(usageMD)
+	fmt.Print(usageText)
 }
 
 func printManual() {
-	fmt.Print(manualMD)
+	fmt.Print(manualText)
 }
 
 func printCheckUsage() {
-	fmt.Print(checkUsageMD)
+	fmt.Print(checkUsageText)
 }
 
 func printDraftUsage() {
-	fmt.Print(draftUsageMD)
+	fmt.Print(draftUsageText)
 }
 
 func printVersion() {
@@ -242,20 +262,20 @@ func printVersion() {
 
 func resolveLangs(names []string) []port.Language {
 	if len(names) == 0 {
-		return []port.Language{golang.Language{}, dart.Language{}, kotlin.Language{}, typescript.Language{}, rust.Language{}}
+		return []port.Language{golang.Language{}, dart.Language{}, kotlin.Language{}, &typescript.Language{}, rust.Language{}}
 	}
 	var out []port.Language
 	for _, n := range names {
 		switch n {
-		case "go", "golang":
+		case "go":
 			out = append(out, golang.Language{})
-		case "typescript", "ts":
-			out = append(out, typescript.Language{})
+		case "typescript":
+			out = append(out, &typescript.Language{})
 		case "dart":
 			out = append(out, dart.Language{})
-		case "kotlin", "kt":
+		case "kotlin":
 			out = append(out, kotlin.Language{})
-		case "rust", "rs":
+		case "rust":
 			out = append(out, rust.Language{})
 		default:
 			fmt.Fprintf(os.Stderr, "unknown language: %s\n", n)

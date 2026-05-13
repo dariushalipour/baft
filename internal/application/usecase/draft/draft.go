@@ -1,6 +1,7 @@
 package draft
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/domain/graph"
 	"github.com/dariushalipour/baft/internal/port"
@@ -36,7 +38,7 @@ type CapsuleDraft struct {
 	FilesScanned     int
 	Nodes            int
 	Edges            int
-	ConfigPath       string
+	ContractPath     string
 }
 
 // fileRecord holds import data for a single file during capsule-root drafting
@@ -47,19 +49,31 @@ type fileRecord struct {
 }
 
 // Draft walks all capsules for every supplied language, parses every
-// import in every governed file, and writes a comprehensive BAFT.md
+// import in every scannable file, and writes a comprehensive BAFT.md
 // that reflects the current dependency reality at maximum granularity.
 func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) (*DraftResult, error) {
 	return RunWith(fsys, rootDir, languages, repo, discovery, os.Stderr)
 }
 
 func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery, logWriter io.Writer) (*DraftResult, error) {
+	// Wrap the filesystem with ignore rules before discovery.
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           rootDir,
+		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
+	})
+	if err != nil {
+		if !errors.Is(err, ignorefs.ErrRepoRootUnreachable) {
+			return nil, fmt.Errorf("ignorefs: %w", err)
+		}
+		fmt.Fprintln(logWriter, "warning: not inside a git repository — .gitignore/.baftignore rules from parent directories will not apply")
+	}
+
 	type entry struct {
 		capsule port.Capsule
 		lang    port.Language
 	}
 	var all []entry
-	entries, err := discovery.Discover(fsys, rootDir)
+	entries, err := discovery.Discover(wrapped, rootDir)
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +92,7 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 		return nil, fmt.Errorf("no capsules found at %s", rootDir)
 	}
 
-	sort.Slice(all, func(i, j int) bool { return port.Label(all[i].capsule, rootDir) < port.Label(all[j].capsule, rootDir) })
+	sort.Slice(all, func(i, j int) bool { return port.Label(all[i].capsule) < port.Label(all[j].capsule) })
 
 	result := &DraftResult{}
 
@@ -87,12 +101,12 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 		if strings.HasPrefix(rootDir, e.capsule.Dir+string(filepath.Separator)) || rootDir == e.capsule.Dir {
 			startDir = rootDir
 		}
-		configDir, exists := service.FindOrCreateConfigDir(fsys, startDir, e.capsule.Dir)
+		contractDir, exists := service.FindOrCreateContractDir(wrapped, startDir, e.capsule.Dir)
 		if exists {
 			continue
 		}
-		label := port.Label(e.capsule, rootDir)
-		capsuleRes, err := draftCapsule(fsys, e.capsule, e.lang, repo, rootDir, configDir)
+		label := port.Label(e.capsule)
+		capsuleRes, err := draftCapsule(wrapped, e.capsule, e.lang, repo, rootDir, contractDir)
 		if err != nil {
 			de := DraftError{Label: label, Err: err}
 			result.Errors = append(result.Errors, de)
@@ -105,7 +119,7 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 	return result, nil
 }
 
-func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo port.GraphRepository, rootDir string, configDir string) (*CapsuleDraft, error) {
+func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo port.GraphRepository, rootDir string, contractDir string) (*CapsuleDraft, error) {
 	nodes := map[string]string{}
 	edges := map[string]map[string]bool{}
 	filesEncountered := 0
@@ -128,13 +142,13 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 
 		fileRel := rel
 		if !filepath.IsAbs(rel) {
-			fileRel, _ = filepath.Rel(p.Dir, filepath.Join(configDir, rel))
+			fileRel, _ = filepath.Rel(p.Dir, filepath.Join(contractDir, rel))
 		}
 		fileRel = filepath.ToSlash(fileRel)
 
 		// When drafting from capsule root with a file-glob language,
 		// collect per-file records for later merging.
-		if configDir == p.Dir && lang.SupportsFileGlobs() {
+		if contractDir == p.Dir && lang.SupportsFileGlobs() {
 			fileRecords = append(fileRecords, fileRecord{rel: fileRel, imports: imports})
 			return nil
 		}
@@ -153,12 +167,18 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 				targetAbs = filepath.Join(p.Dir, targetAbs)
 			}
 			targetAbs = filepath.Clean(targetAbs)
-			configDirClean := filepath.Clean(configDir)
-			if targetAbs != configDirClean && !strings.HasPrefix(targetAbs, configDirClean+string(filepath.Separator)) {
+
+			// Skip ignored/baftignored targets.
+			if !port.IsTargetVisible(fsys, targetAbs) {
 				continue
 			}
 
-			dstRel, _ := filepath.Rel(configDirClean, targetAbs)
+			contractDirClean := filepath.Clean(contractDir)
+			if targetAbs != contractDirClean && !strings.HasPrefix(targetAbs, contractDirClean+string(filepath.Separator)) {
+				continue
+			}
+
+			dstRel, _ := filepath.Rel(contractDirClean, targetAbs)
 			dstID := nodeKey(dstRel, lang.SupportsFileGlobs())
 			nodes[dstID] = dstID
 
@@ -176,10 +196,10 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 	}
 
 	var err error
-	if configDir == p.Dir {
-		err = service.WalkAllFiles(fsys, configDir, lang, walkFn)
+	if contractDir == p.Dir {
+		err = service.WalkAllFiles(fsys, contractDir, lang, walkFn)
 	} else {
-		err = service.WalkCapsule(fsys, configDir, lang, walkFn)
+		err = service.WalkCapsule(fsys, contractDir, lang, walkFn)
 	}
 	if err != nil {
 		return nil, err
@@ -192,24 +212,24 @@ func draftCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo
 	}
 
 	if len(nodes) == 0 {
-		return nil, fmt.Errorf("capsule at %s has no governed files to draft", configDir)
+		return nil, fmt.Errorf("capsule at %s has no scannable files to draft", contractDir)
 	}
 
 	g := graph.NewGraph(nodes, edges)
 
-	configPath := filepath.Join(configDir, port.ConfigFile)
+	contractPath := filepath.Join(contractDir, port.ContractFile)
 	content := repo.Save(g)
-	if err := fsys.WriteFile(configPath, []byte(content), 0644); err != nil {
+	if err := fsys.WriteFile(contractPath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 
 	return &CapsuleDraft{
-		Label:            port.Label(p, rootDir),
+		Label:            port.Label(p),
 		FilesEncountered: filesEncountered,
 		FilesScanned:     filesScanned,
 		Nodes:            len(nodes),
 		Edges:            edgeCount(edges),
-		ConfigPath:       configPath,
+		ContractPath:     contractPath,
 	}, nil
 }
 
@@ -237,7 +257,7 @@ func mergeDirectoryNodes(fsys port.FileSystem, records []fileRecord, p port.Caps
 		}
 	}
 
-	configDirClean := filepath.Clean(p.Dir)
+	contractDirClean := filepath.Clean(p.Dir)
 
 	for dir, files := range dirFiles {
 		// If the directory is the capsule root, keep files as individual nodes.
@@ -245,7 +265,7 @@ func mergeDirectoryNodes(fsys port.FileSystem, records []fileRecord, p port.Caps
 			for _, f := range files {
 				srcID := graph.NodeKeyForFile(f.rel)
 				nodes[srcID] = srcID
-				resolveFileImports(fsys, f.imports, f.rel, p, lang, configDirClean, nodes, edges, srcID, dirIsMerged)
+				resolveFileImports(fsys, f.imports, f.rel, p, lang, contractDirClean, nodes, edges, srcID, dirIsMerged)
 			}
 			continue
 		}
@@ -256,7 +276,7 @@ func mergeDirectoryNodes(fsys port.FileSystem, records []fileRecord, p port.Caps
 			dirID := graph.NodeKeyForDir(dir)
 			nodes[dirID] = dirGlob
 			for _, f := range files {
-				resolveFileImports(fsys, f.imports, f.rel, p, lang, configDirClean, nodes, edges, dirID, dirIsMerged)
+				resolveFileImports(fsys, f.imports, f.rel, p, lang, contractDirClean, nodes, edges, dirID, dirIsMerged)
 			}
 			continue
 		}
@@ -265,7 +285,7 @@ func mergeDirectoryNodes(fsys port.FileSystem, records []fileRecord, p port.Caps
 		f := files[0]
 		srcID := graph.NodeKeyForFile(f.rel)
 		nodes[srcID] = srcID
-		resolveFileImports(fsys, f.imports, f.rel, p, lang, configDirClean, nodes, edges, srcID, dirIsMerged)
+		resolveFileImports(fsys, f.imports, f.rel, p, lang, contractDirClean, nodes, edges, srcID, dirIsMerged)
 	}
 
 	return nodes, edges
@@ -273,7 +293,7 @@ func mergeDirectoryNodes(fsys port.FileSystem, records []fileRecord, p port.Caps
 
 // resolveFileImports resolves each import spec for a file and adds nodes/edges.
 // dirIsMerged maps directories whose files are merged into a single directory-level node.
-func resolveFileImports(fsys port.FileSystem, imports []port.ImportSpec, fileRel string, c port.Capsule, lang port.Language, configDirClean string, nodes map[string]string, edges map[string]map[string]bool, srcID string, dirIsMerged map[string]bool) {
+func resolveFileImports(fsys port.FileSystem, imports []port.ImportSpec, fileRel string, c port.Capsule, lang port.Language, contractDirClean string, nodes map[string]string, edges map[string]map[string]bool, srcID string, dirIsMerged map[string]bool) {
 	for _, spec := range imports {
 		targetPath, internal := lang.ResolveInternalTarget(fsys, spec, c, fileRel)
 		if !internal {
@@ -284,10 +304,16 @@ func resolveFileImports(fsys port.FileSystem, imports []port.ImportSpec, fileRel
 			targetAbs = filepath.Join(c.Dir, targetAbs)
 		}
 		targetAbs = filepath.Clean(targetAbs)
-		if targetAbs != configDirClean && !strings.HasPrefix(targetAbs, configDirClean+string(filepath.Separator)) {
+
+		// Skip ignored/baftignored targets.
+		if !port.IsTargetVisible(fsys, targetAbs) {
 			continue
 		}
-		dstRel, _ := filepath.Rel(configDirClean, targetAbs)
+
+		if targetAbs != contractDirClean && !strings.HasPrefix(targetAbs, contractDirClean+string(filepath.Separator)) {
+			continue
+		}
+		dstRel, _ := filepath.Rel(contractDirClean, targetAbs)
 
 		// If the target file is in a merged directory, use the directory node ID.
 		dstDir := filepath.Dir(dstRel)

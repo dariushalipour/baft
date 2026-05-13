@@ -2,7 +2,7 @@
 
 A **Capsule** is the fundamental self-contained code boundary in a polyglot
 dependency graph. It is the unit that owns a manifest, defines a dependency
-graph, carries its own configuration, and supports independently addressable
+graph, carries its own architecture rules, and supports independently addressable
 tooling operations.
 
 A Capsule is an abstraction. It is not a filesystem layout, not a directory
@@ -16,14 +16,13 @@ languages.
 
 Every major ecosystem has a term for its primary code boundary:
 
-| Ecosystem | Term used |
-|-----------|-----------|
-| Go        | module    |
-| JavaScript/TypeScript (npm) | package |
-| Rust      | crate / package / workspace |
-| Dart      | package   |
-| Kotlin/Java (Gradle) | module / project |
-| Python    | package / project |
+| Ecosystem                   | Term used                   |
+| --------------------------- | --------------------------- |
+| Go                          | module                      |
+| JavaScript/TypeScript (npm) | package                     |
+| Rust                        | crate / package / workspace |
+| Dart                        | package                     |
+| Kotlin/Java (Gradle)        | module / project            |
 
 These terms are not interchangeable. They carry language-specific baggage:
 
@@ -31,8 +30,7 @@ These terms are not interchangeable. They carry language-specific baggage:
   JavaScript, a module is a single file. In Gradle, a module is a dependency
   unit.
 - **Package** means different things. In npm, a package is a dependency unit
-  with a `package.json`. In Java, a package is a namespace inside a JAR. In
-  Python, the term covers both distribution units and import namespaces.
+  with a `package.json`. In Java, a package is a namespace inside a JAR.
 - **Crate** is a Rust-specific concept — a compilation unit. It overlaps with
   "package" in Cargo, and both coexist with "workspaces" for multi-crate
   projects.
@@ -59,13 +57,11 @@ code boundary defined by:
    `build.gradle.kts`).
 2. **A dependency graph** — the set of internal imports and external
    dependencies that the manifest and source files collectively define.
-3. **Configuration** — build rules, path aliases, visibility constraints, or
-   other declarations that shape how the code boundary is interpreted.
+3. **Architecture rules** — BAFT.md defines nodes, edges, and constraints that track internal imports, along with other declarations that shape how the code boundary is interpreted.
 4. **A lifecycle** — the ability to be discovered, parsed, validated, and
    addressed as a unit by tooling.
-5. **Independently addressable operations** — tooling commands (check, draft,
-   resolve) operate on Capsules without needing to know the underlying
-   language.
+5. **Independently addressable operations** — tooling commands (check, draft)
+   operate on Capsules without needing to know the underlying language.
 
 A Capsule maps to exactly one manifest file. One manifest, one Capsule.
 
@@ -79,7 +75,7 @@ A Capsule is not:
   manifest), but the Capsule itself is the boundary concept, not the
   directory.
 - **A package, module, crate, or namespace.** Those are language-specific
-  constructs. A Capsule may *contain* them, or *be* them, but it is not
+  constructs. A Capsule may _contain_ them, or _be_ them, but it is not
   any one of them.
 - **A directory-level convention.** Capsules are identified by manifest
   presence, not by directory structure. Two Capsules may live in the same
@@ -104,23 +100,23 @@ A Capsule is:
   unit. Commands resolve to Capsules, report against Capsules, and validate
   Capsules independently.
 - **A scoping boundary for architecture rules.** Each Capsule may contain
-  its own `BAFT.md`. Rules inside a Capsule govern only imports within that
-  Capsule. Cross-Capsule imports are governed by the parent Capsule or by
+  its own `BAFT.md`. Rules inside a Capsule track only imports within that
+  Capsule. Cross-Capsule imports are tracked by the parent Capsule or by
   external dependency declarations.
 - **A discovery target.** Capsule discovery walks the filesystem, locates
   manifest files, parses their contents, and produces Capsule structs with
-  resolved directory, identity, and config path.
+  resolved directory, identity, and contract path.
 
 ---
 
 ## Why not reuse an existing term
 
-**Module** is the closest candidate. It is used by Go, Gradle, and Python.
+**Module** is the closest candidate. It is used by Go and Gradle.
 But in JavaScript, "module" means a single file. Using "module" for a
 Capsule would require constant clarification: "this module is not that
 module."
 
-**Package** is used by npm, Python, and Dart. But in Java, "package" is a
+**Package** is used by npm and Dart. But in Java, "package" is a
 namespace, not a dependency unit. In Rust, "package" and "crate" overlap
 confusingly.
 
@@ -139,7 +135,7 @@ DDD connotations that are misleading here.
 - Conveys the idea of a self-contained boundary without implying filesystem
   layout, compilation model, or language semantics.
 - Does not collide with any existing term in Go, JavaScript, Rust, Dart,
-  Kotlin, or Python.
+  or Kotlin.
 - Works as a noun in commands, APIs, and documentation without requiring
   qualification ("Capsule module," "Capsule package" — neither is needed).
 
@@ -164,7 +160,7 @@ DDD connotations that are misleading here.
    namespaces — those are internal to the Capsule, not separate Capsules.
 
 5. **Addressable.** Tooling commands resolve to Capsules by directory.
-   Operations (check, draft, resolve) are scoped to a Capsule's boundary.
+   Operations (check, draft) are scoped to a Capsule's boundary.
    Cross-Capsule references are explicit edges in the dependency graph.
 
 6. **Not a filesystem concept.** Capsules are identified by manifest presence,
@@ -189,7 +185,7 @@ my-service/
 ```
 
 The `go.mod` file defines one Capsule. The `internal/auth` and `internal/billing`
-directories are Go packages — they are *inside* the Capsule but are not
+directories are Go packages — they are _inside_ the Capsule but are not
 themselves Capsules (they have no `go.mod`).
 
 ### An npm package as a Capsule
@@ -244,7 +240,7 @@ monorepo/
 
 Each `package.json` defines a Capsule. The monorepo root is a Capsule if it
 has its own manifest with dependency declarations. The workspace or monorepo
-structure is metadata *around* the Capsules, not a Capsule itself.
+structure is metadata _around_ the Capsules, not a Capsule itself.
 
 ### Nested source namespaces inside a Capsule
 
@@ -262,7 +258,7 @@ go-service/
 ```
 
 Go packages, Java packages, Dart libraries, TypeScript modules, and Rust
-modules are all internal organizational units *within* a Capsule. They do not
+modules are all internal organizational units _within_ a Capsule. They do not
 become Capsules unless they carry their own manifest.
 
 ---
@@ -271,7 +267,7 @@ become Capsules unless they carry their own manifest.
 
 The tooling system operates on Capsules as its primary unit of work:
 
-**Discovery.** `PackageDiscovery` walks the filesystem, locates manifest files
+**Discovery.** `CapsuleDiscovery` walks the filesystem, locates manifest files
 by name (`go.mod`, `package.json`, `Cargo.toml`, etc.), parses each manifest
 to extract the module identifier, and produces a Capsule struct with resolved
 `Dir` and `CapsuleID`.
@@ -281,7 +277,7 @@ directories/files) and edges (internal imports) to the dependency graph.
 Cross-Capsule imports are external edges.
 
 **Check.** The check command evaluates each Capsule independently. A
-Capsule's `BAFT.md` governs only imports within that Capsule's directory.
+Capsule's `BAFT.md` tracks only imports within that Capsule's directory.
 Cross-Capsule imports are validated by the parent Capsule's rules or by
 external dependency declarations.
 
@@ -290,7 +286,7 @@ scanning the Capsule's source files, resolving imports, and mapping them to
 graph nodes.
 
 **Language adapters.** Language adapters implement `port.Language` and handle
-everything language-specific: which files are governed, how imports are
+everything language-specific: which files are tracked, how imports are
 parsed, how internal targets are resolved. The core sees only the resulting
 paths and booleans — it operates on Capsules uniformly regardless of
 language.
@@ -299,11 +295,10 @@ language.
 
 ## Mapping summary
 
-| Ecosystem | Manifest | Capsule | Internal units |
-|-----------|----------|---------|----------------|
-| Go | `go.mod` | Go module | Go packages (`internal/`, `pkg/`) |
-| npm/TypeScript | `package.json` | npm package | TypeScript modules (files), namespaces |
-| Rust | `Cargo.toml` (per crate) | Cargo crate/package | Rust modules (`mod`, `crate::`) |
-| Dart | `pubspec.yaml` | Dart package | Dart libraries (`lib/`) |
-| Gradle/Kotlin | `build.gradle.kts` | Gradle module | Kotlin packages (dot-separated namespaces) |
-| Python | `pyproject.toml` / `setup.py` | Python package/project | Python packages (directories with `__init__.py`) |
+| Ecosystem      | Manifest                 | Capsule             | Internal units                             |
+| -------------- | ------------------------ | ------------------- | ------------------------------------------ |
+| Go             | `go.mod`                 | Go module           | Go packages (`internal/`, `pkg/`)          |
+| npm/TypeScript | `package.json`           | npm package         | TypeScript modules (files), namespaces     |
+| Rust           | `Cargo.toml` (per crate) | Cargo crate/package | Rust modules (`mod`, `crate::`)            |
+| Dart           | `pubspec.yaml`           | Dart package        | Dart libraries (`lib/`)                    |
+| Gradle/Kotlin  | `build.gradle.kts`       | Gradle module       | Kotlin packages (dot-separated namespaces) |

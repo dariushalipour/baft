@@ -26,7 +26,7 @@ func buildFS(rootDir string, tree string, files map[string]string) *memfs.FS {
 	}
 	sort.Strings(paths)
 	for _, absPath := range paths {
-		_ = fsys.WriteFile(absPath, []byte(files[absPath]), 0644)
+		_ = fsys.WriteFile(absPath, []byte(files[absPath]), 0o644)
 	}
 	return fsys
 }
@@ -319,39 +319,39 @@ func TestCapsuleDiscovery(t *testing.T) {
 	}
 }
 
-func TestCapsuleDiscoverySkipDirs(t *testing.T) {
+func TestCapsuleDiscoveryBaseIgnoreEntries(t *testing.T) {
 	d := NewCapsuleDiscovery()
 
-	if len(d.SkipDirs()) != 0 {
-		t.Errorf("expected empty skip dirs initially, got %d", len(d.SkipDirs()))
+	if len(d.BaseIgnoreEntries()) != 0 {
+		t.Errorf("expected empty base ignore entries initially, got %d", len(d.BaseIgnoreEntries()))
 	}
 
-	d.RegisterSkipDirs("go", []string{"vendor"})
-	d.RegisterSkipDirs("typescript", []string{"node_modules"})
-	d.RegisterSkipDirs("rust", []string{"target"})
+	d.Register("go", port.ManifestInfo{BaseIgnoreEntries: []string{"vendor"}})
+	d.Register("typescript", port.ManifestInfo{BaseIgnoreEntries: []string{"node_modules"}})
+	d.Register("rust", port.ManifestInfo{BaseIgnoreEntries: []string{"target"}})
 
-	skipDirs := d.SkipDirs()
-	if len(skipDirs) != 3 {
-		t.Errorf("expected 3 skip dirs, got %d", len(skipDirs))
+	entries := d.BaseIgnoreEntries()
+	if len(entries) != 3 {
+		t.Errorf("expected 3 base ignore entries, got %d", len(entries))
 	}
 	for _, dir := range []string{"vendor", "node_modules", "target"} {
-		if !skipDirs[dir] {
-			t.Errorf("expected %q to be in skip dirs", dir)
+		if !entries[dir] {
+			t.Errorf("expected %q to be in base ignore entries", dir)
 		}
 	}
 
-	d.RegisterSkipDirs("go", []string{"vendor"})
-	if len(d.SkipDirs()) != 3 {
-		t.Errorf("expected 3 skip dirs after duplicate registration, got %d", len(d.SkipDirs()))
+	d.Register("go", port.ManifestInfo{BaseIgnoreEntries: []string{"vendor"}})
+	if len(d.BaseIgnoreEntries()) != 3 {
+		t.Errorf("expected 3 base ignore entries after duplicate registration, got %d", len(d.BaseIgnoreEntries()))
 	}
 
-	d.RegisterSkipDirs("dart", []string{".dart_tool", ".pub"})
-	if len(d.SkipDirs()) != 5 {
-		t.Errorf("expected 5 skip dirs after adding dart dirs, got %d", len(d.SkipDirs()))
+	d.Register("dart", port.ManifestInfo{BaseIgnoreEntries: []string{".dart_tool", ".pub"}})
+	if len(d.BaseIgnoreEntries()) != 5 {
+		t.Errorf("expected 5 base ignore entries after adding dart dirs, got %d", len(d.BaseIgnoreEntries()))
 	}
 	for _, dir := range []string{".dart_tool", ".pub"} {
-		if !d.SkipDirs()[dir] {
-			t.Errorf("expected %q to be in skip dirs", dir)
+		if !d.BaseIgnoreEntries()[dir] {
+			t.Errorf("expected %q to be in base ignore entries", dir)
 		}
 	}
 }

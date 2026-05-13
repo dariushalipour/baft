@@ -15,26 +15,12 @@ type Language struct{}
 
 func (Language) Name() string { return "rust" }
 
-func (Language) IsGovernedFile(rel string) bool {
-	if !strings.HasSuffix(rel, ".rs") {
-		return false
-	}
-	if !strings.HasPrefix(rel, "src/") {
-		return false
-	}
-	if strings.HasPrefix(rel, "src/bin/") {
-		return false
-	}
-	if strings.HasPrefix(rel, "src/examples/") {
-		return false
-	}
-	return true
+func (Language) IsScannableFile(rel string) bool {
+	return strings.HasSuffix(rel, ".rs")
 }
 
-var useRe = regexp.MustCompile(`(?m)^(\s*)(?:pub\(.*?\)\s+|pub\s+)?use\s+([^;]+);\s*$`)
-var modRe = regexp.MustCompile(`(?m)^(\s*)(?:pub\(.*?\)\s+|pub\s+)?mod\s+(\w+)\s*;\s*$`)
-var externCrateRe = regexp.MustCompile(`(?m)^(\s*)extern\s+crate\s+(\w+)(?:\s+as\s+(\w+))?\s*;\s*$`)
 var cargoNameRe = regexp.MustCompile(`^name\s*=\s*"([^"]+)"`)
+var cargoNameInlineRe = regexp.MustCompile(`^name\s*=\s*\{[^"]*value\s*=\s*"([^"]+)"`)
 
 // rustImportRe matches import, mod, or extern crate statements with capture groups.
 // Group 1: use spec, Group 2: mod name, Group 3: extern crate name
@@ -197,13 +183,12 @@ func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec
 }
 
 func (Language) SupportsFileGlobs() bool { return false }
-func (Language) SkipDirs() []string      { return []string{"target"} }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("rust", port.ManifestInfo{
-		Names:     []string{"Cargo.toml"},
-		ParseFunc: readCargoToml,
+		Names:             []string{"Cargo.toml"},
+		ParseFunc:         readCargoToml,
+		BaseIgnoreEntries: []string{"target"},
 	})
-	d.RegisterSkipDirs("rust", Language{}.SkipDirs())
 }
 
 func readCargoToml(fsys port.FileSystem, path string) (string, error) {
@@ -231,6 +216,9 @@ func readCargoToml(fsys port.FileSystem, path string) (string, error) {
 				if m := cargoNameRe.FindStringSubmatch(line); m != nil {
 					return m[1], nil
 				}
+				if m := cargoNameInlineRe.FindStringSubmatch(line); m != nil {
+					return m[1], nil
+				}
 			}
 			lineStart = i + 1
 		}
@@ -245,6 +233,9 @@ func readCargoToml(fsys port.FileSystem, path string) (string, error) {
 		}
 		if inPackage {
 			if m := cargoNameRe.FindStringSubmatch(line); m != nil {
+				return m[1], nil
+			}
+			if m := cargoNameInlineRe.FindStringSubmatch(line); m != nil {
 				return m[1], nil
 			}
 		}

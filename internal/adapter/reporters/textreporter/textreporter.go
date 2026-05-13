@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	colorReset = "\033[0m"
-	colorRed   = "\033[0;31m"
-	colorGreen = "\033[0;32m"
+	colorReset  = "\033[0m"
+	colorRed    = "\033[0;31m"
+	colorGreen  = "\033[0;32m"
+	colorYellow = "\033[0;33m"
 )
 
 func red(msg string) string {
@@ -19,6 +20,10 @@ func red(msg string) string {
 
 func green(msg string) string {
 	return colorGreen + msg + colorReset
+}
+
+func yellow(msg string) string {
+	return colorYellow + msg + colorReset
 }
 
 type TextRenderer struct{}
@@ -37,6 +42,10 @@ func (r *TextRenderer) Render(result *port.CheckResult) string {
 			continue
 		}
 		writeLine(&out, red("✗ "+e))
+	}
+
+	for _, w := range result.Warnings {
+		writeLine(&out, yellow("⚠ "+w))
 	}
 
 	for _, c := range result.Capsules {

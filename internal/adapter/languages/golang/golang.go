@@ -13,16 +13,12 @@ type Language struct{}
 
 func (Language) Name() string { return "go" }
 
-func (Language) IsGovernedFile(rel string) bool {
+func (Language) IsScannableFile(rel string) bool {
 	if len(rel) < 3 {
 		return false
 	}
 	// Check .go suffix efficiently.
 	if rel[len(rel)-3:] != ".go" {
-		return false
-	}
-	// Check _test.go suffix efficiently.
-	if len(rel) >= 8 && rel[len(rel)-8:] == "_test.go" {
 		return false
 	}
 	return true
@@ -62,13 +58,12 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 }
 
 func (Language) SupportsFileGlobs() bool { return false }
-func (Language) SkipDirs() []string      { return []string{"vendor"} }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("go", port.ManifestInfo{
-		Names:     []string{"go.mod"},
-		ParseFunc: readGoModulePath,
+		Names:             []string{"go.mod"},
+		ParseFunc:         readGoModulePath,
+		BaseIgnoreEntries: []string{"vendor", "*_test.go"},
 	})
-	d.RegisterSkipDirs("go", Language{}.SkipDirs())
 }
 
 func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
@@ -100,7 +95,12 @@ func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
 				for modEnd > modStart && (trimmed[modEnd-1] == ' ' || trimmed[modEnd-1] == '\t') {
 					modEnd--
 				}
-				return string(trimmed[modStart:modEnd]), nil
+				result := string(trimmed[modStart:modEnd])
+				// Strip surrounding quotes if present (Go 1.16+ allows quoted module paths).
+				if len(result) >= 2 && result[0] == '"' && result[len(result)-1] == '"' {
+					result = result[1 : len(result)-1]
+				}
+				return result, nil
 			}
 			lineStart = i + 1
 		}
@@ -126,7 +126,11 @@ func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
 			for modEnd > modStart && (trimmed[modEnd-1] == ' ' || trimmed[modEnd-1] == '\t') {
 				modEnd--
 			}
-			return string(trimmed[modStart:modEnd]), nil
+			result := string(trimmed[modStart:modEnd])
+			if len(result) >= 2 && result[0] == '"' && result[len(result)-1] == '"' {
+				result = result[1 : len(result)-1]
+			}
+			return result, nil
 		}
 	}
 	return "", fmt.Errorf("no module line in %s", modPath)

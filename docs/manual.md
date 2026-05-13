@@ -1,150 +1,131 @@
-BAFT.md Manual for Working in BAFT-Governed Code
-================================================
+# BAFT.md Manual: Working in BAFT-Tracked Code
 
-If you opened a `BAFT.md` file and need to know what it means or how to work with code governed by it, start here.
+If you are editing code in a repository containing a `BAFT.md` file, this guide explains how the architecture is enforced and how to work with it.
 
-Local command: `baft manual`
+**Local command:** `baft manual`
 
-`BAFT.md` is an executable architecture contract. It tells Baft which files belong to which node and which nodes may import which other nodes. The file is both documentation and enforcement.
+`BAFT.md` is an **executable architecture contract**. It defines which files belong to which architectural nodes and which nodes are allowed to import each other. It serves as both live documentation and automated enforcement.
 
-AGENT FAST PATH
----------------
-When working in a repository that contains `BAFT.md`:
+---
 
-1. Find the nearest `BAFT.md` that governs the file you are editing.
-2. Map the source file to a node by matching its path against node globs.
-3. Map each internal import target to a node.
-4. The import is allowed only if:
-   - source and target are in the same node and the source node is not `endophobic`; or
-   - the contract has an explicit edge `source --> target`.
-5. If the dependency is not allowed, do one of these instead:
-   - move the file to a node that already has the required dependency
-   - add the missing edge if that is the intended architecture
-   - refactor to depend on an allowed intermediary
-6. Run `baft check` after changes.
+## 🤖 AI Agent Fast Path
 
-WHAT A BAFT.md FILE MEANS
--------------------------
-- One `BAFT.md` governs one capsule: a supported project root plus its architecture contract.
-- Nodes claim files with globs.
-- Arrows declare allowed cross-node imports.
-- Same-node imports are allowed by default.
-- `:::endophobic` disables same-node imports for that node.
-- Every governed file must match at least one node.
+When modifying code in a BAFT-tracked repository, follow these steps to avoid violations:
 
-Everything outside the single fenced `mermaid` block is ignored by Baft. That means comments before the block are safe and may contain guidance for humans or AI agents.
+1. **Identify the Contract:** Find the nearest `BAFT.md` tracking the file you are editing.
+2. **Map the Source:** Match the source file's path against the node globs in the Mermaid diagram.
+3. **Map the Target:** For every internal import, identify which node the target file belongs to.
+4. **Verify the Edge:** The import is allowed ONLY if:
+   - The source and target are in the same node (and the node is NOT marked `:::endophobic`).
+   - There is an explicit edge in the diagram: `sourceNode --> targetNode`.
+5. **Resolve Violations:** If an import is forbidden:
+   - **Move the file** to a node that already has the required dependency.
+   - **Add the edge** to `BAFT.md` if the architecture should be updated.
+   - **Refactor** to use an allowed intermediary.
+6. **Verify:** Run `baft check` before submitting changes.
 
-MINIMAL EXAMPLE
----------------
+---
 
-    ```mermaid
-    flowchart TD
-      api["internal/api/&ast;&ast;"]
-      usecase["internal/usecase/&ast;&ast;"]:::endophobic
-      domain["internal/domain/&ast;&ast;"]
-      infra["internal/infra/&ast;&ast;"]
+## Understanding BAFT.md
 
-      api --> usecase
-      usecase --> domain
-      usecase --> infra
-      infra --> domain
-    ```
+### Core Concepts
 
-This means:
-- files in `api` may import `usecase`
-- files in `usecase` may import `domain` and `infra`
-- files in `infra` may import `domain`
-- files in `usecase` may not import other files in `usecase`
+- **Capsule:** A supported project root (identified by a manifest like `go.mod` or `package.json`).
+- **Nodes:** Groups of files defined by glob patterns.
+- **Edges:** Arrows (`-->`) that define allowed import directions.
+- **Endophobicity:** A modifier (`:::endophobic`) that forbids files within the same node from importing each other.
 
-FORMAT
-------
-- Exactly one fenced `mermaid` flowchart block is allowed.
-- Everything outside that block is ignored.
-- `%%` comments inside the Mermaid block are ignored.
-- `subgraph` syntax is not supported.
-- Write `&ast;` inside labels when you need a literal `*`; Baft decodes it back to `*`.
+### Minimal Example
 
-NODES
------
-Syntax: `nodeId["path/&ast;&ast;"]` for a directory-shaped node or `nodeId["path/file.go"]` for a file-shaped node.
+```mermaid
+flowchart TD
+  api["internal/api/**"]
+  usecase["internal/usecase/**"]:::endophobic
+  domain["internal/domain/**"]
+  infra["internal/infra/**"]
 
-- Node IDs are arbitrary unique identifiers.
-- Directory globs claim every governed source file under that directory.
-- File-shaped globs claim exactly one file.
-- Every governed file must match at least one node. Unmatched files are violations.
-- Most specific match wins.
-- File-shaped globs beat directory-shaped globs.
+  api --> usecase
+  usecase --> domain
+  usecase --> infra
+  infra --> domain
+```
 
-Language limits:
-- Go, Kotlin, Rust: directory-shaped nodes only
-- TypeScript, Dart: file-shaped nodes are supported
+**What this means:**
 
-EDGES AND ENDOPHOBIC NODES
---------------------------
-Syntax: `nodeA --> nodeB`.
+- Files in `api` may import `usecase`.
+- Files in `usecase` may import `domain` and `infra`, but **cannot** import other files in `usecase`.
+- Files in `infra` may import `domain`.
 
-- `A --> B` means files in `A` may import files in `B`.
-- No edge means the cross-node import is forbidden.
-- Chained edges are not transitive. `A --> B --> C` does not imply `A --> C`.
-- Same-node imports are allowed by default.
-- `:::endophobic` removes that implicit self-edge for the marked node.
+### Format & Syntax
 
-WORKFLOW
---------
-1. Write `BAFT.md` by hand, or bootstrap with `baft draft /repo`.
-2. Treat generated drafts as raw material, not final architecture. They reflect current dependency reality, not the architecture you want.
-3. Edit nodes and edges until the contract matches the intended design.
-4. Run `baft check /repo`.
-5. Fix violations by moving code, removing bad dependencies, or deliberately updating the contract.
+- **Mermaid Block:** Only the first fenced `mermaid` flowchart block is parsed. Everything else is ignored.
+- **Comments:** Use `%%` for comments inside the Mermaid block.
+- **Escaping:** Use `&ast;` for literal asterisks (`*`) inside labels.
+- **Constraints:** `subgraph` syntax is not supported.
 
-NESTED CAPSULES
----------------
-A child directory with its own `BAFT.md` is an independent bounded context. Parent and child contracts govern different scopes.
+### Node Definitions
 
-Child scope:
-- A child `BAFT.md` only evaluates imports where both source and target are inside the child directory.
-- Imports from a child file to a target outside the child are treated as external by the child contract.
-- A child contract may not reference sibling directories with globs like `../sibling/**`.
+**Syntax:** `nodeId["path/**"]` (directory-shaped) or `nodeId["path/file.go"]` (file-shaped).
 
-Parent scope:
-- The parent `BAFT.md` may reference child directories as nodes, for example `auth["auth/&ast;&ast;"]`.
-- The parent governs cross-context edges between children, for example `billing --> auth`.
-- The parent does not scan files inside children for unmatched-file violations. That is the child's job.
-- If a child file imports a sibling-context file and the parent has no edge for that relation, the parent reports the violation.
+- **Specificity:** The most specific match wins. File-shaped globs take precedence over directory-shaped globs.
+- **Coverage:** Every tracked file must match at least one node. Unmatched files are reported as violations.
+- **Language Support:**
+  - **TypeScript, Dart:** Support both file-shaped and directory-shaped nodes.
+  - **Go, Kotlin, Rust:** Support directory-shaped nodes only. Using a file-shaped node (e.g., `handler["path/handler.go"]`) in these languages produces a validation error: `file-shaped nodes require a language that supports file globs`.
 
-Example:
+### Ignoring Files with `.baftignore`
 
-    services/
-    |- BAFT.md              <- billing --> auth, billing --> shared
-    |- auth/
-    |  \- BAFT.md          <- app --> domain (auth internals only)
-    \- billing/
-       \- BAFT.md          <- app --> domain (billing internals only)
+If some files should be completely invisible to Baft (e.g., generated code, build artifacts, or temporary files), use a `.baftignore` file.
 
-If `billing/app/x.go` imports `auth/domain/y.go`:
-- the parent contract decides whether `billing --> auth` is allowed
-- the child `billing/BAFT.md` ignores that import because the target is outside the child scope
+- **Syntax:** Uses standard `.gitignore` syntax (including negations with `!`).
+- **Precedence:** `.baftignore` files are processed alongside `.gitignore`. If both exist at the same level, `.baftignore` takes precedence.
+- **Hierarchy:** Like git, `.baftignore` files can be nested. A `.baftignore` in a subdirectory applies to that directory and its children.
+- **Use Case:** Use this to exempt files that are not part of your architectural design.
 
-VIOLATIONS
-----------
-Common failure modes:
-- `<file> is governed but matches no node`
-- `<file> imports <target> - target matches no node`
-- `<file> imports <target> - A -> B not allowed`
-- `<file> imports <target> - cross-directory edge not declared in parent`
+### Edges & Rules
 
-Exit codes:
-- `0` = clean
-- `1` = violations or error
+**Syntax:** `nodeA --> nodeB`
 
-SUPPORTED LANGUAGES
--------------------
-Baft currently supports Go, TypeScript, Kotlin, Rust, and Dart. Capsules are auto-discovered from standard manifests such as `go.mod`, `package.json`, `build.gradle.kts`, `Cargo.toml`, and `pubspec.yaml`.
+- **Directional:** `A --> B` allows A to import B, but not vice versa.
+- **Non-Transitive:** `A --> B --> C` does **not** imply `A --> C`.
+- **Self-Imports:** Allowed by default unless the node is `:::endophobic`.
 
-AGENT GUARDRAILS
-----------------
-- Do not add a cross-node import just because it compiles. Check the contract first.
-- Do not create a new file without making sure some node claims it.
-- In nested capsules, do not try to authorize sibling imports from the child contract. That belongs in the parent contract.
-- If you are changing the intended architecture, update `BAFT.md` in the same change as the code.
-- Run `baft check` before finishing work.
+---
+
+## Advanced Workflow
+
+### Nested Capsules (Bounded Contexts)
+
+A child directory with its own `BAFT.md` is treated as an independent bounded context.
+
+**Child Scope:**
+
+- Only evaluates imports where both source and target are within the child directory.
+- Cannot reference sibling directories (e.g., `../sibling/**` is forbidden).
+
+**Parent Scope:**
+
+- The parent `BAFT.md` can treat child directories as nodes (e.g., `auth["auth/**"]`).
+- The parent tracks edges _between_ children (e.g., `billing --> auth`).
+- The parent does not check for unmatched files inside children; that is the child's responsibility.
+
+### Handling Violations
+
+Common error messages:
+
+- `... is tracked by BAFT.md but matches no node`: The file isn't covered by any glob in `BAFT.md`.
+- `... imports ... - target matches no node`: The imported file isn't part of the contract.
+- `... imports ... - A -> B not allowed`: The import violates the defined edges.
+- `... cross-directory edge not declared in parent`: A violation occurring between nested capsules.
+
+**Exit Codes:** `0` (Success), `1` (Violation/Error).
+
+---
+
+## Agent Guardrails
+
+- **No Implicit Edges:** Do not add imports just because they compile; check the contract.
+- **Claim New Files:** Ensure every new file is covered by a node glob.
+- **Scope Respect:** Authorize sibling imports in the **parent** contract, never the child.
+- **Atomic Updates:** Update `BAFT.md` in the same commit as the code changes that require it.
+- **Final Check:** Always run `baft check` before finishing.

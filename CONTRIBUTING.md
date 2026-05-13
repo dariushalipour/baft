@@ -11,67 +11,97 @@ go test ./...
 
 ## Architecture
 
+Baft follows a hexagonal (ports and adapters) architecture:
+
 ```
 baft/
-├── main.go                          # CLI: subcommands, version, reporters
-├── go.mod                           # Zero external dependencies
+├── main.go                                          # CLI: subcommands, version, reporters
+├── go.mod                                           # Zero external dependencies
+├── pkg/treeview/                                    # Public utility: tree view rendering
 └── internal/
-    ├── ui/ui.go                     # Terminal output (✓, ✗, ℹ)
-    └── baft/
-        ├── language.go              # Language interface + Capsule struct
-        ├── graph.go                 # Mermaid parser, glob matching, Graph type
-        ├── check.go                 # File walk + rule application
-        ├── baft.go                # Run() — orchestrates discovery + checks
-        ├── golang/golang.go         # Go adapter
-        ├── dart/dart.go             # Dart adapter
-        ├── kotlin/kotlin.go         # Kotlin adapter
-        ├── typescript/typescript.go # TS adapter
-        └── rust/rust.go             # Rust adapter
+    ├── port/                                        # Interfaces (ports)
+    │   ├── language.go                              # Language, CapsuleDiscovery, Capsule, ImportSpec
+    │   ├── fs.go                                    # FileSystem interface
+    │   ├── graph_repository.go                      # GraphRepository interface
+    │   └── reporter.go                              # CheckResult, Violation, CheckResultRenderer
+    ├── domain/graph/                                # Core domain logic
+    │   └── graph.go                                 # Graph, globs, node/edge matching
+    ├── application/
+    │   ├── service/
+    │   │   ├── discovery.go                         # CapsuleDiscovery (two-phase manifest walk)
+    │   │   └── capsule.go                           # Capsule walking utilities
+    │   └── usecase/
+    │       ├── check/check.go                       # `baft check` — validates architecture
+    │       └── draft/draft.go                       # `baft draft` — generates BAFT.md
+    └── adapter/
+        ├── languages/                               # Language adapters (adapters)
+        │   ├── golang/golang.go
+        │   ├── dart/dart.go
+        │   ├── typescript/typescript.go
+        │   ├── kotlin/kotlin.go
+        │   └── rust/rust.go
+        ├── fs/                                      # Filesystem adapters
+        │   ├── realfs/                              # OS-backed filesystem
+        │   ├── ignorefs/                            # Gitignore-aware wrapper
+        │   ├── overlayfs/                           # Stdin-overlay filesystem
+        │   ├── memfs/                               # In-memory filesystem (testing)
+        │   └── gitignore/                           # Gitignore pattern parser
+        ├── graph_repositories/mermaid/              # Mermaid parser/renderer
+        └── reporters/                               # Output formatters
+            ├── textreporter/                        # Colored terminal output
+            ├── jsonreporter/                        # JSON output
+            ├── vscereporter/                        # VS Code diagnostics format
+            └── intellijreporter/                    # IntelliJ inspection format
 ```
 
-The core (`graph.go`, `check.go`, `baft.go`, `language.go`) knows nothing about Go, Dart, or Kotlin. Language-specific logic lives behind the `Language` interface.
+The domain layer (`domain/graph/`) knows nothing about any language. Language-specific logic lives in `adapter/languages/`, plugged in via the `Language` interface in `port/`.
 
 ## Adding a language adapter
 
-Create a new capsule under `internal/baft/<lang>/` and implement the `Language` interface:
+Create a new adapter under `internal/adapter/languages/<lang>/` and implement the `Language` interface from `internal/port/language.go`:
 
 ```go
 type Language interface {
     Name() string
-    Discover(rootDir string) ([]Capsule, error)
-    IsGovernedFile(rel string) bool
-    ParseImports(absPath string) ([]string, error)
-    ResolveInternalTarget(spec string, c Capsule, fileRel string) (targetDir string, internal bool)
+    IsScannableFile(rel string) bool
+    ParseImports(fsys FileSystem, absPath string) ([]ImportSpec, error)
+    ResolveInternalTarget(fsys FileSystem, spec ImportSpec, c Capsule, fileRel string) (targetDir string, internal bool)
     SupportsFileGlobs() bool
+    Register(d CapsuleDiscovery)
 }
 ```
 
 Each method:
 
-| Method | Purpose |
-|---|---|
-| `Name()` | Short identifier for diagnostics (e.g. `"go"`, `"dart"`) |
-| `Discover()` | Walk the repo tree, return every directory that has both a module manifest and a `BAFT.md` |
-| `IsGovernedFile()` | Return `true` for source files that should be checked (exclude tests, generated files, etc.) |
-| `ParseImports()` | Extract raw import specifiers from a file. Language-specific format. |
-| `ResolveInternalTarget()` | Map a raw import specifier to a capsule-relative path. Return `internal=false` for external/stdlib imports. |
-| `SupportsFileGlobs()` | Return `true` if individual files can be claimed by nodes (e.g. `lib/src/providers.dart`). Return `false` for directory-only languages (Go). |
+| Method                    | Purpose                                                                                                                                      |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Name()`                  | Short identifier for diagnostics (e.g. `"go"`, `"dart"`)                                                                                     |
+| `IsScannableFile()`       | Return `true` for source files that should be checked (exclude tests, generated files, etc.)                                                 |
+| `ParseImports()`          | Extract import specifiers from a file. Language-specific format. Receives a `FileSystem` for reading file content.                           |
+| `ResolveInternalTarget()` | Map an import specifier to a capsule-relative path. Return `internal=false` for external/stdlib imports.                                     |
+| `SupportsFileGlobs()`     | Return `true` if individual files can be claimed by nodes (e.g. `lib/src/providers.dart`). Return `false` for directory-only languages (Go). |
+| `Register()`              | Register manifest file names and parsing logic with the `CapsuleDiscovery` service.                                                          |
 
 Then register it in `main.go`:
 
 ```go
-result := baft.Run(root, []baft.Language{
+discovery := service.NewCapsuleDiscovery()
+golang.Language{}.Register(discovery)
+dart.Language{}.Register(discovery)
+mylang.Language{}.Register(discovery)
+
+result := check.Run(fsys, root, []port.Language{
     golang.Language{},
     dart.Language{},
     mylang.Language{},
-}, baft.OptJSON(jsonOut))
+}, repo, discovery)
 ```
 
 That's it. No other changes needed.
 
 ## BAFT.md format
 
-Each governed capsule has a `BAFT.md` at its root. The first ```mermaid block is parsed:
+Each tracked capsule has a `BAFT.md` at its root and/or in some subdirectories. The first mermaid block is parsed:
 
 ````markdown
 ```mermaid
@@ -91,13 +121,13 @@ flowchart TD
 
 ### Glob syntax
 
-| Glob | Matches |
-|---|---|
-| `.` | Only the capsule root |
-| `internal/domain/**` | `internal/domain` and any subdirectory |
-| `internal/infra/*` | Exactly `internal/infra/<one-segment>` |
-| `internal/infra/*/**` | `internal/infra/<x>/<y>` and deeper (not the port dir itself) |
-| `lib/src/providers.dart` | A single file (only for languages that support file globs) |
+| Glob                     | Matches                                                       |
+| ------------------------ | ------------------------------------------------------------- |
+| `.`                      | Only the capsule root                                         |
+| `internal/domain/**`     | `internal/domain` and any subdirectory                        |
+| `internal/infra/*`       | Exactly `internal/infra/<one-segment>`                        |
+| `internal/infra/*/**`    | `internal/infra/<x>/<y>` and deeper (not the port dir itself) |
+| `lib/src/providers.dart` | A single file (only for languages that support file globs)    |
 
 Most specific match wins. File-shaped globs beat directory-shaped globs.
 
@@ -105,14 +135,15 @@ Most specific match wins. File-shaped globs beat directory-shaped globs.
 
 Run all tests:
 
-```
+```bash
 go test ./...
 ```
 
 Tests are unit-only — no mocks, no fakes, no integration. The graph parser and glob matcher have thorough coverage in `graph_test.go`. Each adapter has its own test file.
 
 When adding an adapter, test at minimum:
-- `IsGovernedFile` with representative paths
+
+- `IsScannableFile` with representative paths
 - `ParseImports` with a synthetic file
 - `ResolveInternalTarget` with internal, external, and edge-case imports
 
@@ -189,13 +220,13 @@ Checking each path segment individually doesn't work — you need to verify the 
 
 ### Kotlin multi-platform has many source sets
 
-Kotlin isn't just `src/main/kotlin`. Multi-platform projects use `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their `*Test` counterparts. Your `IsGovernedFile` and `findBaseCapsule` must recognize all of them.
+Kotlin isn't just `src/main/kotlin`. Multi-platform projects use `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their `*Test` counterparts. Your `IsScannableFile` and `findBaseCapsule` must recognize all of them.
 
 ### Generated files need explicit exclusion
 
-Kotlin code generators produce files in predictable paths. Exclude them in `IsGovernedFile`:
+Kotlin code generators produce files in predictable paths. Exclude them in `IsScannableFile`:
 
-```
+```bash
 /generated/
 /kapt/
 /ksp/
@@ -234,12 +265,14 @@ Baft uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
 ### Steps
 
 1. Ensure tests pass:
-   ```
+
+   ```bash
    go test ./...
    ```
 
 2. Tag the release:
-   ```
+
+   ```bash
    git tag -s v0.1.0 -m "Release v0.1.0"
    git push origin v0.1.0
    ```
@@ -250,7 +283,7 @@ Baft uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
    - Publish
 
 4. Verify `go install` works:
-   ```
+   ```bash
    go install github.com/dariushalipour/baft@v0.1.0
    baft --version
    ```
@@ -264,7 +297,7 @@ Baft uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
 
 For local builds that report a proper version string:
 
-```
+```bash
 go build -ldflags "-X main.version=v0.1.0" -o baft .
 ```
 

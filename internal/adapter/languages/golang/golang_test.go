@@ -7,10 +7,10 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-func TestIsGovernedFile(t *testing.T) {
+func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
-		// Standard governed
+		// Standard scannable
 		"main.go":                         true,
 		"internal/domain/model.go":        true,
 		"internal/adapter/http/server.go": true,
@@ -21,20 +21,20 @@ func TestIsGovernedFile(t *testing.T) {
 		"cmd/tool.go":                     true,
 		"pkg/lib.go":                      true,
 
-		// Not governed: test files
-		"internal/domain/model_test.go": false,
-		"main_test.go":                  false,
-		"api/handler_test.go":           false,
+		// Scannable: test files are now scannable (ignore wrapper filters them)
+		"internal/domain/model_test.go": true,
+		"main_test.go":                  true,
+		"api/handler_test.go":           true,
 
-		// Not governed: wrong extension
+		// Not scannable: wrong extension
 		"internal/domain/model.md": false,
 		"README.md":                false,
 		"internal/config.yaml":     false,
 	}
 	for rel, want := range cases {
 		t.Run(rel, func(t *testing.T) {
-			if got := l.IsGovernedFile(rel); got != want {
-				t.Errorf("IsGovernedFile(%q) = %v, want %v", rel, got, want)
+			if got := l.IsScannableFile(rel); got != want {
+				t.Errorf("IsScannableFile(%q) = %v, want %v", rel, got, want)
 			}
 		})
 	}
@@ -187,6 +187,16 @@ func TestReadGoModulePath(t *testing.T) {
 			content: "",
 			wantErr: true,
 		},
+		{
+			label:   "quoted module path",
+			content: "module \"example.com/myproject\"\n\ngo 1.21\n",
+			want:    "example.com/myproject",
+		},
+		{
+			label:   "quoted with path",
+			content: "module \"github.com/org/repo/v2\"\n\ngo 1.21\n",
+			want:    "github.com/org/repo/v2",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.label, func(t *testing.T) {
@@ -206,13 +216,5 @@ func TestReadGoModulePath(t *testing.T) {
 				t.Errorf("got %q, want %q", got, c.want)
 			}
 		})
-	}
-}
-
-func TestSkipDirs(t *testing.T) {
-	l := Language{}
-	skip := l.SkipDirs()
-	if len(skip) != 1 || skip[0] != "vendor" {
-		t.Errorf("expected SkipDirs() = [\"vendor\"], got %v", skip)
 	}
 }

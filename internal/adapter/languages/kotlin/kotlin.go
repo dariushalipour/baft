@@ -8,20 +8,15 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/dariushalipour/baft/internal/port"
 )
-
-// lineOffsetsCache is a small LRU-style cache for line offset tables.
-// Prevents recomputing byte-offset→line/col maps for the same file.
-var lineOffsetsCache sync.Map
 
 type Language struct{}
 
 func (Language) Name() string { return "kotlin" }
 
-func (Language) IsGovernedFile(rel string) bool {
+func (Language) IsScannableFile(rel string) bool {
 	if !strings.HasSuffix(rel, ".kt") {
 		return false
 	}
@@ -61,22 +56,12 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	}
 	indices := importRe.FindAllSubmatchIndex(data, -1)
 	out := make([]port.ImportSpec, 0, len(indices))
+	lineOffsets := makeLineOffsets(data)
 
-	// Reuse cached line offsets if available, compute otherwise.
-	if lineOffsets, ok := lineOffsetsCache.Load(absPath); ok {
-		for _, m := range indices {
-			importPath := strings.TrimSuffix(string(data[m[2]:m[3]]), ".*")
-			line, col := offsetToLineCol(lineOffsets.([]int), data, m[2])
-			out = append(out, port.ImportSpec{Path: importPath, Line: line, Col: col, ColEnd: col + len(importPath)})
-		}
-	} else {
-		lineOffsets := makeLineOffsets(data)
-		lineOffsetsCache.Store(absPath, lineOffsets)
-		for _, m := range indices {
-			importPath := strings.TrimSuffix(string(data[m[2]:m[3]]), ".*")
-			line, col := offsetToLineCol(lineOffsets, data, m[2])
-			out = append(out, port.ImportSpec{Path: importPath, Line: line, Col: col, ColEnd: col + len(importPath)})
-		}
+	for _, m := range indices {
+		importPath := strings.TrimSuffix(string(data[m[2]:m[3]]), ".*")
+		line, col := offsetToLineCol(lineOffsets, data, m[2])
+		out = append(out, port.ImportSpec{Path: importPath, Line: line, Col: col, ColEnd: col + len(importPath)})
 	}
 	return out, nil
 }
@@ -155,7 +140,6 @@ func isInternalCapsule(spec, basePkg string) bool {
 }
 
 func (Language) SupportsFileGlobs() bool { return false }
-func (Language) SkipDirs() []string      { return []string{"build", ".kotlin"} }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("kotlin", port.ManifestInfo{
 		Names: []string{"build.gradle.kts", "build.gradle"},
@@ -165,8 +149,8 @@ func (Language) Register(d port.CapsuleDiscovery) {
 			dir := filepath.Dir(path)
 			return findBaseCapsule(fsys, dir)
 		},
+		BaseIgnoreEntries: []string{"build", ".kotlin"},
 	})
-	d.RegisterSkipDirs("kotlin", Language{}.SkipDirs())
 }
 
 func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
@@ -228,23 +212,21 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 	}
 
 	sort.Strings(relPaths)
-	parts := strings.Split(relPaths[0], "/")
+	first := relPaths[0]
+	last := relPaths[len(relPaths)-1]
 
+	parts := strings.Split(first, "/")
 	var common []string
 	for _, p := range parts {
-		candidate := append([]string(nil), common...)
-		candidate = append(candidate, p)
-		prefix := strings.Join(candidate, "/") + "/"
-		candStr := strings.Join(candidate, "/")
-		ok := true
-		for _, path := range relPaths {
-			if !strings.HasPrefix(path, prefix) && path != candStr {
-				ok = false
+		if len(common) == 0 {
+			if !strings.HasPrefix(last, p+"/") && !strings.HasPrefix(last, p) {
 				break
 			}
-		}
-		if !ok {
-			break
+		} else {
+			candidate := strings.Join(append(common, p), "/")
+			if !strings.HasPrefix(last, candidate+"/") && !strings.HasPrefix(last, candidate) {
+				break
+			}
 		}
 		common = append(common, p)
 	}

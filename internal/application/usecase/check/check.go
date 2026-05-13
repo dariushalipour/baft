@@ -1,12 +1,12 @@
 // Package check verifies that code imports respect architecture rules
-// declared in BAFT.md config files across one or more capsules.
+// declared in BAFT.md contract files across one or more capsules.
 //
 // Algorithm:
 //
 //  1. Discover capsules (modules with manifest files like go.mod)
-//  2. For each capsule, find the root BAFT.md and any scoped configs
-//  3. Walk every governed file, resolve its imports to internal targets
-//  4. For each import, determine the governing scope and check the
+//  2. For each capsule, find the root BAFT.md and any scoped contracts
+//  3. Walk every scannable file, resolve its imports to internal targets
+//  4. For each import, determine the tracking scope and check the
 //     relation against the appropriate graph, walking up ancestor scopes
 //     when source and target are in different scopes
 //  5. Validate that all graphs use only node types supported by the language
@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/domain/graph"
@@ -39,6 +40,7 @@ type capsuleResult struct {
 	errors                []port.Violation
 	hasOverlapError       bool
 	hasDuplicateGlobError bool
+	hasInvalidGlobError   bool
 }
 
 func (r *capsuleResult) toPublic(label string) port.CapsuleResult {
@@ -57,11 +59,11 @@ func (r *capsuleResult) toPublic(label string) port.CapsuleResult {
 	return cr
 }
 
-type configContext struct {
-	rootGraph     *graph.Graph
-	hasRootConfig bool
-	configPathAbs string
-	loadErr       []port.Violation
+type contractContext struct {
+	rootGraph       *graph.Graph
+	hasRootContract bool
+	contractPathAbs string
+	loadErr         []port.Violation
 }
 
 type capsuleChecker struct {
@@ -69,12 +71,12 @@ type capsuleChecker struct {
 	fsys              port.FileSystem
 	capsule           port.Capsule
 	lang              port.Language
-	configDir         string
-	configDirAbs      string
+	contractDir       string
+	contractDirAbs    string
 	scopeCache        *scopeCache
 	parseCache        *parseCache
 	nestedCapsuleDirs []string
-	configContext
+	contractContext
 }
 
 func newCapsuleChecker(
@@ -82,22 +84,22 @@ func newCapsuleChecker(
 	capsule port.Capsule,
 	lang port.Language,
 	repo port.GraphRepository,
-	configDir string,
-	ctx configContext,
+	contractDir string,
+	ctx contractContext,
 	nestedCapsuleDirs []string,
 ) *capsuleChecker {
-	configDirAbs, _ := filepath.Abs(configDir)
+	contractDirAbs, _ := filepath.Abs(contractDir)
 	return &capsuleChecker{
 		res:               &capsuleResult{graph: ctx.rootGraph},
 		fsys:              fsys,
 		capsule:           capsule,
 		lang:              lang,
-		configDir:         configDir,
-		configDirAbs:      configDirAbs,
+		contractDir:       contractDir,
+		contractDirAbs:    contractDirAbs,
 		scopeCache:        newScopeCache(fsys, repo),
 		parseCache:        newParseCache(),
 		nestedCapsuleDirs: nestedCapsuleDirs,
-		configContext:     ctx,
+		contractContext:   ctx,
 	}
 }
 
@@ -126,24 +128,37 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 }
 
 func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) *port.CheckResult {
-	entries, err := discovery.Discover(fsys, rootDir)
+	// Wrap the filesystem with ignore rules before discovery.
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           rootDir,
+		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
+	})
+	var warnings []string
+	if err != nil {
+		if !errors.Is(err, ignorefs.ErrRepoRootUnreachable) {
+			return &port.CheckResult{Errors: []string{"ignorefs: " + err.Error()}}
+		}
+		warnings = []string{"not inside a git repository — .gitignore/.baftignore rules from parent directories will not apply"}
+	}
+
+	entries, err := discovery.Discover(wrapped, rootDir)
 	if err != nil {
 		return &port.CheckResult{Errors: []string{"discovery: " + err.Error()}}
 	}
 
 	capsules := matchCapsulesToLanguages(entries, languages)
 	if len(capsules) == 0 {
-		return &port.CheckResult{}
+		return &port.CheckResult{Warnings: warnings}
 	}
 
 	sort.Slice(capsules, func(i, j int) bool {
-		return port.Label(capsules[i].capsule, rootDir) < port.Label(capsules[j].capsule, rootDir)
+		return port.Label(capsules[i].capsule) < port.Label(capsules[j].capsule)
 	})
 
 	// Build work items with their original indices for deterministic output ordering
 	workItems := make([]capsuleWork, 0, len(capsules))
 	for i, c := range capsules {
-		label := port.Label(c.capsule, rootDir)
+		label := port.Label(c.capsule)
 		nestedDirs := nestedCapsuleDirs(capsules, c.capsule.Dir)
 		workItems = append(workItems, capsuleWork{
 			index:      i,
@@ -158,13 +173,15 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 	// collect via result channel. The book recommends worker pools for independent
 	// tasks to bound concurrency and avoid overwhelming the system.
 	numWorkers := min(runtime.NumCPU(), len(workItems))
-	workChan := make(chan capsuleWork, len(workItems))
-	results := make(chan capsuleResultItem, len(workItems))
+	workChan := make(chan capsuleWork, numWorkers*2)
+	results := make(chan capsuleResultItem, numWorkers*2)
 
-	for _, w := range workItems {
-		workChan <- w
-	}
-	close(workChan)
+	go func() {
+		for _, w := range workItems {
+			workChan <- w
+		}
+		close(workChan)
+	}()
 
 	var wg sync.WaitGroup
 	for w := 0; w < numWorkers; w++ {
@@ -172,7 +189,7 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		go func() {
 			defer wg.Done()
 			for work := range workChan {
-				capsuleRes, err := checkCapsule(ctx, fsys, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
+				capsuleRes, err := checkCapsule(ctx, wrapped, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
 				results <- capsuleResultItem{
 					index:  work.index,
 					label:  work.label,
@@ -202,10 +219,11 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 
 	var result port.CheckResult
 	// Pre-allocate slices with estimated capacity.
+	result.Warnings = warnings
 	result.Errors = make([]string, 0, len(collected)*2)
 	result.Capsules = make([]port.CapsuleResult, 0, len(collected))
 	result.Violations = make([]string, 0, len(collected)*5)
-	seenConfigErrors := map[string]bool{}
+	seenContractErrors := map[string]bool{}
 	for _, r := range collected {
 		if r.err != nil {
 			result.Errors = append(result.Errors, r.label+": "+r.err.Error())
@@ -215,7 +233,7 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		if r.result == nil {
 			continue
 		}
-		r.result.errors = dedupeConfigErrors(r.result.errors, seenConfigErrors)
+		r.result.errors = dedupeContractErrors(r.result.errors, seenContractErrors)
 		result.Capsules = append(result.Capsules, r.result.toPublic(r.label))
 		for _, v := range r.result.violations {
 			result.Violations = append(result.Violations, r.label+": "+v.Message)
@@ -227,10 +245,10 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 	return &result
 }
 
-func dedupeConfigErrors(errors []port.Violation, seen map[string]bool) []port.Violation {
+func dedupeContractErrors(errors []port.Violation, seen map[string]bool) []port.Violation {
 	filtered := errors[:0]
 	for _, err := range errors {
-		key := configErrorKey(err)
+		key := contractErrorKey(err)
 		if key != "" {
 			if seen[key] {
 				continue
@@ -242,8 +260,8 @@ func dedupeConfigErrors(errors []port.Violation, seen map[string]bool) []port.Vi
 	return filtered
 }
 
-func configErrorKey(err port.Violation) string {
-	if filepath.Base(err.File) != port.ConfigFile {
+func contractErrorKey(err port.Violation) string {
+	if filepath.Base(err.File) != port.ContractFile {
 		return ""
 	}
 	return err.File + "\x00" + err.Message
@@ -264,27 +282,28 @@ func matchCapsulesToLanguages(entries []service.CapsuleEntry, languages []port.L
 }
 
 func nestedCapsuleDirs(capsules []capsuleEntry, capsuleDir string) []string {
+	prefix := capsuleDir + string(filepath.Separator)
 	var nested []string
 	for _, c := range capsules {
-		if c.capsule.Dir != capsuleDir && strings.HasPrefix(c.capsule.Dir, capsuleDir+string(filepath.Separator)) {
+		if strings.HasPrefix(c.capsule.Dir, prefix) {
 			nested = append(nested, c.capsule.Dir)
 		}
 	}
 	return nested
 }
 
-func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsule, lang port.Language, repo port.GraphRepository, configDir string, nestedDirs []string) (*capsuleResult, error) {
-	cfgCtx, err := loadCapsuleConfig(fsys, repo, configDir, capsule.Dir)
+func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsule, lang port.Language, repo port.GraphRepository, contractDir string, nestedDirs []string) (*capsuleResult, error) {
+	ctrCtx, err := loadCapsuleContract(fsys, repo, contractDir, capsule.Dir)
 	if err != nil {
 		return nil, err
 	}
-	if len(cfgCtx.loadErr) > 0 {
-		return &capsuleResult{errors: cfgCtx.loadErr}, nil
+	if len(ctrCtx.loadErr) > 0 {
+		return &capsuleResult{errors: ctrCtx.loadErr}, nil
 	}
-	if !cfgCtx.hasRootConfig && !hasScopedConfig(fsys, capsule.Dir) {
+	if !ctrCtx.hasRootContract && !hasScopedContract(fsys, capsule.Dir) {
 		return nil, nil
 	}
-	chk := newCapsuleChecker(fsys, capsule, lang, repo, configDir, cfgCtx, nestedDirs)
+	chk := newCapsuleChecker(fsys, capsule, lang, repo, contractDir, ctrCtx, nestedDirs)
 	if err := chk.walk(ctx, fsys, capsule.Dir); err != nil {
 		return nil, err
 	}
@@ -293,6 +312,9 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 		chk.res.filesEncountered = 0
 		chk.res.filesScanned = 0
 		chk.res.relations = 0
+		chk.res.violations = nil
+	}
+	if chk.res.hasInvalidGlobError {
 		chk.res.violations = nil
 	}
 	sort.Slice(chk.res.errors, func(i, j int) bool {
@@ -304,7 +326,7 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 	return chk.res, nil
 }
 
-func makeConfigLoadErrors(cfgPath string, err error) []port.Violation {
+func makeContractLoadErrors(contractPath string, err error) []port.Violation {
 	var violations []port.Violation
 
 	// Check if it's a chain of ParseErrorWithNext (from multiple validation errors).
@@ -312,17 +334,17 @@ func makeConfigLoadErrors(cfgPath string, err error) []port.Violation {
 	if errors.As(err, &chain) {
 		for cur := chain; cur != nil; {
 			v := port.Violation{
-				Rule:     "config-load-error",
+				Rule:     "contract-load-error",
 				Severity: "error",
 				Source:   "baft",
-				File:     cfgPath,
+				File:     contractPath,
 			}
 			if cur.Raw != "" {
-				v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(cur.Raw), cfgPath, cur.Line)
+				v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(cur.Raw), contractPath, cur.Line)
 			} else if cur.Line > 0 {
-				v.Message = fmt.Sprintf("%s (%s:%d)", cur.Msg, cfgPath, cur.Line)
+				v.Message = fmt.Sprintf("%s (%s:%d)", cur.Msg, contractPath, cur.Line)
 			} else {
-				v.Message = fmt.Sprintf("%s (%s)", cur.Msg, cfgPath)
+				v.Message = fmt.Sprintf("%s (%s)", cur.Msg, contractPath)
 			}
 			if cur.Line > 0 {
 				v.Line = cur.Line
@@ -345,17 +367,17 @@ func makeConfigLoadErrors(cfgPath string, err error) []port.Violation {
 	var pe *mermaid.ParseError
 	if errors.As(err, &pe) {
 		v := port.Violation{
-			Rule:     "config-load-error",
+			Rule:     "contract-load-error",
 			Severity: "error",
 			Source:   "baft",
-			File:     cfgPath,
+			File:     contractPath,
 		}
 		if pe.Raw != "" {
-			v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(pe.Raw), cfgPath, pe.Line)
+			v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(pe.Raw), contractPath, pe.Line)
 		} else if pe.Line > 0 {
-			v.Message = fmt.Sprintf("%s (%s:%d)", pe.Msg, cfgPath, pe.Line)
+			v.Message = fmt.Sprintf("%s (%s:%d)", pe.Msg, contractPath, pe.Line)
 		} else {
-			v.Message = fmt.Sprintf("%s (%s)", pe.Msg, cfgPath)
+			v.Message = fmt.Sprintf("%s (%s)", pe.Msg, contractPath)
 		}
 		if pe.Line > 0 {
 			v.Line = pe.Line
@@ -364,43 +386,35 @@ func makeConfigLoadErrors(cfgPath string, err error) []port.Violation {
 	}
 
 	v := port.Violation{
-		Rule:     "config-load-error",
+		Rule:     "contract-load-error",
 		Severity: "error",
 		Source:   "baft",
-		File:     cfgPath,
+		File:     contractPath,
 	}
 	v.Message = err.Error()
-	if !strings.Contains(v.Message, cfgPath) {
-		v.Message = fmt.Sprintf("%s (%s)", v.Message, cfgPath)
+	if !strings.Contains(v.Message, contractPath) {
+		v.Message = fmt.Sprintf("%s (%s)", v.Message, contractPath)
 	}
 	return []port.Violation{v}
 }
 
-func loadCapsuleConfig(fsys port.FileSystem, repo port.GraphRepository, configDir, capsuleDir string) (configContext, error) {
-	var ctx configContext
-	configPath := service.FindConfig(fsys, configDir, capsuleDir)
-	ctx.configPathAbs, _ = filepath.Abs(configPath)
-	raw, err := fsys.ReadFile(configPath)
+func loadCapsuleContract(fsys port.FileSystem, repo port.GraphRepository, contractDir, capsuleDir string) (contractContext, error) {
+	var ctx contractContext
+	contractPath := service.FindContract(fsys, contractDir, capsuleDir)
+	ctx.contractPathAbs, _ = filepath.Abs(contractPath)
+	raw, err := fsys.ReadFile(contractPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return ctx, nil
 		}
-		ctx.loadErr = makeConfigLoadErrors(ctx.configPathAbs, err)
+		ctx.loadErr = makeContractLoadErrors(ctx.contractPathAbs, err)
 		return ctx, nil
 	}
-	ctx.hasRootConfig = true
+	ctx.hasRootContract = true
 	ctx.rootGraph, err = repo.Load(string(raw))
 	if err != nil {
-		ctx.loadErr = makeConfigLoadErrors(ctx.configPathAbs, err)
+		ctx.loadErr = makeContractLoadErrors(ctx.contractPathAbs, err)
 		return ctx, nil
 	}
 	return ctx, nil
-}
-
-// min returns the smaller of a or b.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
