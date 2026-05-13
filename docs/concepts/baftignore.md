@@ -38,7 +38,7 @@ A .baftignore is not:
 - **A BAFT.md rule.** It does not define nodes, edges, or allowed imports. It removes files from consideration entirely. A file that is `.baftignore`d does not need a node glob and cannot have a violation.
 - **A language-specific skip list.** Language adapters provide built-in exclusions (`vendor/`, `node_modules/`, `target/`, etc.) via registration. `.baftignore` is for project-specific exclusions beyond those.
 - **A BAFT.md exclusion mechanism.** You do not need to create an "ignored" node in `BAFT.md` and leave it with no edges. `.baftignore` removes the file before the graph is built.
-- **A per-command flag.** `.baftignore` applies to all Baft operations — `check`, `draft`, `discover`. There is no way to run Baft while bypassing `.baftignore`.
+- **A per-command flag.** `.baftignore` applies to all Baft operations — `check`, `dump`, `discover`. There is no way to run Baft while bypassing `.baftignore`.
 
 ---
 
@@ -103,6 +103,16 @@ A `.baftignore` in a subdirectory applies only to that directory and its childre
 
 ---
 
+## Why no inline suppression?
+
+Baft intentionally does not support inline suppression comments (e.g., `// baft:ignore`) within source files themselves.
+
+This design choice goes exactly against the idea of centralized architectural tracking. Currently, the only files that require extra vigilance from reviewers are the contract files (`BAFT.md`) and `.baftignore` files. 
+
+If we allowed suppressions from within each source file, it would make it extremely easy to overlook when they happen. Reviewers would have to scrutinize every changing file to ensure an architecture bypass wasn't sneaked in. This would make it easy for less caring contributors to take the easy path rather than addressing the actual architectural violation. Exemptions must be overt, deliberate, and centralized in explicit `.baftignore` or `BAFT.md` files.
+
+---
+
 ## Discovery and repo root
 
 When `.baftignore` is loaded, Baft walks upward from the capsule root to find the repository root (a directory containing `.git`). All `.gitignore` and `.baftignore` files between the capsule root and the repo root are loaded as ancestor patterns.
@@ -142,7 +152,7 @@ This handles the common case where a project imports from a vendored or generate
 
 ## BAFT.md itself can be ignored
 
-If `BAFT.md` matches a `.gitignore` or `.baftignore` pattern, the filesystem wrapper returns `ErrNotExist` when attempting to read it. The system treats the capsule as having no architecture contract — no violations are reported, and `draft` will create a new `BAFT.md`.
+If `BAFT.md` matches a `.gitignore` or `.baftignore` pattern, the filesystem wrapper returns `ErrNotExist` when attempting to read it. The system treats the capsule as having no architecture contract — no violations are reported, and `dump` will create a new `BAFT.md`.
 
 This is an edge case. Normally `BAFT.md` should not be ignored. But the behavior is consistent: ignored files are invisible, including the contract file itself.
 

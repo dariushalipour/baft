@@ -19,12 +19,22 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
-	"github.com/dariushalipour/baft/internal/application/usecase/draft"
+	"github.com/dariushalipour/baft/internal/application/usecase/dump"
 	"github.com/dariushalipour/baft/internal/port"
 	"github.com/dariushalipour/baft/pkg/treeview"
 )
 
 // ---------- shared workspace state ----------
+
+type contractReport struct {
+	contractPath string
+	nodes        int
+	edges        int
+	isNew        bool
+	amendNodes   int
+	amendEdges   int
+	hasAmendDiff bool
+}
 
 type workspace struct {
 	RootDir          string
@@ -38,6 +48,7 @@ type workspace struct {
 	FilesEncountered int
 	FilesScanned     int
 	Violations       []string
+	Reports          []contractReport
 }
 
 func (w *workspace) reset() {
@@ -51,6 +62,7 @@ func (w *workspace) reset() {
 	w.Relations = 0
 	w.FilesEncountered = 0
 	w.FilesScanned = 0
+	w.Reports = nil
 }
 
 func registerSharedSteps(sc *godog.ScenarioContext, getter func(context.Context) *workspace) {
@@ -147,7 +159,7 @@ func registerSharedSteps(sc *godog.ScenarioContext, getter func(context.Context)
 			return nil
 		})
 
-	sc.Step(`^(\d+) capsules? (?:is|are) (?:discovered|drafted)$`,
+	sc.Step(`^(\d+) capsules? (?:is|are) (?:discovered|dumped)$`,
 		func(ctx context.Context, n int) error {
 			w := getter(ctx)
 			if w.CapsuleCount != n {
@@ -249,6 +261,58 @@ func buildFS(w *workspace) port.FileSystem {
 		overlays[path] = []byte(content)
 	}
 	return overlayfs.New(fsys, overlays)
+}
+
+type fileSnapshot struct {
+	exists  bool
+	content string
+}
+
+func snapshotFiles(fsys port.FileSystem, rootDir string) (map[string]fileSnapshot, error) {
+	snapshots := make(map[string]fileSnapshot)
+	err := fsys.WalkDir(rootDir, func(abs string, d fs.DirEntry) error {
+		if d.IsDir() {
+			return nil
+		}
+		content, err := fsys.ReadFile(abs)
+		if err != nil {
+			return err
+		}
+		snapshots[abs] = fileSnapshot{exists: true, content: string(content)}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return snapshots, nil
+}
+
+func resolveScenarioPath(rootDir, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(rootDir, path)
+}
+
+func assertFileContent(fsys port.FileSystem, rootDir, path, expected string) error {
+	absPath := resolveScenarioPath(rootDir, path)
+	content, err := fsys.ReadFile(absPath)
+	if err != nil {
+		return fmt.Errorf("%s not found: %v", path, err)
+	}
+	if strings.TrimSpace(string(content)) != strings.TrimSpace(expected) {
+		return fmt.Errorf("%s content mismatch.\n--- Expected ---\n%s\n--- Got ---\n%s", path, expected, content)
+	}
+	return nil
+}
+
+func assertFileNotExists(fsys port.FileSystem, rootDir, path string) error {
+	absPath := resolveScenarioPath(rootDir, path)
+	_, err := fsys.Stat(absPath)
+	if err == nil {
+		return fmt.Errorf("expected %s to not exist, but it does", path)
+	}
+	return nil
 }
 
 // ---------- check feature tests ----------
@@ -361,28 +425,28 @@ func TestTypescriptCheckFeatures(t *testing.T) {
 	}
 }
 
-// ---------- draft feature tests ----------
+// ---------- dump feature tests ----------
 
-type draftWorld struct {
-	ws         workspace
-	capsules   []draft.CapsuleDraft
-	errors     []draft.DraftError
-	err        error
-	readErrors map[string]string
-	logBuf     bytes.Buffer
+type dumpWorld struct {
+	ws          workspace
+	beforeFiles map[string]fileSnapshot
+	errors      []dump.DumpError
+	err         error
+	readErrors  map[string]string
+	logBuf      bytes.Buffer
 }
 
-type draftWorldKey struct{}
+type dumpWorldKey struct{}
 
-func dw(ctx context.Context) *draftWorld { return ctx.Value(draftWorldKey{}).(*draftWorld) }
+func dw(ctx context.Context) *dumpWorld { return ctx.Value(dumpWorldKey{}).(*dumpWorld) }
 
-func initializeDraftScenario(sc *godog.ScenarioContext) {
+func initializeDumpScenario(sc *godog.ScenarioContext) {
 	sc.Before(func(ctx context.Context, _ *godog.Scenario) (context.Context, error) {
-		w := &draftWorld{
+		w := &dumpWorld{
 			readErrors: make(map[string]string),
 		}
 		w.ws.reset()
-		return context.WithValue(ctx, draftWorldKey{}, w), nil
+		return context.WithValue(ctx, dumpWorldKey{}, w), nil
 	})
 
 	registerSharedSteps(sc, func(ctx context.Context) *workspace { return &dw(ctx).ws })
@@ -394,7 +458,7 @@ func initializeDraftScenario(sc *godog.ScenarioContext) {
 			return nil
 		})
 
-	sc.Step(`^the draft uses the "([^"]*)" language adapter$`,
+	sc.Step(`^the dump uses the "([^"]*)" language adapter$`,
 		func(ctx context.Context, langName string) error {
 			w := dw(ctx)
 			var lang port.Language
@@ -413,44 +477,125 @@ func initializeDraftScenario(sc *godog.ScenarioContext) {
 			return nil
 		})
 
-	sc.Step(`^the draft runs from "([^"]*)"$`,
+	sc.Step(`^Contract at "([^"]+)" has (\d+) nodes? and (\d+) edges?$`,
+		func(ctx context.Context, path string, nodes, edges int) error {
+			w := dw(ctx)
+			for _, r := range w.ws.Reports {
+				rp := r.contractPath
+				if filepath.IsAbs(rp) {
+					rp, _ = filepath.Rel(w.ws.RootDir, rp)
+				}
+				rp = filepath.ToSlash(rp)
+				if rp == path {
+					if r.nodes != nodes {
+						return fmt.Errorf("contract at %s: expected %d nodes, got %d", path, nodes, r.nodes)
+					}
+					if r.edges != edges {
+						return fmt.Errorf("contract at %s: expected %d edges, got %d", path, edges, r.edges)
+					}
+					return nil
+				}
+			}
+			return fmt.Errorf("no contract report found for %s", path)
+		})
+
+	sc.Step(`^Contract at "([^"]+)" is (new|an amendment)$`,
+		func(ctx context.Context, path string, state string) error {
+			w := dw(ctx)
+			for _, r := range w.ws.Reports {
+				rp := r.contractPath
+				if filepath.IsAbs(rp) {
+					rp, _ = filepath.Rel(w.ws.RootDir, rp)
+				}
+				rp = filepath.ToSlash(rp)
+				if rp == path {
+					if state == "new" && !r.isNew {
+						return fmt.Errorf("contract at %s: expected new, got amendment", path)
+					}
+					if state == "an amendment" && r.isNew {
+						return fmt.Errorf("contract at %s: expected amendment, got new", path)
+					}
+					return nil
+				}
+			}
+			return fmt.Errorf("no contract report found for %s", path)
+		})
+
+	sc.Step(`^Contract at "([^"]+)" added (\d+) nodes and (\d+) edges$`,
+		func(ctx context.Context, path string, nodes, edges int) error {
+			w := dw(ctx)
+			for _, r := range w.ws.Reports {
+				rp := r.contractPath
+				if filepath.IsAbs(rp) {
+					rp, _ = filepath.Rel(w.ws.RootDir, rp)
+				}
+				rp = filepath.ToSlash(rp)
+				if rp == path {
+					if !r.hasAmendDiff {
+						return fmt.Errorf("contract at %s: expected amend diff, got none", path)
+					}
+					if r.amendNodes != nodes {
+						return fmt.Errorf("contract at %s: expected %d amended nodes, got %d", path, nodes, r.amendNodes)
+					}
+					if r.amendEdges != edges {
+						return fmt.Errorf("contract at %s: expected %d amended edges, got %d", path, edges, r.amendEdges)
+					}
+					return nil
+				}
+			}
+			return fmt.Errorf("no contract report found for %s", path)
+		})
+
+	sc.Step(`^the dump runs from "([^"]*)"$`,
 		func(ctx context.Context, rootDir string) error {
 			w := dw(ctx)
 			w.ws.FSys = buildFS(&w.ws)
+			beforeFiles, snapshotErr := snapshotFiles(w.ws.FSys, w.ws.RootDir)
+			if snapshotErr != nil {
+				return snapshotErr
+			}
+			w.beforeFiles = beforeFiles
 
 			discovery := service.NewCapsuleDiscovery()
 			for _, lang := range w.ws.Langs {
 				lang.Register(discovery)
 			}
 
-			result, runErr := draft.RunWith(w.ws.FSys, rootDir, w.ws.Langs, &mermaid.MermaidRepository{}, discovery, &w.logBuf)
+			result, runErr := dump.RunWith(w.ws.FSys, rootDir, w.ws.Langs, &mermaid.MermaidRepository{}, discovery, &w.logBuf)
 			if runErr != nil {
 				w.err = runErr
 				return nil
 			}
 			if result != nil {
-				w.capsules = result.Capsules
 				w.errors = result.Errors
-				w.ws.CapsuleCount = len(result.Capsules)
+				w.ws.CapsuleCount = len(result.Contracts)
 				var errStrs []string
 				for _, e := range result.Errors {
 					errStrs = append(errStrs, e.Error())
 				}
 				w.ws.Errors = errStrs
+				for _, c := range result.Contracts {
+					r := contractReport{
+						contractPath: c.ContractPath,
+						nodes:        c.Nodes,
+						edges:        c.Edges,
+						isNew:        c.IsNew,
+					}
+					if c.AmendDiff != nil {
+						r.hasAmendDiff = true
+						r.amendNodes = c.AmendDiff.Nodes
+						r.amendEdges = c.AmendDiff.Edges
+					} else {
+						r.amendNodes = -1
+						r.amendEdges = -1
+					}
+					w.ws.Reports = append(w.ws.Reports, r)
+				}
 			}
 			return nil
 		})
 
-	sc.Step(`^the draft succeeds$`,
-		func(ctx context.Context) error {
-			w := dw(ctx)
-			if w.err != nil {
-				return fmt.Errorf("expected no error, got: %v", w.err)
-			}
-			return nil
-		})
-
-	sc.Step(`^the draft errors$`,
+	sc.Step(`^the dump errors$`,
 		func(ctx context.Context) error {
 			w := dw(ctx)
 			if w.err == nil {
@@ -459,107 +604,53 @@ func initializeDraftScenario(sc *godog.ScenarioContext) {
 			return nil
 		})
 
-	sc.Step(`^capsule (\d+) has (\d+) files? scanned$`,
-		func(ctx context.Context, idx, n int) error {
-			w := dw(ctx)
-			if idx < 1 || idx > len(w.capsules) {
-				return fmt.Errorf("capsule index %d out of range (have %d)", idx, len(w.capsules))
-			}
-			if w.capsules[idx-1].FilesScanned != n {
-				return fmt.Errorf("capsule %d: expected %d files scanned, got %d", idx, n, w.capsules[idx-1].FilesScanned)
-			}
-			return nil
-		})
-
-	sc.Step(`^capsule (\d+) has (\d+) nodes?$`,
-		func(ctx context.Context, idx, n int) error {
-			w := dw(ctx)
-			if idx < 1 || idx > len(w.capsules) {
-				return fmt.Errorf("capsule index %d out of range (have %d)", idx, len(w.capsules))
-			}
-			if w.capsules[idx-1].Nodes != n {
-				return fmt.Errorf("capsule %d: expected %d nodes, got %d", idx, n, w.capsules[idx-1].Nodes)
-			}
-			return nil
-		})
-
-	sc.Step(`^capsule (\d+) has (\d+) edges?$`,
-		func(ctx context.Context, idx, n int) error {
-			w := dw(ctx)
-			if idx < 1 || idx > len(w.capsules) {
-				return fmt.Errorf("capsule index %d out of range (have %d)", idx, len(w.capsules))
-			}
-			if w.capsules[idx-1].Edges != n {
-				return fmt.Errorf("capsule %d: expected %d edges, got %d", idx, n, w.capsules[idx-1].Edges)
-			}
-			return nil
-		})
-
-	sc.Step(`^"([^"]+)" is expected to have content:$`,
+	sc.Step(`^file "([^"]+)" should be:$`,
 		func(ctx context.Context, path, expected string) error {
 			w := dw(ctx)
-			absPath := path
-			if !filepath.IsAbs(path) {
-				absPath = filepath.Join(w.ws.RootDir, path)
+			return assertFileContent(w.ws.FSys, w.ws.RootDir, path, expected)
+		})
+
+	sc.Step(`^file "([^"]+)" should not exist$`,
+		func(ctx context.Context, path string) error {
+			w := dw(ctx)
+			return assertFileNotExists(w.ws.FSys, w.ws.RootDir, path)
+		})
+
+	sc.Step(`^file "([^"]+)" should stay the same$`,
+		func(ctx context.Context, path string) error {
+			w := dw(ctx)
+			absPath := resolveScenarioPath(w.ws.RootDir, path)
+			original, exists := w.beforeFiles[absPath]
+			if !exists || !original.exists {
+				return fmt.Errorf("%s did not exist before the dump run", path)
 			}
 			content, err := w.ws.FSys.ReadFile(absPath)
 			if err != nil {
 				return fmt.Errorf("%s not found: %v", path, err)
 			}
-			if strings.TrimSpace(string(content)) != strings.TrimSpace(expected) {
-				return fmt.Errorf("%s content mismatch.\n--- Expected ---\n%s\n--- Got ---\n%s", path, expected, content)
-			}
-			return nil
-		})
-
-	sc.Step(`^"([^"]+)" should not exist$`,
-		func(ctx context.Context, path string) error {
-			w := dw(ctx)
-			absPath := path
-			if !filepath.IsAbs(path) {
-				absPath = filepath.Join(w.ws.RootDir, path)
-			}
-			_, err := w.ws.FSys.Stat(absPath)
-			if err == nil {
-				return fmt.Errorf("expected %s to not exist, but it does", path)
-			}
-			return nil
-		})
-
-	sc.Step(`^BAFT\.md is unchanged$`,
-		func(ctx context.Context) error {
-			w := dw(ctx)
-			original, exists := w.ws.Files[filepath.Join(w.ws.RootDir, "BAFT.md")]
-			if !exists {
-				return fmt.Errorf("BAFT.md was not in the original files")
-			}
-			content, err := w.ws.FSys.ReadFile(filepath.Join(w.ws.RootDir, "BAFT.md"))
-			if err != nil {
-				return fmt.Errorf("BAFT.md not found: %v", err)
-			}
-			if string(content) != original {
-				return fmt.Errorf("BAFT.md was modified, expected:\n%s\ngot:\n%s", original, content)
+			if string(content) != original.content {
+				return fmt.Errorf("%s changed.\n--- Before ---\n%s\n--- After ---\n%s", path, original.content, content)
 			}
 			return nil
 		})
 }
 
-func TestDraftFeatures(t *testing.T) {
+func TestDumpFeatures(t *testing.T) {
 	suite := godog.TestSuite{
-		ScenarioInitializer: initializeDraftScenario,
+		ScenarioInitializer: initializeDumpScenario,
 		Options: &godog.Options{
 			Strict:   true,
 			Format:   "pretty",
-			Paths:    []string{"../application/usecase/draft/draft.feature"},
+			Paths:    []string{"../application/usecase/dump/dump.feature"},
 			TestingT: t,
 		},
 	}
 	if suite.Run() != 0 {
-		t.Fatal("non-zero status returned, failed to run draft feature tests")
+		t.Fatal("non-zero status returned, failed to run dump feature tests")
 	}
 }
 
-// ---------- draft helpers ----------
+// ---------- dump helpers ----------
 
 func wrapLangWithMissingFiles(base port.Language, missingFiles map[string]string) port.Language {
 	return &langWithMissingFiles{base: base, missingFiles: missingFiles}

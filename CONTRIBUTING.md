@@ -5,7 +5,7 @@
 ```
 go build -o baft .
 ./baft check /path/to/repo
-./baft draft /path/to/repo
+./baft dump /path/to/repo
 go test ./...
 ```
 
@@ -32,7 +32,7 @@ baft/
     │   │   └── capsule.go                           # Capsule walking utilities
     │   └── usecase/
     │       ├── check/check.go                       # `baft check` — validates architecture
-    │       └── draft/draft.go                       # `baft draft` — generates BAFT.md
+    │       └── dump/dump.go                       # `baft dump` — generates BAFT.md
     └── adapter/
         ├── languages/                               # Language adapters (adapters)
         │   ├── golang/golang.go

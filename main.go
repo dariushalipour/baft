@@ -21,7 +21,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/reporters/vscereporter"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
-	"github.com/dariushalipour/baft/internal/application/usecase/draft"
+	"github.com/dariushalipour/baft/internal/application/usecase/dump"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -33,8 +33,8 @@ var usageText string
 //go:embed docs/cli-assets/check-usage.txt
 var checkUsageText string
 
-//go:embed docs/cli-assets/draft-usage.txt
-var draftUsageText string
+//go:embed docs/cli-assets/dump-usage.txt
+var dumpUsageText string
 
 //go:embed docs/cli-assets/help-intro.txt
 var helpIntroText string
@@ -59,8 +59,8 @@ func main() {
 		os.Exit(0)
 	case "check":
 		runCheck(args[1:])
-	case "draft":
-		runDraft(args[1:])
+	case "dump":
+		runDump(args[1:])
 	case "manual":
 		runManual(args[1:])
 	default:
@@ -154,7 +154,7 @@ func runCheck(args []string) {
 	}
 }
 
-func runDraft(args []string) {
+func runDump(args []string) {
 	var root string
 	var langs []string
 
@@ -162,7 +162,7 @@ func runDraft(args []string) {
 		a := args[i]
 		switch a {
 		case "--help", "-h":
-			printDraftUsage()
+			printDumpUsage()
 			os.Exit(0)
 		default:
 			if strings.HasPrefix(a, "--lang") {
@@ -172,13 +172,13 @@ func runDraft(args []string) {
 						i++
 						val = args[i]
 					} else {
-						fmt.Fprintf(os.Stderr, "--lang requires a value\n\nRun 'baft draft --help' for usage\n")
+						fmt.Fprintf(os.Stderr, "--lang requires a value\n\nRun 'baft dump --help' for usage\n")
 						os.Exit(1)
 					}
 				}
 				langs = append(langs, val)
 			} else if strings.HasPrefix(a, "--") {
-				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft draft --help' for usage\n", a)
+				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft dump --help' for usage\n", a)
 				os.Exit(1)
 			} else if root == "" {
 				root = a
@@ -199,18 +199,25 @@ func runDraft(args []string) {
 		lang.Register(discovery)
 	}
 
-	result, err := draft.Run(fs, root, languages, repo, discovery)
+	result, err := dump.RunWith(fs, root, languages, repo, discovery, os.Stderr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
-	if len(result.Capsules) == 0 {
-		fmt.Fprintln(os.Stderr, "no capsules found")
-		os.Exit(1)
+	if len(result.Contracts) == 0 && len(result.Errors) == 0 {
+		os.Exit(0)
 	}
 
-	for _, c := range result.Capsules {
-		fmt.Printf("drafted: %s (%d files, %d nodes, %d edges)\n", c.ContractPath, c.FilesScanned, c.Nodes, c.Edges)
+	for _, c := range result.Contracts {
+		status := "amended"
+		if c.IsNew {
+			status = "new"
+		}
+		if c.AmendDiff != nil {
+			fmt.Printf("[%s] %s (+%d nodes, +%d edges)\n", status, c.ContractPath, c.AmendDiff.Nodes, c.AmendDiff.Edges)
+		} else {
+			fmt.Printf("[%s] %s (%d files, %d nodes, %d edges)\n", status, c.ContractPath, c.FilesScanned, c.Nodes, c.Edges)
+		}
 	}
 }
 
@@ -243,8 +250,8 @@ func printCheckUsage() {
 	fmt.Print(checkUsageText)
 }
 
-func printDraftUsage() {
-	fmt.Print(draftUsageText)
+func printDumpUsage() {
+	fmt.Print(dumpUsageText)
 }
 
 func printVersion() {

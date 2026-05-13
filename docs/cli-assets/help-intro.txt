@@ -1,4 +1,4 @@
-Baft checks architecture contracts declared in `BAFT.md`.
+Baft checks architecture contracts declared in `BAFT.md` files.
 
 A `BAFT.md` file contains one Mermaid flowchart that:
 - defines nodes with globs
@@ -8,9 +8,10 @@ A `BAFT.md` file contains one Mermaid flowchart that:
 Files matching `.baftignore` (gitignore syntax) are invisible to Baft entirely.
 
 Typical workflow:
-1. Write `BAFT.md` by hand, or generate a draft with `baft draft .`
-2. Run `baft check .`
-3. Fix violations by adding edges or moving code
+1. Generate a baseline with `baft dump .`
+2. Edit `BAFT.md` to express the architecture you want
+3. Run `baft check .`
+4. Fix violations by adding edges or moving code
 
 Supported languages: Go, TypeScript, Dart, Kotlin, Rust.
 

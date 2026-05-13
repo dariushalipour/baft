@@ -125,6 +125,28 @@ func TestMermaidRepository_Save(t *testing.T) {
 	}
 }
 
+func TestMermaidRepository_SavePreservesClasses(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: map[string]string{
+			"usecase": "internal/usecase/**",
+		},
+		Edges: map[string]map[string]bool{},
+		Classes: map[string]map[string]bool{
+			"usecase": {
+				"zeta":       true,
+				"endophobic": true,
+				"disabled":   false,
+			},
+		},
+	}
+
+	out := (&MermaidRepository{}).Save(g)
+
+	if !strings.Contains(out, `usecase["internal/usecase/&ast;&ast;"]:::endophobic,zeta`) {
+		t.Fatalf("missing serialized classes in:\n%s", out)
+	}
+}
+
 func TestMermaidRepository_SaveDirGlobSuffix(t *testing.T) {
 	g := &graph.Graph{
 		Nodes: map[string]string{
@@ -208,6 +230,33 @@ func TestRoundTrip_LoadSaveLoad(t *testing.T) {
 				t.Errorf("missing edge %s --> %s after round-trip", src, dst)
 			}
 		}
+	}
+	if !roundTrip.IsEndophobic("usecase") {
+		t.Error("usecase should remain endophobic after round-trip")
+	}
+}
+
+func TestRoundTrip_LoadSaveLoadPreservesBareDirDisplay(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  dirx["dirx"]` + "\n" +
+		"```\n"
+
+	original, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("initial load: %v", err)
+	}
+
+	saved := (&MermaidRepository{}).Save(original)
+	if !strings.Contains(saved, `dirx["dirx"]`) {
+		t.Fatalf("expected bare directory glob to be preserved in:\n%s", saved)
+	}
+
+	roundTrip, err := (&MermaidRepository{}).Load(saved)
+	if err != nil {
+		t.Fatalf("round-trip load: %v\nsaved:\n%s", err, saved)
+	}
+	if roundTrip.Nodes["dirx"] != "dirx" {
+		t.Fatalf("node %q glob mismatch: got %q, want %q", "dirx", roundTrip.Nodes["dirx"], "dirx")
 	}
 }
 

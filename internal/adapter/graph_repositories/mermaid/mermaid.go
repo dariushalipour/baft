@@ -157,14 +157,21 @@ func (r *MermaidRepository) Save(g *graph.Graph) string {
 	for _, id := range ids {
 		glob := g.Nodes[id]
 		display := glob
-		if glob != "." && !looksLikeFilePath(glob) && !strings.HasSuffix(glob, "/**") {
+		if preserved, ok := g.NodeDisplays[id]; ok && preserved == glob {
+			display = preserved
+		} else if glob != "." && !looksLikeFilePath(glob) && !strings.HasSuffix(glob, "/**") {
 			display = glob + "/**"
 		}
 		sb.WriteString("  ")
 		sb.WriteString(encodeNodeId(id))
 		sb.WriteString("[")
 		sb.WriteString(quotedEncode(display))
-		sb.WriteString("]\n")
+		sb.WriteString("]")
+		if classes := sortedNodeClasses(g.Classes[id]); len(classes) > 0 {
+			sb.WriteString(":::")
+			sb.WriteString(strings.Join(classes, ","))
+		}
+		sb.WriteString("\n")
 	}
 
 	sb.WriteString("\n")
@@ -194,6 +201,23 @@ func (r *MermaidRepository) Save(g *graph.Graph) string {
 	return sb.String()
 }
 
+func sortedNodeClasses(classes map[string]bool) []string {
+	if len(classes) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(classes))
+	for name, enabled := range classes {
+		if enabled {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	return names
+}
+
 // Load extracts the mermaid block from markdown and builds a Graph.
 func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	block, blockStartLine, err := extractMermaidBlock(md)
@@ -202,11 +226,12 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	}
 
 	g := &graph.Graph{
-		Nodes:     map[string]string{},
-		Edges:     map[string]map[string]bool{},
-		Classes:   map[string]map[string]bool{},
-		NodeLines: map[string]int{},
-		EdgeLines: map[string]int{},
+		Nodes:        map[string]string{},
+		NodeDisplays: map[string]string{},
+		Edges:        map[string]map[string]bool{},
+		Classes:      map[string]map[string]bool{},
+		NodeLines:    map[string]int{},
+		EdgeLines:    map[string]int{},
 	}
 
 	lines := strings.Split(block, "\n")
@@ -307,6 +332,9 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 		}
 	}
 	g.Nodes[id] = glob
+	if _, ok := g.NodeDisplays[id]; !ok {
+		g.NodeDisplays[id] = glob
+	}
 	if _, ok := g.NodeLines[id]; !ok {
 		g.NodeLines[id] = lineNum
 	}

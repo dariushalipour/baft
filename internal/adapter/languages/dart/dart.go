@@ -16,20 +16,11 @@ type Language struct{}
 func (Language) Name() string { return "dart" }
 
 func (Language) IsScannableFile(rel string) bool {
-	if !strings.HasSuffix(rel, ".dart") {
+	n := len(rel)
+	if n < 5 {
 		return false
 	}
-	if !strings.HasPrefix(rel, "lib/") {
-		return false
-	}
-	base := path.Base(rel)
-	if strings.HasSuffix(base, "_test.dart") {
-		return false
-	}
-	if strings.HasSuffix(base, ".g.dart") || strings.HasSuffix(base, ".freezed.dart") {
-		return false
-	}
-	return true
+	return rel[n-5:] == ".dart"
 }
 
 var directiveRe = regexp.MustCompile(`(?m)^\s*(?:import|export|part)\s+['"]([^'"]+)['"]`)
@@ -112,7 +103,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("dart", port.ManifestInfo{
 		Names:             []string{"pubspec.yaml"},
 		ParseFunc:         readPubspecName,
-		BaseIgnoreEntries: []string{".dart_tool", ".pub"},
+		BaseIgnoreEntries: []string{".dart_tool", ".pub", "*.g.dart", "*.freezed.dart", "*_test.dart"},
 	})
 }
 

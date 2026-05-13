@@ -10,21 +10,28 @@ import (
 func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
+		// Standard scannable .dart files
 		"lib/app.dart":                    true,
 		"lib/src/ports/foo.dart":          true,
-		"lib/src/models/foo.g.dart":       false,
-		"lib/src/models/foo.freezed.dart": false,
-		"lib/src/models/foo_test.dart":    false,
-		"test/some_test.dart":             false,
-		"test/helper.dart":                false,
-		"bin/tool.dart":                   false,
-		"lib/app.md":                      false,
 		"lib/src/deep/nested/ok.dart":     true,
+		"test/some_test.dart":             true,
+		"test/helper.dart":                true,
+		"bin/tool.dart":                   true,
+		"foo.dart":                        true,
+		"src/models/foo.g.dart":           true,
+		"src/models/foo.freezed.dart":     true,
+
+		// Not scannable: wrong extension
+		"lib/app.md": false,
+		"README.md":  false,
+		"lib/config.yaml": false,
 	}
 	for rel, want := range cases {
-		if got := l.IsScannableFile(rel); got != want {
-			t.Errorf("IsScannableFile(%q) = %v, want %v", rel, got, want)
-		}
+		t.Run(rel, func(t *testing.T) {
+			if got := l.IsScannableFile(rel); got != want {
+				t.Errorf("IsScannableFile(%q) = %v, want %v", rel, got, want)
+			}
+		})
 	}
 }
 

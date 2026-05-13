@@ -1,7 +1,7 @@
 # Language Modules
 
 Each language module encapsulates everything that is specific to a programming
-language. The core (graph engine, check use case, draft use case) is
+language. The core (graph engine, check use case, dump use case) is
 completely language-agnostic — it knows nothing about Go, Dart, TypeScript,
 Kotlin, or Rust. It only knows about a `Language` interface and a `Graph`
 domain.
@@ -119,7 +119,12 @@ Returns `true` if the language's `BAFT.md` can use file-shaped node
 definitions (e.g. `lib/main.dart` as a node). Only Dart and TypeScript
 support this — Go, Kotlin, and Rust only support directory-level nodes.
 
-This affects how the core builds node keys in the draft command
+Directory-level nodes have two distinct meanings:
+
+- `path/to/dir` matches files directly in that directory.
+- `path/to/dir/**` matches the subtree rooted at that directory.
+
+This affects how the core builds node keys in the dump command
 (`graph.NodeKey`) and how the check command validates file-to-node mapping
 (`graph.NodeForPath`).
 
@@ -164,7 +169,7 @@ Each language registers with the discovery service by providing:
 - **Module ID parser** — a function that reads a manifest file and extracts
   the module identifier (e.g. the `module` line from `go.mod`)
 
-The use cases (`check.Run`, `draft.Run`) call the discovery service
+The use cases (`check.Run`, `dump.Run`) call the discovery service
 directly. The service returns `Capsule` structs with `Dir` and `CapsuleID`
 resolved. The language adapter is then used only for
 `IsScannableFile`, `ParseImports`, `ResolveInternalTarget`,
@@ -184,7 +189,7 @@ Language modules do not:
 - **Discover capsules** — Capsule discovery is handled by the core
   `CapsuleDiscovery` service. Languages only register their manifest names
   and module ID parser.
-- **Build the graph** — The core (`draft.Run`, `check.Run`) assembles
+- **Build the graph** — The core (`dump.Run`, `check.Run`) assembles
   nodes and edges from the paths that languages return.
 - **Validate rules** — The core checks whether edges between nodes are allowed
   by the `BAFT.md` graph.

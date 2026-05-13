@@ -1,12 +1,20 @@
 Usage: baft <command> [arguments]
 
 Commands:
-  check [flags] [root-dir]   Check packages for architecture violations
-  draft [flags] [root-dir]   Draft BAFT.md from current dependency reality
-  manual                     Print the BAFT.md manual for working in BAFT-tracked code
+  ----------------------------
+  🧐 check [flags] [root-dir]   Check packages for architecture violations
+  ----------------------------
+  🚜 dump [flags] [root-dir]    Dump BAFT.md from current dependency reality
+  ----------------------------
+  📄 manual                     Stdout the manual for working in BAFT-tracked code
+  ----------------------------
 
-Ignored files:
-  .baftignore                Gitignore-compatible patterns to exclude files from analysis
+Files:
+  ----------------------------
+  .baftignore                   Baft Ignore: Gitignore-compatible patterns to exclude files from analysis
+  ----------------------------
+  BAFT.md                       Executable architecture contract
+  ----------------------------
 
 Flags:
   --version, -v               Print version

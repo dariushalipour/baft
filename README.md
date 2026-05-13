@@ -26,7 +26,7 @@ Baft fixes this by making the diagram the actual enforcement mechanism.
 ## What Baft Is Not
 
 - **Not a linter:** It doesn't care about style, only about structural boundaries.
-- **Not a visualizer:** It enforces a diagram you provide; it doesn't generate one from scratch (though it can `draft` one).
+- **Not a visualizer:** It enforces a diagram you provide; it doesn't generate one from scratch (though it can `dump` one).
 - **Not a framework:** It sits on top of your existing build system and language analyzers.
 
 ## Quick Start
@@ -50,10 +50,10 @@ Create `BAFT.md` beside your module manifest.
 ````markdown
 ```mermaid
 flowchart TD
-  api["internal/api/&ast;&ast;"]
-  usecase["internal/usecase/&ast;&ast;"]:::endophobic
-  domain["internal/domain/&ast;&ast;"]
-  infra["internal/infra/&ast;&ast;"]
+  api["internal/api"]
+  usecase["internal/usecase"]:::endophobic
+  domain["internal/domain"]
+  infra["internal/infra"]
 
   api --> usecase
   usecase --> domain
@@ -66,10 +66,10 @@ GitHub will render that Mermaid block as a diagram:
 
 ```mermaid
 flowchart TD
-  api["internal/api/&ast;&ast;"]
-  usecase["internal/usecase/&ast;&ast;"]:::endophobic
-  domain["internal/domain/&ast;&ast;"]
-  infra["internal/infra/&ast;&ast;"]
+  api["internal/api"]
+  usecase["internal/usecase"]:::endophobic
+  domain["internal/domain"]
+  infra["internal/infra"]
 
   api --> usecase
   usecase --> domain
@@ -110,12 +110,12 @@ Exit code `0` means clean. Exit code `1` means violations or an error.
 If you do not want to write the first contract by hand:
 
 ```bash
-baft draft .
+baft dump .
 ```
 
-Baft will generate a `BAFT.md` draft from current dependency reality.
+Baft will generate a `BAFT.md` dump from current dependency reality.
 
-That draft is intentionally too literal. It is a starting point, not the final architecture. You still need to prune edges and merge low-level nodes into the model you actually want to enforce.
+That dump is intentionally too literal. It is a starting point, not the final architecture. You still need to prune edges and merge low-level nodes into the model you actually want to enforce.
 
 ## How It Works
 
@@ -129,15 +129,15 @@ Nested capsules are supported. A child directory with its own `BAFT.md` is treat
 
 ## Contract Model
 
-- **Node:** `nodeId["path/&ast;&ast;"]` claims a directory or file-shaped slice of a capsule
+- **Node:** `nodeId["path/to/dir"]` claims files directly in that directory; `nodeId["path/to/dir/&ast;&ast;"]` claims a whole subtree
 - **Edge:** `A --> B` means files in `A` may import files in `B`
 - **Self-imports:** allowed by default
 - **Endophobic node:** `:::endophobic` disables same-node imports
 - **Most specific match wins:** file-shaped globs beat directory-shaped globs
 
-**Ignoring Files:** Use a `.baftignore` file (standard gitignore syntax) to exclude files or directories from the check. This is useful for generated code or temporary files that shouldn't be tracked by the contract.
+**Ignoring Files:** Use a `.baftignore` file (standard gitignore syntax) to exclude files or directories from the check. This is useful for generated code or temporary files that shouldn't be tracked by the contract. Note that inline suppression comments (e.g. `// baft:ignore`) are intentionally not supported to ensure all architectural exceptions remain visible and centralized.
 
-TypeScript and Dart support file-shaped nodes. Go, Kotlin, and Rust require directory-shaped nodes.
+TypeScript and Dart support file-shaped nodes. Go, Kotlin, and Rust require directory-shaped nodes. In all languages, a bare directory glob means the exact directory, not an implicit `/**`.
 
 ## Supported Languages
 

@@ -21,10 +21,11 @@ BAFT.md solves this by making architecture rules explicit, editable, and enforce
 A **BAFT.md** file is a Markdown file containing a single Mermaid `flowchart` block that defines:
 
 - **Nodes** — groups of files identified by glob patterns (`path/**` or `path/file.go`).
+  Bare directory nodes such as `path/to/dir` claim only that exact directory; `path/to/dir/**` claims the full subtree.
 - **Edges** — directed arrows (`A --> B`) that allow imports from one node to another.
 - **Classes** — modifiers like `:::endophobic` that add constraints to nodes.
 
-The file lives at the root of a Capsule (or in a subdirectory for nested capsules). It is discovered on-demand by the `check` and `draft` commands.
+The file lives at the root of a Capsule (or in a subdirectory for nested capsules). It is discovered on-demand by the `check` and `dump` commands.
 
 ---
 
@@ -46,7 +47,7 @@ A BAFT.md is:
 
 - **An architecture contract.** It declares the intended structure of the codebase. Edges are permissions — if an edge does not exist, the import is forbidden.
 - **A Mermaid flowchart.** The contract is a `flowchart TD` (or `flowchart LR`) block. Nodes are labeled with glob patterns. Edges are `-->` arrows. Classes are `:::modifier` annotations.
-- **A live document.** The `draft` command scans source files and generates a BAFT.md from observed imports. The `check` command validates source files against the existing BAFT.md. They work together: draft proposes, check enforces.
+- **A live document.** The `dump` command scans source files and generates a BAFT.md from observed imports. The `check` command validates source files against the existing BAFT.md. They work together: dump proposes, check enforces.
 - **A per-Capsule file.** Each Capsule has its own BAFT.md. Nested Capsules have their own BAFT.md tracking only their internal imports. The parent Capsule's BAFT.md tracks edges between children.
 - **An executable specification.** It is not aspirational documentation that drifts from reality. The tooling reads it, parses it, and enforces it. Violations are reported with file paths, line numbers, and import details.
 
@@ -64,10 +65,10 @@ A BAFT.md file has two parts:
 
 ```mermaid
 flowchart TD
-  api["internal/api/**"]
-  usecase["internal/usecase/**"]:::endophobic
-  domain["internal/domain/**"]
-  infra["internal/infra/**"]
+  api["internal/api"]
+  usecase["internal/usecase"]:::endophobic
+  domain["internal/domain"]
+  infra["internal/infra"]
 
   api --> usecase
   usecase --> domain
@@ -89,9 +90,10 @@ Nodes define which files belong to which architectural group.
 - **nodeId** — an alphanumeric identifier used in edges (e.g., `api`, `domain`, `usecase`).
 - **glob_pattern** — a path pattern matching files or directories.
 
-**Two shapes:**
+**Three common shapes:**
 
-- **Directory-shaped:** `nodeId["path/**"]` — matches the directory and all files within it.
+- **Exact directory:** `nodeId["path/to/dir"]` — matches files directly in that directory.
+- **Subtree directory:** `nodeId["path/to/dir/**"]` — matches that directory and nested directories beneath it.
 - **File-shaped:** `nodeId["path/file.ts"]` — matches a single file. Only supported by TypeScript and Dart.
 
 **Specificity:** When a file matches multiple nodes, the most specific match wins. Specificity is scored by:
@@ -139,9 +141,9 @@ BAFT.md is discovered on-demand, not during capsule discovery.
 
 **`TrackingScope(filePath)`** — given a file path, walks upward to find the nearest `BAFT.md` in any ancestor directory, bounded by the capsule root. This determines which contract tracks a file.
 
-**`FindContract(startDir)`** — walks upward from a starting directory toward the capsule root, returning the path to the nearest ancestor `BAFT.md`, or `capsuleDir/BAFT.md` if none is found. Used by `draft` to decide where to create a new contract.
+**`FindContract(startDir)`** — walks upward from a starting directory toward the capsule root, returning the path to the nearest ancestor `BAFT.md`, or `capsuleDir/BAFT.md` if none is found. Used by `dump` to decide where to create a new contract.
 
-**`FindOrCreateContractDir(startDir)`** — used by `draft` to determine where to write a new BAFT.md. If a BAFT.md exists in any ancestor, returns that directory. Otherwise returns the starting directory.
+**`FindOrCreateContractDir(startDir)`** — used by `dump` to determine where to write a new BAFT.md. If a BAFT.md exists in any ancestor, returns that directory. Otherwise returns the starting directory.
 
 BAFT.md is subject to `.gitignore` and `.baftignore`. If a BAFT.md matches an ignore pattern, it is treated as non-existent.
 
@@ -178,9 +180,9 @@ The `check` command validates BAFT.md files for structural correctness before en
 
 ---
 
-## The draft command
+## The dump command
 
-The `draft` command generates a BAFT.md from observed imports:
+The `dump` command generates a BAFT.md from observed imports:
 
 1. Walks all tracked files in the Capsule.
 2. Parses imports using the language adapter.
@@ -189,11 +191,11 @@ The `draft` command generates a BAFT.md from observed imports:
 5. Builds edges from observed import relationships.
 6. Writes a new BAFT.md using the Mermaid format.
 
-**Draft does not merge.** It scans all tracked files and writes a fresh BAFT.md based on observed imports. It does not preserve existing rules, comments, or structure. It is a proposal, not an edit.
+**Dump does not merge.** It scans all tracked files and writes a fresh BAFT.md based on observed imports. It does not preserve existing rules, comments, or structure. It is a proposal, not an edit.
 
 **Node granularity:**
-- **Go, Kotlin, Rust:** Each directory becomes a node with a `/**` glob.
-- **TypeScript, Dart:** Files are grouped by directory. Files in the same directory are merged into a single directory-level `/**` node.
+- **Go, Kotlin, Rust:** Dumps prefer bare directory nodes such as `internal/domain`. Use `/**` only when you want one node to own a whole subtree.
+- **TypeScript, Dart:** Root-level dumps start with merged same-directory `/*.*` nodes and retry with file-shaped nodes only when the merged draft creates a cycle. Scoped or bounded-context dumps still keep root files as file-shaped nodes.
 
 ---
 

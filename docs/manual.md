@@ -39,10 +39,10 @@ When modifying code in a BAFT-tracked repository, follow these steps to avoid vi
 
 ```mermaid
 flowchart TD
-  api["internal/api/**"]
-  usecase["internal/usecase/**"]:::endophobic
-  domain["internal/domain/**"]
-  infra["internal/infra/**"]
+  api["internal/api"]
+  usecase["internal/usecase"]:::endophobic
+  domain["internal/domain"]
+  infra["internal/infra"]
 
   api --> usecase
   usecase --> domain
@@ -65,10 +65,11 @@ flowchart TD
 
 ### Node Definitions
 
-**Syntax:** `nodeId["path/**"]` (directory-shaped) or `nodeId["path/file.go"]` (file-shaped).
+**Syntax:** `nodeId["path/to/dir"]` or `nodeId["path/to/dir/**"]` (directory-shaped), or `nodeId["path/file.go"]` (file-shaped).
 
 - **Specificity:** The most specific match wins. File-shaped globs take precedence over directory-shaped globs.
 - **Coverage:** Every tracked file must match at least one node. Unmatched files are reported as violations.
+- **Directory semantics:** `path/to/dir` claims files directly in that directory. `path/to/dir/**` claims the whole subtree rooted there.
 - **Language Support:**
   - **TypeScript, Dart:** Support both file-shaped and directory-shaped nodes.
   - **Go, Kotlin, Rust:** Support directory-shaped nodes only. Using a file-shaped node (e.g., `handler["path/handler.go"]`) in these languages produces a validation error: `file-shaped nodes require a language that supports file globs`.
@@ -80,7 +81,8 @@ If some files should be completely invisible to Baft (e.g., generated code, buil
 - **Syntax:** Uses standard `.gitignore` syntax (including negations with `!`).
 - **Precedence:** `.baftignore` files are processed alongside `.gitignore`. If both exist at the same level, `.baftignore` takes precedence.
 - **Hierarchy:** Like git, `.baftignore` files can be nested. A `.baftignore` in a subdirectory applies to that directory and its children.
-- **Use Case:** Use this to exempt files that are not part of your architectural design.
+- **Use Case:** Use this to exempt files that are not part of your architectural design. 
+- **No inline suppression:** Baft intentionally does not support inline suppression comments (e.g. `// baft:ignore`) inside source files to keep architecture visibility centralized.
 
 ### Edges & Rules
 

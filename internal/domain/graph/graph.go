@@ -20,11 +20,12 @@ type nodeInfo struct {
 
 // Graph is the parsed contract from a BAFT.md mermaid block.
 type Graph struct {
-	Nodes     map[string]string
-	Edges     map[string]map[string]bool
-	Classes   map[string]map[string]bool
-	NodeLines map[string]int
-	EdgeLines map[string]int
+	Nodes        map[string]string
+	NodeDisplays map[string]string
+	Edges        map[string]map[string]bool
+	Classes      map[string]map[string]bool
+	NodeLines    map[string]int
+	EdgeLines    map[string]int
 
 	// edgeCount caches the total edge count to avoid O(n) iteration.
 	edgeCount int
@@ -718,11 +719,12 @@ func hasWildcardInSegments(segments []string) bool {
 // NewGraph creates a new Graph and pre-computes node info.
 func NewGraph(nodes map[string]string, edges map[string]map[string]bool) *Graph {
 	g := &Graph{
-		Nodes:     make(map[string]string, len(nodes)),
-		Edges:     make(map[string]map[string]bool, len(edges)),
-		Classes:   map[string]map[string]bool{},
-		NodeLines: map[string]int{},
-		EdgeLines: map[string]int{},
+		Nodes:        make(map[string]string, len(nodes)),
+		NodeDisplays: map[string]string{},
+		Edges:        make(map[string]map[string]bool, len(edges)),
+		Classes:      map[string]map[string]bool{},
+		NodeLines:    map[string]int{},
+		EdgeLines:    map[string]int{},
 	}
 
 	for id, glob := range nodes {

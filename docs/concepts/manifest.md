@@ -60,7 +60,7 @@ known names, parse the module identifier, produce a Capsule.
 The Manifest is the source of truth for a Capsule's identity and
 dependencies. The tooling only uses the identity (`CapsuleID`) —
 dependencies, version, and build configuration are neither read nor
-consumed by the check or draft commands.
+consumed by the check or dump commands.
 
 One manifest, one Capsule.
 
@@ -77,7 +77,7 @@ build`, `dart pub get`, or `gradle build`.
 - **A dependency resolver in Baft.** The tooling does not read lockfiles
   (`go.sum`, `package-lock.json`, `Cargo.lock`, `pubspec.lock`) or
   resolve external dependencies. External dependency information is not
-  used by the check or draft commands.
+  used by the check or dump commands.
 - **A Baft Capsule by default.** Not every build manifest in an
   ecosystem becomes a Capsule in Baft. Cargo workspace roots with
   `[workspace]` but no `[package]` are valid manifests in Cargo but

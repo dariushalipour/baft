@@ -60,7 +60,7 @@ code boundary defined by:
 3. **Architecture rules** — BAFT.md defines nodes, edges, and constraints that track internal imports, along with other declarations that shape how the code boundary is interpreted.
 4. **A lifecycle** — the ability to be discovered, parsed, validated, and
    addressed as a unit by tooling.
-5. **Independently addressable operations** — tooling commands (check, draft)
+5. **Independently addressable operations** — tooling commands (check, dump)
    operate on Capsules without needing to know the underlying language.
 
 A Capsule maps to exactly one manifest file. One manifest, one Capsule.
@@ -160,7 +160,7 @@ DDD connotations that are misleading here.
    namespaces — those are internal to the Capsule, not separate Capsules.
 
 5. **Addressable.** Tooling commands resolve to Capsules by directory.
-   Operations (check, draft) are scoped to a Capsule's boundary.
+   Operations (check, dump) are scoped to a Capsule's boundary.
    Cross-Capsule references are explicit edges in the dependency graph.
 
 6. **Not a filesystem concept.** Capsules are identified by manifest presence,
@@ -281,7 +281,7 @@ Capsule's `BAFT.md` tracks only imports within that Capsule's directory.
 Cross-Capsule imports are validated by the parent Capsule's rules or by
 external dependency declarations.
 
-**Draft.** The draft command generates `BAFT.md` files per Capsule by
+**Dump.** The dump command generates `BAFT.md` files per Capsule by
 scanning the Capsule's source files, resolving imports, and mapping them to
 graph nodes.
 

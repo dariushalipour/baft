@@ -51,7 +51,7 @@ func TestRenderWithViolations(t *testing.T) {
 		Capsules: []port.CapsuleResult{{
 			Label:      "mypkg",
 			Violations: []port.Violation{{Rule: "import-not-allowed", Message: "violation 1"}, {Message: "violation 2"}},
-			Errors:     []port.Violation{{Rule: "config-load-error", Message: "parse failed"}},
+			Errors:     []port.Violation{{Rule: "contract-load-error", Message: "parse failed"}},
 		}},
 	}
 	out := stripANSI(r.Render(result))
@@ -59,7 +59,7 @@ func TestRenderWithViolations(t *testing.T) {
 		"✗ mypkg",
 		"    violation [import-not-allowed]: violation 1",
 		"    violation: violation 2",
-		"    error [config-load-error]: parse failed",
+		"    error [contract-load-error]: parse failed",
 		"",
 	}, "\n")
 	if out != expected {
@@ -85,13 +85,13 @@ func TestRenderDoesNotDuplicateCapsuleErrors(t *testing.T) {
 		Errors: []string{"mypkg: parse failed"},
 		Capsules: []port.CapsuleResult{{
 			Label:  "mypkg",
-			Errors: []port.Violation{{Rule: "config-load-error", Message: "parse failed"}},
+			Errors: []port.Violation{{Rule: "contract-load-error", Message: "parse failed"}},
 		}},
 	}
 	out := stripANSI(r.Render(result))
 	expected := strings.Join([]string{
 		"✗ mypkg",
-		"    error [config-load-error]: parse failed",
+		"    error [contract-load-error]: parse failed",
 		"",
 	}, "\n")
 	if out != expected {
