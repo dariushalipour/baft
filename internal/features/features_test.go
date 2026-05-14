@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/cucumber/godog"
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
+	"github.com/dariushalipour/baft/internal/adapter/fs/realfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
@@ -38,6 +40,7 @@ type contractReport struct {
 
 type workspace struct {
 	RootDir          string
+	WorkingDir       string
 	Files            map[string]string
 	FSys             port.FileSystem
 	Langs            []port.Language
@@ -59,6 +62,7 @@ func (w *workspace) reset() {
 	w.Errors = nil
 	w.Violations = nil
 	w.CapsuleCount = 0
+	w.WorkingDir = ""
 	w.Relations = 0
 	w.FilesEncountered = 0
 	w.FilesScanned = 0
@@ -71,9 +75,17 @@ func registerSharedSteps(sc *godog.ScenarioContext, getter func(context.Context)
 			w := getter(ctx)
 			w.reset()
 			w.RootDir = rootDir
+			w.WorkingDir = rootDir
 			for _, e := range treeview.ParseTree(rootDir, doc) {
 				w.Files[filepath.Join(e.BaseDir, e.RelPath)] = ""
 			}
+			return nil
+		})
+
+	sc.Step(`^the working directory is "([^"]*)"$`,
+		func(ctx context.Context, dir string) error {
+			w := getter(ctx)
+			w.WorkingDir = dir
 			return nil
 		})
 
@@ -263,6 +275,42 @@ func buildFS(w *workspace) port.FileSystem {
 	return overlayfs.New(fsys, overlays)
 }
 
+func materializeWorkspace(w *workspace) (string, error) {
+	actualRoot, err := os.MkdirTemp("", "baft-feature-*")
+	if err != nil {
+		return "", err
+	}
+	if resolvedRoot, err := filepath.EvalSymlinks(actualRoot); err == nil {
+		actualRoot = resolvedRoot
+	}
+
+	paths := make([]string, 0, len(w.Files))
+	for p := range w.Files {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+
+	for _, scenarioPath := range paths {
+		rel, err := filepath.Rel(w.RootDir, scenarioPath)
+		if err != nil {
+			return "", err
+		}
+		actualPath := filepath.Join(actualRoot, rel)
+		if err := os.MkdirAll(filepath.Dir(actualPath), 0o755); err != nil {
+			return "", err
+		}
+		content := w.Files[scenarioPath]
+		if overlay, ok := w.OverlayFiles[scenarioPath]; ok {
+			content = overlay
+		}
+		if err := os.WriteFile(actualPath, []byte(content), 0o644); err != nil {
+			return "", err
+		}
+	}
+
+	return actualRoot, nil
+}
+
 type fileSnapshot struct {
 	exists  bool
 	content string
@@ -292,6 +340,14 @@ func resolveScenarioPath(rootDir, path string) string {
 		return path
 	}
 	return filepath.Join(rootDir, path)
+}
+
+func resolveAssertionPath(rootDir, workingDir, path string) string {
+	baseDir := rootDir
+	if workingDir != "" {
+		baseDir = workingDir
+	}
+	return resolveScenarioPath(baseDir, path)
 }
 
 func assertFileContent(fsys port.FileSystem, rootDir, path, expected string) error {
@@ -480,13 +536,18 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^Contract at "([^"]+)" has (\d+) nodes? and (\d+) edges?$`,
 		func(ctx context.Context, path string, nodes, edges int) error {
 			w := dw(ctx)
+			expectedAbs := resolveAssertionPath(w.ws.RootDir, w.ws.WorkingDir, path)
+			expectedRel, _ := filepath.Rel(w.ws.RootDir, expectedAbs)
+			expectedRel = filepath.ToSlash(expectedRel)
+			var available []string
 			for _, r := range w.ws.Reports {
 				rp := r.contractPath
 				if filepath.IsAbs(rp) {
 					rp, _ = filepath.Rel(w.ws.RootDir, rp)
 				}
 				rp = filepath.ToSlash(rp)
-				if rp == path {
+				available = append(available, rp)
+				if rp == expectedRel {
 					if r.nodes != nodes {
 						return fmt.Errorf("contract at %s: expected %d nodes, got %d", path, nodes, r.nodes)
 					}
@@ -496,19 +557,22 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 					return nil
 				}
 			}
-			return fmt.Errorf("no contract report found for %s", path)
+			return fmt.Errorf("no contract report found for %s; available reports: %s", path, strings.Join(available, ", "))
 		})
 
 	sc.Step(`^Contract at "([^"]+)" is (new|an amendment)$`,
 		func(ctx context.Context, path string, state string) error {
 			w := dw(ctx)
+			expectedAbs := resolveAssertionPath(w.ws.RootDir, w.ws.WorkingDir, path)
+			expectedRel, _ := filepath.Rel(w.ws.RootDir, expectedAbs)
+			expectedRel = filepath.ToSlash(expectedRel)
 			for _, r := range w.ws.Reports {
 				rp := r.contractPath
 				if filepath.IsAbs(rp) {
 					rp, _ = filepath.Rel(w.ws.RootDir, rp)
 				}
 				rp = filepath.ToSlash(rp)
-				if rp == path {
+				if rp == expectedRel {
 					if state == "new" && !r.isNew {
 						return fmt.Errorf("contract at %s: expected new, got amendment", path)
 					}
@@ -524,13 +588,16 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^Contract at "([^"]+)" added (\d+) nodes and (\d+) edges$`,
 		func(ctx context.Context, path string, nodes, edges int) error {
 			w := dw(ctx)
+			expectedAbs := resolveAssertionPath(w.ws.RootDir, w.ws.WorkingDir, path)
+			expectedRel, _ := filepath.Rel(w.ws.RootDir, expectedAbs)
+			expectedRel = filepath.ToSlash(expectedRel)
 			for _, r := range w.ws.Reports {
 				rp := r.contractPath
 				if filepath.IsAbs(rp) {
 					rp, _ = filepath.Rel(w.ws.RootDir, rp)
 				}
 				rp = filepath.ToSlash(rp)
-				if rp == path {
+				if rp == expectedRel {
 					if !r.hasAmendDiff {
 						return fmt.Errorf("contract at %s: expected amend diff, got none", path)
 					}
@@ -549,7 +616,31 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the dump runs from "([^"]*)"$`,
 		func(ctx context.Context, rootDir string) error {
 			w := dw(ctx)
-			w.ws.FSys = buildFS(&w.ws)
+			if w.ws.WorkingDir != "" && !filepath.IsAbs(rootDir) {
+				scenarioRoot := w.ws.RootDir
+				actualRoot, err := materializeWorkspace(&w.ws)
+				if err != nil {
+					return err
+				}
+				w.ws.RootDir = actualRoot
+				if relWorkDir, err := filepath.Rel(scenarioRoot, w.ws.WorkingDir); err == nil && relWorkDir != "." {
+					w.ws.WorkingDir = filepath.Join(actualRoot, relWorkDir)
+				} else {
+					w.ws.WorkingDir = actualRoot
+				}
+				w.ws.FSys = realfs.New()
+
+				cwd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				defer func() { _ = os.Chdir(cwd) }()
+				if err := os.Chdir(w.ws.WorkingDir); err != nil {
+					return err
+				}
+			} else {
+				w.ws.FSys = buildFS(&w.ws)
+			}
 			beforeFiles, snapshotErr := snapshotFiles(w.ws.FSys, w.ws.RootDir)
 			if snapshotErr != nil {
 				return snapshotErr
@@ -607,19 +698,19 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^file "([^"]+)" should be:$`,
 		func(ctx context.Context, path, expected string) error {
 			w := dw(ctx)
-			return assertFileContent(w.ws.FSys, w.ws.RootDir, path, expected)
+			return assertFileContent(w.ws.FSys, w.ws.WorkingDir, path, expected)
 		})
 
 	sc.Step(`^file "([^"]+)" should not exist$`,
 		func(ctx context.Context, path string) error {
 			w := dw(ctx)
-			return assertFileNotExists(w.ws.FSys, w.ws.RootDir, path)
+			return assertFileNotExists(w.ws.FSys, w.ws.WorkingDir, path)
 		})
 
 	sc.Step(`^file "([^"]+)" should stay the same$`,
 		func(ctx context.Context, path string) error {
 			w := dw(ctx)
-			absPath := resolveScenarioPath(w.ws.RootDir, path)
+			absPath := resolveAssertionPath(w.ws.RootDir, w.ws.WorkingDir, path)
 			original, exists := w.beforeFiles[absPath]
 			if !exists || !original.exists {
 				return fmt.Errorf("%s did not exist before the dump run", path)

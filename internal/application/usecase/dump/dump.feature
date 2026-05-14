@@ -455,13 +455,13 @@ Feature: Dump BAFT.md from actual imports
     Given file "dirx/x.go" has content:
       """go
       package dirx
-
+      
       type X struct{}
       """
     Given file "diry/y.go" has content:
       """go
       package diry
-
+      
       type Y struct{}
       """
     Given the dump uses the "go" language adapter
@@ -510,9 +510,9 @@ Feature: Dump BAFT.md from actual imports
     Given file "internal/usecase/create.go" has content:
       """go
       package usecase
-
+      
       import "example.com/gaps/internal/domain"
-
+      
       func Create() domain.User { return domain.User{} }
       """
     Given the dump uses the "go" language adapter
@@ -532,7 +532,7 @@ Feature: Dump BAFT.md from actual imports
         usecases["internal/usecase"]:::endophobic
       
         usecases --> internal_slash_domain
-
+      
         style usecases stroke-width:2px,stroke-dasharray:5 5
       ```
       """
@@ -963,7 +963,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "api/entry.ts" has content:
       """typescript
       import { consume } from "../usecase/consumer"
-
+      
       export function run() {
         return consume()
       }
@@ -1083,7 +1083,7 @@ Feature: Dump BAFT.md from actual imports
       import { zeta } from "../zeta"
       import { eta } from "../eta"
       import { theta } from "../theta"
-
+      
       export function consume() {
         return [alpha, beta, gamma, delta, epsilon, zeta, eta, theta].join(":")
       }
@@ -1216,7 +1216,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "api/entry.ts" has content:
       """typescript
       import { consume } from "../usecase/consumer"
-
+      
       export function run() {
         return consume()
       }
@@ -1230,7 +1230,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "usecase/producer.ts" has content:
       """typescript
       import { run } from "../api/entry"
-
+      
       export function produce() {
         return run()
       }
@@ -1287,7 +1287,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "api/entry.ts" has content:
       """typescript
       import { consume } from "../usecase/consumer"
-
+      
       export function run() {
         return consume()
       }
@@ -1295,7 +1295,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "usecase/consumer.ts" has content:
       """typescript
       import { helper } from "../api/helper"
-
+      
       export function consume() {
         return helper()
       }
@@ -1303,7 +1303,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "usecase/producer.ts" has content:
       """typescript
       import { run } from "../api/entry"
-
+      
       export function produce() {
         return run()
       }
@@ -1362,7 +1362,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "api/entry.ts" has content:
       """typescript
       import { consume } from "../usecase/consumer"
-
+      
       export function run() {
         return consume()
       }
@@ -1370,7 +1370,7 @@ Feature: Dump BAFT.md from actual imports
     Given file "usecase/consumer.ts" has content:
       """typescript
       import { run } from "../api/entry"
-
+      
       export function consume() {
         return run()
       }
@@ -1464,6 +1464,65 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "shared/BAFT.md" should not exist
     And file "BAFT.md" should not exist
+
+  Scenario: Dump runs from a relative path inside a TypeScript subdirectory bounded context
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ billing/
+      │  ├─ calculator.ts
+      │  └─ invoice.ts
+      ├─ shared/
+      │  └─ utils.ts
+      ├─ package.json
+      ├─ tsconfig.json
+      └─ README.md
+      """
+    Given file "package.json" has content '{"name":"@myorg/app"}'
+    Given file "README.md" has content "# Monorepo"
+    Given file "tsconfig.json" has content:
+      """json
+      {"compilerOptions":{"baseUrl":".","paths":{"@myorg/shared/*":["shared/*"],"@myorg/billing/*":["billing/*"]}}}
+      """
+    Given file "shared/utils.ts" has content:
+      """typescript
+      export function formatDate(d: Date) { return d.toISOString() }
+      """
+    Given file "billing/calculator.ts" has content:
+      """typescript
+      export function calculateTax(amount: number) { return amount * 0.1 }
+      """
+    Given file "billing/invoice.ts" has content:
+      """typescript
+      import { formatDate } from "@myorg/shared/utils"
+      import { calculateTax } from "./calculator"
+      
+      export function generateInvoice() {
+        const tax = calculateTax(100)
+        return formatDate(new Date()) + " tax:" + tax
+      }
+      """
+    Given the dump uses the "typescript" language adapter
+    And the working directory is "/Users/jane/baft/billing"
+    When the dump runs from "."
+    And Contract at "BAFT.md" has 2 nodes and 1 edges
+    And Contract at "BAFT.md" is new
+    Then file "BAFT.md" should be:
+      """config
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+      
+      ```mermaid
+      flowchart TD
+        calculator_dot_ts["calculator.ts"]
+        invoice_dot_ts["invoice.ts"]
+      
+        invoice_dot_ts --> calculator_dot_ts
+      ```
+      """
+    And file "../shared/BAFT.md" should not exist
+    And file "../BAFT.md" should not exist
 
   Scenario: Dump from workspace root shows cross-context imports
     Given a fresh workspace at "/Users/jane/baft" with this layout:

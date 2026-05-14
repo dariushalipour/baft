@@ -87,9 +87,14 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 }
 
 func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery, saveOpts port.GraphSaveOptions, logWriter io.Writer) (*DumpResult, error) {
+	absRootDir, err := filepath.Abs(rootDir)
+	if err != nil {
+		return nil, err
+	}
+
 	// Wrap the filesystem with ignore rules before discovery.
 	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
-		RootDir:           rootDir,
+		RootDir:           absRootDir,
 		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
 	})
 	if err != nil {
@@ -104,7 +109,7 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 		lang    port.Language
 	}
 	var all []entry
-	entries, err := discovery.Discover(wrapped, rootDir)
+	entries, err := discovery.Discover(wrapped, absRootDir)
 	if err != nil {
 		return nil, err
 	}
@@ -136,8 +141,8 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 
 	for _, e := range all {
 		startDir := e.capsule.Dir
-		if strings.HasPrefix(rootDir, e.capsule.Dir+string(filepath.Separator)) || rootDir == e.capsule.Dir {
-			startDir = rootDir
+		if strings.HasPrefix(absRootDir, e.capsule.Dir+string(filepath.Separator)) || absRootDir == e.capsule.Dir {
+			startDir = absRootDir
 		}
 		label := port.Label(e.capsule)
 		contractDir, rootExists := service.FindOrCreateContractDir(wrapped, startDir, e.capsule.Dir)
@@ -160,7 +165,7 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 		}
 
 		for _, contractPath := range scopedPaths {
-			diff, err := amendContract(wrapped, rootDir, e.capsule, e.lang, repo, contractPath, defaultDraftConfig(e.capsule, e.lang, filepath.Dir(contractPath), saveOpts))
+			diff, err := amendContract(wrapped, absRootDir, e.capsule, e.lang, repo, contractPath, defaultDraftConfig(e.capsule, e.lang, filepath.Dir(contractPath), saveOpts))
 			if err != nil {
 				de := DumpError{Label: label, Err: err}
 				result.Errors = append(result.Errors, de)
@@ -177,7 +182,7 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 		}
 
 		if rootExists {
-			diff, err := amendContract(wrapped, rootDir, e.capsule, e.lang, repo, rootContractPath, defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts))
+			diff, err := amendContract(wrapped, absRootDir, e.capsule, e.lang, repo, rootContractPath, defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts))
 			if err != nil {
 				de := makeDumpError(label, err)
 				result.Errors = append(result.Errors, de)
@@ -194,17 +199,17 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 			continue
 		}
 		cfg := defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts)
-		capsuleRes, err := dumpCapsule(wrapped, e.capsule, e.lang, repo, rootDir, contractDir, cfg)
+		capsuleRes, err := dumpCapsule(wrapped, e.capsule, e.lang, repo, absRootDir, contractDir, cfg)
 		if err != nil {
 			de := DumpError{Label: label, Err: err}
 			result.Errors = append(result.Errors, de)
 			fmt.Fprintf(logWriter, "dump: %s: %s\n", label, err)
 			continue
 		}
-		diff, err := amendContract(wrapped, rootDir, e.capsule, e.lang, repo, rootContractPath, cfg)
+		diff, err := amendContract(wrapped, absRootDir, e.capsule, e.lang, repo, rootContractPath, cfg)
 		if err != nil {
 			if shouldTrySelectiveExpansion(cfg, err) {
-				retryRes, retryDiff, retryErr, handled := retryCycleExpansion(wrapped, rootDir, e.capsule, e.lang, repo, contractDir, rootContractPath, cfg, err)
+				retryRes, retryDiff, retryErr, handled := retryCycleExpansion(wrapped, absRootDir, e.capsule, e.lang, repo, contractDir, rootContractPath, cfg, err)
 				if handled {
 					if retryErr == nil || isFreshDraftCycle(retryErr) {
 						retryRes.IsNew = true
