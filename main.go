@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"runtime/debug"
+	"strconv"
 	"strings"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
@@ -22,7 +25,9 @@ import (
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
 	"github.com/dariushalipour/baft/internal/application/usecase/dump"
+	integrateusecase "github.com/dariushalipour/baft/internal/application/usecase/integrate"
 	"github.com/dariushalipour/baft/internal/application/usecase/restyle"
+	"github.com/dariushalipour/baft/internal/integrations"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -39,6 +44,9 @@ var dumpUsageText string
 
 //go:embed docs/cli-assets/restyle-usage.txt
 var restyleUsageText string
+
+//go:embed docs/cli-assets/integrate-usage.txt
+var integrateUsageText string
 
 //go:embed docs/cli-assets/help-intro.txt
 var helpIntroText string
@@ -67,6 +75,8 @@ func main() {
 		runDump(args[1:])
 	case "restyle":
 		runRestyle(args[1:])
+	case "integrate":
+		runIntegrate(args[1:])
 	case "manual":
 		runManual(args[1:])
 	default:
@@ -260,6 +270,98 @@ func runManual(args []string) {
 	printManual()
 }
 
+func runIntegrate(args []string) {
+	var verifyCompatible bool
+	var integrationID string
+	var pluginVersion string
+	var protocol int
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch a {
+		case "--help", "-h":
+			printIntegrateUsage()
+			os.Exit(0)
+		case "--verify-compatible":
+			verifyCompatible = true
+		default:
+			if strings.HasPrefix(a, "--integration=") {
+				integrationID = strings.TrimPrefix(a, "--integration=")
+			} else if a == "--integration" {
+				if i+1 >= len(args) {
+					fmt.Fprintf(os.Stderr, "--integration requires a value\n")
+					os.Exit(1)
+				}
+				i++
+				integrationID = args[i]
+			} else if strings.HasPrefix(a, "--plugin-version=") {
+				pluginVersion = strings.TrimPrefix(a, "--plugin-version=")
+			} else if a == "--plugin-version" {
+				if i+1 >= len(args) {
+					fmt.Fprintf(os.Stderr, "--plugin-version requires a value\n")
+					os.Exit(1)
+				}
+				i++
+				pluginVersion = args[i]
+			} else if strings.HasPrefix(a, "--protocol=") {
+				value := strings.TrimPrefix(a, "--protocol=")
+				parsed, err := strconv.Atoi(value)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "invalid protocol value: %s\n", value)
+					os.Exit(1)
+				}
+				protocol = parsed
+			} else if a == "--protocol" {
+				if i+1 >= len(args) {
+					fmt.Fprintf(os.Stderr, "--protocol requires a value\n")
+					os.Exit(1)
+				}
+				i++
+				parsed, err := strconv.Atoi(args[i])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "invalid protocol value: %s\n", args[i])
+					os.Exit(1)
+				}
+				protocol = parsed
+			} else if strings.HasPrefix(a, "--") {
+				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft integrate --help' for usage\n", a)
+				os.Exit(1)
+			} else {
+				fmt.Fprintf(os.Stderr, "unknown argument: %s\n\nRun 'baft integrate --help' for usage\n", a)
+				os.Exit(1)
+			}
+		}
+	}
+
+	catalog := integrations.NewCatalog(cliVersion())
+	if verifyCompatible {
+		if integrationID == "" || pluginVersion == "" || protocol == 0 {
+			fmt.Fprintln(os.Stderr, "--verify-compatible requires --integration, --plugin-version, and --protocol")
+			os.Exit(1)
+		}
+		report := catalog.VerifyCompatibility(integrationID, pluginVersion, protocol)
+		encoded, err := json.Marshal(report)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "could not encode compatibility report: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(encoded))
+		if !report.Compatible {
+			os.Exit(1)
+		}
+		return
+	}
+
+	err := integrateusecase.Run(context.Background(), catalog, integrateusecase.Options{
+		In:  os.Stdin,
+		Out: os.Stdout,
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
 func runRestyle(args []string) {
 	var root string
 	saveOpts := port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant}
@@ -346,7 +448,15 @@ func printRestyleUsage() {
 	fmt.Print(restyleUsageText)
 }
 
+func printIntegrateUsage() {
+	fmt.Print(integrateUsageText)
+}
+
 func printVersion() {
+	fmt.Println(cliVersion())
+}
+
+func cliVersion() string {
 	v := version
 	if v == "" {
 		if info, ok := debug.ReadBuildInfo(); ok {
@@ -356,7 +466,7 @@ func printVersion() {
 			v = "dev"
 		}
 	}
-	fmt.Println(v)
+	return v
 }
 
 func resolveLangs(names []string) []port.Language {

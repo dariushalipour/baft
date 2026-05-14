@@ -1,7 +1,6 @@
 <idea-plugin>
     <id>com.baft.intellij</id>
     <name>BAFT</name>
-    <version>0.1.0</version>
     <vendor>dariushalipour</vendor>
 
     <description>

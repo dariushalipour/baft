@@ -1,0 +1,17 @@
+Usage: baft integrate
+
+Interactively detect supported IDE integrations, install the matching BAFT plugin,
+and verify that the plugin is compatible with the current CLI.
+
+This command is intentionally interactive.
+
+Examples:
+  baft integrate
+
+Flags:
+  --help, -h                  Show this help
+
+Notes:
+  Supported integration families in this build:
+  - VS Code
+  - JetBrains IDEs

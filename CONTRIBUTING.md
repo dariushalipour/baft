@@ -302,3 +302,39 @@ go build -ldflags "-X main.version=v0.1.0" -o baft .
 ```
 
 The `main.version` variable is set to `"dev"` by default when not provided via `-ldflags`.
+
+### Plugin integration workflow
+
+`baft integrate` uses the embedded plugin artifacts under `internal/integrations/embedded/` as its source of truth. If you change a plugin version but do not rebuild and re-embed the packaged artifacts, the CLI will keep installing and validating against the old embedded version.
+
+Version sources:
+
+- VS Code: `vscode-extension/package.json`
+- JetBrains: `intellij-plugin/gradle.properties`
+
+Do not hand-edit version strings in multiple JetBrains files. The packaged plugin version is sourced from `intellij-plugin/gradle.properties`, and the runtime compatibility check reads the installed plugin version from the IDE.
+
+When changing either plugin:
+
+1. Bump the plugin version in its source of truth.
+2. Rebuild and sync the embedded artifacts:
+
+    ```bash
+    ./scripts/build-plugins.sh
+    ```
+
+3. Rebuild the CLI so the new embedded artifacts are compiled into `baft`:
+
+    ```bash
+    go build -o baft .
+    ```
+
+4. If you want the CLI to report a release version instead of `dev`, build with `-ldflags`:
+
+    ```bash
+    go build -ldflags "-X main.version=v0.1.0" -o baft .
+    ```
+
+5. Re-run `baft integrate`.
+
+In short: bump plugin version, run `./scripts/build-plugins.sh`, then rebuild `baft`. If you skip the script, `baft integrate` will still use the previously embedded plugin artifacts.

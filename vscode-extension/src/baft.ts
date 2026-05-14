@@ -1,6 +1,8 @@
 import { spawn, ChildProcess } from "child_process";
 import * as vscode from "vscode";
 
+const PROTOCOL_VERSION = 3;
+
 export interface Violation {
   rule: string;
   severity: string;
@@ -21,7 +23,74 @@ interface OverlayPayload {
   files: OverlayFile[];
 }
 
+interface CompatibilityReport {
+  compatible: boolean;
+  message: string;
+  warning?: string;
+}
+
 const running = new Map<string, ChildProcess>();
+
+export function verifyCompatibility(
+  integrationId: string,
+  pluginVersion: string,
+  output: vscode.OutputChannel
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "baft",
+      [
+        "integrate",
+        "--verify-compatible",
+        `--integration=${integrationId}`,
+        `--plugin-version=${pluginVersion}`,
+        `--protocol=${PROTOCOL_VERSION}`,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on("error", (err: NodeJS.ErrnoException) => {
+      reject(err);
+    });
+
+    proc.on("close", (code, signal) => {
+      if (signal !== null) {
+        reject(new Error("BAFT compatibility check was interrupted"));
+        return;
+      }
+
+      let report: CompatibilityReport | undefined;
+      try {
+        report = JSON.parse(stdout.trim()) as CompatibilityReport;
+      } catch {
+        report = undefined;
+      }
+
+      if (report?.warning) {
+        output.appendLine(`BAFT: ${report.warning}`);
+      }
+
+      if (code === 0 && report?.compatible) {
+        resolve();
+        return;
+      }
+
+      const message = report?.message || stderr.trim() || "BAFT compatibility check failed";
+      reject(new Error(message));
+    });
+  });
+}
 
 export function runCheck(
   cwd: string,
