@@ -11,19 +11,19 @@ func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
 		// Standard scannable .dart files
-		"lib/app.dart":                    true,
-		"lib/src/ports/foo.dart":          true,
-		"lib/src/deep/nested/ok.dart":     true,
-		"test/some_test.dart":             true,
-		"test/helper.dart":                true,
-		"bin/tool.dart":                   true,
-		"foo.dart":                        true,
-		"src/models/foo.g.dart":           true,
-		"src/models/foo.freezed.dart":     true,
+		"lib/app.dart":                true,
+		"lib/src/ports/foo.dart":      true,
+		"lib/src/deep/nested/ok.dart": true,
+		"test/some_test.dart":         true,
+		"test/helper.dart":            true,
+		"bin/tool.dart":               true,
+		"foo.dart":                    true,
+		"src/models/foo.g.dart":       true,
+		"src/models/foo.freezed.dart": true,
 
 		// Not scannable: wrong extension
-		"lib/app.md": false,
-		"README.md":  false,
+		"lib/app.md":      false,
+		"README.md":       false,
 		"lib/config.yaml": false,
 	}
 	for rel, want := range cases {

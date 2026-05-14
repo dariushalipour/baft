@@ -141,18 +141,18 @@ func mergedDirGlob(rel string) string {
 	return rel + "/*.*"
 }
 
-func defaultDraftConfig(capsule port.Capsule, lang port.Language, contractDir string) draftConfig {
+func defaultDraftConfig(capsule port.Capsule, lang port.Language, contractDir string, saveOpts port.GraphSaveOptions) draftConfig {
 	if contractDir == capsule.Dir && lang.SupportsFileGlobs() {
-		return draftConfig{mode: draftModeMergedDirs}
+		return draftConfig{mode: draftModeMergedDirs, saveOpts: saveOpts}
 	}
-	return draftConfig{mode: draftModeExactFiles}
+	return draftConfig{mode: draftModeExactFiles, saveOpts: saveOpts}
 }
 
 func (cfg draftConfig) withExpandedDirs(dirs ...string) draftConfig {
 	if len(dirs) == 0 {
 		return cfg
 	}
-	next := draftConfig{mode: cfg.mode}
+	next := draftConfig{mode: cfg.mode, saveOpts: cfg.saveOpts}
 	if len(cfg.expandedDirs) > 0 {
 		next.expandedDirs = make(map[string]bool, len(cfg.expandedDirs)+len(dirs))
 		for dir := range cfg.expandedDirs {
@@ -214,5 +214,3 @@ func cloneClasses(classes map[string]map[string]bool) map[string]map[string]bool
 	}
 	return cloned
 }
-
-

@@ -22,6 +22,7 @@ import (
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
 	"github.com/dariushalipour/baft/internal/application/usecase/dump"
+	"github.com/dariushalipour/baft/internal/application/usecase/restyle"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -35,6 +36,9 @@ var checkUsageText string
 
 //go:embed docs/cli-assets/dump-usage.txt
 var dumpUsageText string
+
+//go:embed docs/cli-assets/restyle-usage.txt
+var restyleUsageText string
 
 //go:embed docs/cli-assets/help-intro.txt
 var helpIntroText string
@@ -61,6 +65,8 @@ func main() {
 		runCheck(args[1:])
 	case "dump":
 		runDump(args[1:])
+	case "restyle":
+		runRestyle(args[1:])
 	case "manual":
 		runManual(args[1:])
 	default:
@@ -157,6 +163,7 @@ func runCheck(args []string) {
 func runDump(args []string) {
 	var root string
 	var langs []string
+	saveOpts := port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant}
 
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -177,6 +184,23 @@ func runDump(args []string) {
 					}
 				}
 				langs = append(langs, val)
+			} else if a == "--color-palette" || strings.HasPrefix(a, "--color-palette=") {
+				val := ""
+				if strings.HasPrefix(a, "--color-palette=") {
+					val = strings.TrimPrefix(a, "--color-palette=")
+				} else if i+1 < len(args) {
+					i++
+					val = args[i]
+				} else {
+					fmt.Fprintf(os.Stderr, "--color-palette requires a value\n\nRun 'baft dump --help' for usage\n")
+					os.Exit(1)
+				}
+				palette, ok := port.ParseGraphColorPalette(val)
+				if !ok {
+					fmt.Fprintf(os.Stderr, "unknown color palette: %s\n\nRun 'baft dump --help' for usage\n", val)
+					os.Exit(1)
+				}
+				saveOpts.ColorPalette = palette
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft dump --help' for usage\n", a)
 				os.Exit(1)
@@ -199,7 +223,7 @@ func runDump(args []string) {
 		lang.Register(discovery)
 	}
 
-	result, err := dump.RunWith(fs, root, languages, repo, discovery, os.Stderr)
+	result, err := dump.RunWithOptions(fs, root, languages, repo, discovery, saveOpts, os.Stderr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
@@ -236,6 +260,70 @@ func runManual(args []string) {
 	printManual()
 }
 
+func runRestyle(args []string) {
+	var root string
+	saveOpts := port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant}
+
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch a {
+		case "--help", "-h":
+			printRestyleUsage()
+			os.Exit(0)
+		default:
+			if a == "--color-palette" || strings.HasPrefix(a, "--color-palette=") {
+				val := ""
+				if strings.HasPrefix(a, "--color-palette=") {
+					val = strings.TrimPrefix(a, "--color-palette=")
+				} else if i+1 < len(args) {
+					i++
+					val = args[i]
+				} else {
+					fmt.Fprintf(os.Stderr, "--color-palette requires a value\n\nRun 'baft restyle --help' for usage\n")
+					os.Exit(1)
+				}
+				palette, ok := port.ParseGraphColorPalette(val)
+				if !ok {
+					fmt.Fprintf(os.Stderr, "unknown color palette: %s\n\nRun 'baft restyle --help' for usage\n", val)
+					os.Exit(1)
+				}
+				saveOpts.ColorPalette = palette
+			} else if strings.HasPrefix(a, "--") {
+				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft restyle --help' for usage\n", a)
+				os.Exit(1)
+			} else if root == "" {
+				root = a
+			}
+		}
+	}
+
+	if root == "" {
+		root = "."
+	}
+
+	fs := realfs.New()
+	repo := &mermaid.MermaidRepository{}
+
+	result, err := restyle.Run(fs, root, repo, saveOpts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+	for _, contract := range result.Contracts {
+		status := "unchanged"
+		if contract.Changed {
+			status = "restyled"
+		}
+		fmt.Printf("[%s] %s\n", status, contract.ContractPath)
+	}
+	if len(result.Errors) > 0 {
+		for _, restyleErr := range result.Errors {
+			fmt.Fprintf(os.Stderr, "restyle: %s\n", restyleErr)
+		}
+		os.Exit(1)
+	}
+}
+
 func printUsage() {
 	fmt.Print(helpIntroText)
 	fmt.Println()
@@ -252,6 +340,10 @@ func printCheckUsage() {
 
 func printDumpUsage() {
 	fmt.Print(dumpUsageText)
+}
+
+func printRestyleUsage() {
+	fmt.Print(restyleUsageText)
 }
 
 func printVersion() {

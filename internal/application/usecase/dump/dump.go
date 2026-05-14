@@ -57,6 +57,7 @@ const (
 type draftConfig struct {
 	mode         draftMode
 	expandedDirs map[string]bool
+	saveOpts     port.GraphSaveOptions
 }
 
 type fileRecord struct {
@@ -82,6 +83,10 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 }
 
 func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery, logWriter io.Writer) (*DumpResult, error) {
+	return RunWithOptions(fsys, rootDir, languages, repo, discovery, port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone}, logWriter)
+}
+
+func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery, saveOpts port.GraphSaveOptions, logWriter io.Writer) (*DumpResult, error) {
 	// Wrap the filesystem with ignore rules before discovery.
 	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
 		RootDir:           rootDir,
@@ -155,7 +160,7 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 		}
 
 		for _, contractPath := range scopedPaths {
-			diff, err := amendContract(wrapped, rootDir, e.capsule, e.lang, repo, contractPath, defaultDraftConfig(e.capsule, e.lang, filepath.Dir(contractPath)))
+			diff, err := amendContract(wrapped, rootDir, e.capsule, e.lang, repo, contractPath, defaultDraftConfig(e.capsule, e.lang, filepath.Dir(contractPath), saveOpts))
 			if err != nil {
 				de := DumpError{Label: label, Err: err}
 				result.Errors = append(result.Errors, de)
@@ -172,7 +177,7 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 		}
 
 		if rootExists {
-			diff, err := amendContract(wrapped, rootDir, e.capsule, e.lang, repo, rootContractPath, defaultDraftConfig(e.capsule, e.lang, contractDir))
+			diff, err := amendContract(wrapped, rootDir, e.capsule, e.lang, repo, rootContractPath, defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts))
 			if err != nil {
 				de := makeDumpError(label, err)
 				result.Errors = append(result.Errors, de)
@@ -188,7 +193,7 @@ func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, re
 			}
 			continue
 		}
-		cfg := defaultDraftConfig(e.capsule, e.lang, contractDir)
+		cfg := defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts)
 		capsuleRes, err := dumpCapsule(wrapped, e.capsule, e.lang, repo, rootDir, contractDir, cfg)
 		if err != nil {
 			de := DumpError{Label: label, Err: err}

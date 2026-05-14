@@ -3,5 +3,6 @@ Usage: baft dump [flags] [root-dir]
 Dump BAFT.md from current dependency reality.
 
 Flags:
-  --lang <name>   Language filter (can be repeated): go, typescript, dart, kotlin, rust
-  --help, -h      Show this help
+  --lang <name>             Language filter (can be repeated): go, typescript, dart, kotlin, rust
+  --color-palette <name>    Styling palette: vibrant, muted, mono, none
+  --help, -h                Show this help

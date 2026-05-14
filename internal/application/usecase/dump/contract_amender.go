@@ -27,7 +27,7 @@ func amendContract(fsys port.FileSystem, rootDir string, capsule port.Capsule, l
 		return nil, nil
 	}
 
-	content := repo.Save(updated)
+	content := repo.Save(updated, cfg.saveOpts)
 	if err := fsys.WriteFile(contractPath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}

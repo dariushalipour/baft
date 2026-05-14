@@ -105,7 +105,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 	}
 
 	contractPath := filepath.Join(contractDir, port.ContractFile)
-	content := repo.Save(g)
+	content := repo.Save(g, cfg.saveOpts)
 	if err := fsys.WriteFile(contractPath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}

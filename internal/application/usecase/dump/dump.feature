@@ -57,10 +57,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "libs/BAFT.md" is new
     And file "services/BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -70,10 +70,10 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "libs/BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -138,10 +138,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -190,10 +190,10 @@ Feature: Dump BAFT.md from actual imports
     Then 1 capsule is dumped
     And file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -273,10 +273,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -321,10 +321,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -368,10 +368,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" added 1 nodes and 0 edges
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -420,10 +420,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" added 0 nodes and 1 edges
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -470,10 +470,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" added 1 nodes and 0 edges
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -521,10 +521,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" added 1 nodes and 1 edges
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -532,6 +532,8 @@ Feature: Dump BAFT.md from actual imports
         usecases["internal/usecase"]:::endophobic
       
         usecases --> internal_slash_domain
+
+        style usecases stroke-width:2px,stroke-dasharray:5 5
       ```
       """
 
@@ -582,10 +584,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "libs/BAFT.md" has 1 nodes and 0 edges
     Then file "services/BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -596,10 +598,10 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "libs/BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -647,10 +649,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "internal/tool/BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -660,10 +662,10 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -733,10 +735,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "internal/tool/BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -748,10 +750,10 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -860,10 +862,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -913,10 +915,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -982,10 +984,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" added 0 nodes and 1 edges
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1092,10 +1094,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" added 1 nodes and 8 edges
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1173,10 +1175,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1243,10 +1245,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1316,10 +1318,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1387,10 +1389,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1447,10 +1449,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "billing/BAFT.md" is new
     Then file "billing/BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1488,10 +1490,10 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "billing/BAFT.md" has content:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1521,10 +1523,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD
@@ -1590,10 +1592,10 @@ Feature: Dump BAFT.md from actual imports
     And Contract at "BAFT.md" is new
     Then file "BAFT.md" should be:
       """config
-      <!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->
-      <!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->
-      <!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-      <!-- Check this contract with `baft check .` -->
+      <!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If BAFT is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
       
       ```mermaid
       flowchart TD

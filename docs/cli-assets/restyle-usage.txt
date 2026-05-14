@@ -1,0 +1,7 @@
+Usage: baft restyle [flags] [root-dir]
+
+Regenerate Mermaid styling in existing BAFT.md files.
+
+Flags:
+  --color-palette <name>  Styling palette: vibrant, muted, mono, none
+  --help, -h              Show this help

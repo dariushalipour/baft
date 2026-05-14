@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/domain/graph"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 func TestMermaidRepository_Load(t *testing.T) {
@@ -103,7 +104,7 @@ func TestMermaidRepository_Save(t *testing.T) {
 		Classes: map[string]map[string]bool{},
 	}
 
-	out := (&MermaidRepository{}).Save(g)
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 
 	if !strings.Contains(out, "```mermaid") {
 		t.Error("missing mermaid fence")
@@ -140,7 +141,7 @@ func TestMermaidRepository_SavePreservesClasses(t *testing.T) {
 		},
 	}
 
-	out := (&MermaidRepository{}).Save(g)
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 
 	if !strings.Contains(out, `usecase["internal/usecase/&ast;&ast;"]:::endophobic,zeta`) {
 		t.Fatalf("missing serialized classes in:\n%s", out)
@@ -157,7 +158,7 @@ func TestMermaidRepository_SaveDirGlobSuffix(t *testing.T) {
 		Classes: map[string]map[string]bool{},
 	}
 
-	out := (&MermaidRepository{}).Save(g)
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 
 	if !strings.Contains(out, "internal/api/&ast;&ast;") {
 		t.Errorf("expected escaped dir glob suffix in:\n%s", out)
@@ -178,7 +179,7 @@ func TestMermaidRepository_SaveDeterministicOrder(t *testing.T) {
 		Classes: map[string]map[string]bool{},
 	}
 
-	out := (&MermaidRepository{}).Save(g)
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 
 	aIdx := strings.Index(out, "  a[")
 	mIdx := strings.Index(out, "  m[")
@@ -204,7 +205,7 @@ func TestRoundTrip_LoadSaveLoad(t *testing.T) {
 		t.Fatalf("initial load: %v", err)
 	}
 
-	saved := (&MermaidRepository{}).Save(original)
+	saved := (&MermaidRepository{}).Save(original, port.GraphSaveOptions{})
 	roundTrip, err := (&MermaidRepository{}).Load(saved)
 	if err != nil {
 		t.Fatalf("round-trip load: %v\nsaved:\n%s", err, saved)
@@ -246,7 +247,7 @@ func TestRoundTrip_LoadSaveLoadPreservesBareDirDisplay(t *testing.T) {
 		t.Fatalf("initial load: %v", err)
 	}
 
-	saved := (&MermaidRepository{}).Save(original)
+	saved := (&MermaidRepository{}).Save(original, port.GraphSaveOptions{})
 	if !strings.Contains(saved, `dirx["dirx"]`) {
 		t.Fatalf("expected bare directory glob to be preserved in:\n%s", saved)
 	}
@@ -274,7 +275,7 @@ func TestRoundTrip_RawGraph(t *testing.T) {
 	}
 
 	graph := rawToGraph(nodes, edges)
-	saved := (&MermaidRepository{}).Save(graph)
+	saved := (&MermaidRepository{}).Save(graph, port.GraphSaveOptions{})
 	roundTrip, err := (&MermaidRepository{}).Load(saved)
 	if err != nil {
 		t.Fatalf("load saved analysis: %v\n%s", err, saved)
@@ -320,7 +321,7 @@ func TestMermaidEscape_RoundTripAll(t *testing.T) {
 				Classes: map[string]map[string]bool{},
 			}
 
-			saved := (&MermaidRepository{}).Save(g)
+			saved := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 			loaded, err := (&MermaidRepository{}).Load(saved)
 			if err != nil {
 				t.Fatalf("load after save: %v\nsaved:\n%s", err, saved)
@@ -360,7 +361,7 @@ func TestRoundTrip_SpecialCharNodeIDs(t *testing.T) {
 				Classes: map[string]map[string]bool{},
 			}
 
-			saved := (&MermaidRepository{}).Save(g)
+			saved := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 			loaded, err := (&MermaidRepository{}).Load(saved)
 			if err != nil {
 				t.Fatalf("load after save: %v\nsaved:\n%s", err, saved)
@@ -386,7 +387,7 @@ func TestRoundTrip_SpecialCharEdges(t *testing.T) {
 		Classes: map[string]map[string]bool{},
 	}
 
-	saved := (&MermaidRepository{}).Save(g)
+	saved := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 	loaded, err := (&MermaidRepository{}).Load(saved)
 	if err != nil {
 		t.Fatalf("load after save: %v\nsaved:\n%s", err, saved)
@@ -415,7 +416,7 @@ func TestSave_OutputEncoding(t *testing.T) {
 		Classes: map[string]map[string]bool{},
 	}
 
-	saved := (&MermaidRepository{}).Save(g)
+	saved := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 
 	// Node IDs are encoded
 	if !strings.Contains(saved, "src_slash_domain[") {
@@ -611,7 +612,7 @@ func TestSave_DeterministicOutput(t *testing.T) {
 	}
 	g := graph.NewGraph(nodes, edges)
 
-	out := (&MermaidRepository{}).Save(g)
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 
 	if !strings.Contains(out, "```mermaid") {
 		t.Error("missing mermaid fence")
@@ -641,9 +642,106 @@ func TestSave_NoEdges(t *testing.T) {
 		"src_slash_domain": "src/domain",
 	}, nil)
 
-	out := (&MermaidRepository{}).Save(g)
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 	if !strings.Contains(out, "src_slash_domain") {
 		t.Error("missing node in output")
+	}
+}
+
+func TestMermaidRepository_SaveAddsDirectStyles(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: map[string]string{
+			"alpha": "alpha",
+			"beta":  "beta",
+		},
+		Edges: map[string]map[string]bool{
+			"alpha": {"beta": true},
+		},
+		Classes: map[string]map[string]bool{
+			"alpha": {"endophobic": true},
+		},
+	}
+
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+
+	if !strings.Contains(out, "style alpha stroke:#1f1f1f,stroke-width:2px,stroke-dasharray:5 5") {
+		t.Fatalf("missing alpha style line in:\n%s", out)
+	}
+	if !strings.Contains(out, "style beta stroke:#2a2a2a,stroke-width:2px") {
+		t.Fatalf("missing beta style line in:\n%s", out)
+	}
+	if !strings.Contains(out, "linkStyle 0 stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("missing linkStyle line in:\n%s", out)
+	}
+	if strings.Index(out, "linkStyle 0") < strings.Index(out, "alpha --> beta") {
+		t.Fatalf("expected styles after edges in:\n%s", out)
+	}
+}
+
+func TestMermaidRepository_SaveNoneOnlyStylesEndophobicNodes(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: map[string]string{
+			"alpha": "alpha",
+			"beta":  "beta",
+		},
+		Edges: map[string]map[string]bool{
+			"alpha": {"beta": true},
+		},
+		Classes: map[string]map[string]bool{
+			"alpha": {"endophobic": true},
+		},
+	}
+
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone})
+
+	if !strings.Contains(out, "style alpha stroke-width:2px,stroke-dasharray:5 5") {
+		t.Fatalf("missing endophobic style line in:\n%s", out)
+	}
+	if strings.Contains(out, "style beta") {
+		t.Fatalf("unexpected beta style line in:\n%s", out)
+	}
+	if strings.Contains(out, "linkStyle ") {
+		t.Fatalf("unexpected linkStyle line in:\n%s", out)
+	}
+}
+
+func TestMermaidRepository_SaveRepeatsColorsAfterSixteenNodes(t *testing.T) {
+	nodes := map[string]string{}
+	for i := 0; i < 17; i++ {
+		id := string(rune('a' + i))
+		nodes[id] = id
+	}
+	g := &graph.Graph{Nodes: nodes, Edges: map[string]map[string]bool{}, Classes: map[string]map[string]bool{}}
+
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant})
+
+	if !strings.Contains(out, "style a stroke:#0f4cde,stroke-width:2px") {
+		t.Fatalf("missing first palette color in:\n%s", out)
+	}
+	if !strings.Contains(out, "style q stroke:#0f4cde,stroke-width:2px") {
+		t.Fatalf("expected repeated palette color for seventeenth node in:\n%s", out)
+	}
+}
+
+func TestMermaidRepository_LoadIgnoresStyleLines(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  alpha["alpha"]:::endophobic` + "\n" +
+		`  beta["beta"]` + "\n" +
+		"  alpha --> beta\n" +
+		"  style alpha stroke:#1f1f1f,stroke-width:2px,stroke-dasharray:5 5\n" +
+		"  style beta stroke:#2a2a2a,stroke-width:2px\n" +
+		"  linkStyle 0 stroke:#1f1f1f,stroke-width:2px\n" +
+		"```\n"
+
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !g.Allows("alpha", "beta") {
+		t.Fatalf("expected edge alpha --> beta")
+	}
+	if !g.IsEndophobic("alpha") {
+		t.Fatalf("alpha should remain endophobic")
 	}
 }
 

@@ -62,6 +62,7 @@ flowchart TD
 - **Comments:** Use `%%` for comments inside the Mermaid block.
 - **Escaping:** Use `&ast;` for literal asterisks (`*`) inside labels.
 - **Constraints:** `subgraph` syntax is not supported.
+- **Generated styling:** `baft dump --color-palette ...` and `baft restyle --color-palette ...` append Mermaid `style` and `linkStyle` lines after the node and edge declarations. `vibrant`, `muted`, and `mono` define 16 canonical colors; graphs with more than 16 nodes reuse colors in deterministic node order. `none` skips palette coloring and only emits dashed styling for `:::endophobic` nodes.
 
 ### Node Definitions
 
@@ -121,6 +122,13 @@ Common error messages:
 - `... cross-directory edge not declared in parent`: A violation occurring between nested capsules.
 
 **Exit Codes:** `0` (Success), `1` (Violation/Error).
+
+## Styling Workflow
+
+- **`baft dump --color-palette <name>`** writes a styled contract while preserving the same node and edge discovery rules as unstyled dump output.
+- **`baft restyle --color-palette <name>`** rewrites the generated Mermaid styling block for every `BAFT.md` under the selected root without changing nodes, edges, or inline semantic classes such as `:::endophobic`.
+- **Edge colors:** Each edge is styled with the same stroke color as its source node.
+- **Endophobic nodes:** `:::endophobic` remains the semantic marker in the contract. Generated styling renders those nodes with a dashed stroke rather than a generated Mermaid class.
 
 ---
 

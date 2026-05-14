@@ -6,6 +6,8 @@ Commands:
   ----------------------------
   🚜 dump [flags] [root-dir]    Dump BAFT.md from current dependency reality
   ----------------------------
+  🎨 restyle [flags] [root-dir] Regenerate Mermaid styling in existing BAFT.md files
+  ----------------------------
   📄 manual                     Stdout the manual for working in BAFT-tracked code
   ----------------------------
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dariushalipour/baft/internal/domain/graph"
+	"github.com/dariushalipour/baft/internal/port"
 )
 
 var (
@@ -108,6 +109,32 @@ func (e *ParseErrorWithNext) Error() string {
 
 func (e *ParseErrorWithNext) Unwrap() error { return e.Next }
 
+type graphEdge struct {
+	src string
+	dst string
+}
+
+var paletteColors = map[port.GraphColorPalette][]string{
+	port.ColorPaletteVibrant: {
+		"#0f4cde", "#c43d18", "#007e5f", "#8f2bd1",
+		"#8b5e00", "#005bb5", "#9e1f63", "#2e6f00",
+		"#6f3fd6", "#8a2d00", "#008299", "#b11f2f",
+		"#5e6f00", "#6a2fb3", "#006e38", "#7d3b00",
+	},
+	port.ColorPaletteMuted: {
+		"#5a6f8f", "#9a6b5c", "#62816e", "#7a6e93",
+		"#8f7a5b", "#5f7895", "#94687c", "#6e7f5f",
+		"#697aa2", "#8c6651", "#5f847f", "#94645f",
+		"#77745b", "#6d6790", "#5d7b69", "#8a7058",
+	},
+	port.ColorPaletteMono: {
+		"#1f1f1f", "#2a2a2a", "#353535", "#404040",
+		"#4b4b4b", "#565656", "#616161", "#6c6c6c",
+		"#777777", "#828282", "#8d8d8d", "#989898",
+		"#a3a3a3", "#aeaeae", "#b9b9b9", "#c4c4c4",
+	},
+}
+
 // toChain converts parseErrors into a linked chain of ParseErrorWithNext
 // so that errors.As can walk through every element.
 func (pe parseErrors) toChain() *ParseErrorWithNext {
@@ -137,13 +164,13 @@ func (pe parseErrors) toChain() *ParseErrorWithNext {
 
 // Save produces a mermaid flowchart from the Graph.
 // Directory nodes (non-file globs) get a "/**" suffix for mermaid display.
-func (r *MermaidRepository) Save(g *graph.Graph) string {
+func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) string {
 	var sb strings.Builder
 
-	sb.WriteString("<!-- BAFT — Architecture Contract: edit this file to change allowed imports. -->\n")
-	sb.WriteString("<!-- AI agents and developers working in this codebase: if BAFT is unfamiliar, run `baft manual` to study the contract format and rules. -->\n")
-	sb.WriteString("<!-- Nodes claim files with globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->\n")
-	sb.WriteString("<!-- Check this contract with `baft check .` -->\n")
+	sb.WriteString("<!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->\n")
+	sb.WriteString("<!-- If BAFT is new to you, run `baft manual`. -->\n")
+	sb.WriteString("<!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->\n")
+	sb.WriteString("<!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->\n")
 	sb.WriteString("\n")
 	sb.WriteString("```mermaid\n")
 	sb.WriteString("flowchart TD\n")
@@ -181,6 +208,7 @@ func (r *MermaidRepository) Save(g *graph.Graph) string {
 		sources = append(sources, src)
 	}
 	sort.Strings(sources)
+	edges := make([]graphEdge, 0, g.EdgeCount())
 
 	for _, src := range sources {
 		targets := make([]string, 0, len(g.Edges[src]))
@@ -194,11 +222,79 @@ func (r *MermaidRepository) Save(g *graph.Graph) string {
 			sb.WriteString(" --> ")
 			sb.WriteString(encodeNodeId(dst))
 			sb.WriteByte('\n')
+			edges = append(edges, graphEdge{src: src, dst: dst})
+		}
+	}
+
+	styleLines := buildStyleLines(g, ids, edges, opts)
+	if len(styleLines) > 0 {
+		sb.WriteString("\n")
+		for _, line := range styleLines {
+			sb.WriteString("  ")
+			sb.WriteString(line)
+			sb.WriteByte('\n')
 		}
 	}
 
 	sb.WriteString("```\n")
 	return sb.String()
+}
+
+func buildStyleLines(g *graph.Graph, ids []string, edges []graphEdge, opts port.GraphSaveOptions) []string {
+	palette := normalizedPalette(opts.ColorPalette)
+	nodeColors := map[string]string{}
+	if palette != port.ColorPaletteNone {
+		colors := paletteColors[palette]
+		for i, id := range ids {
+			nodeColors[id] = colors[i%len(colors)]
+		}
+	}
+
+	lines := make([]string, 0, len(ids)+len(edges))
+	for _, id := range ids {
+		attrs := nodeStyleAttributes(nodeColors[id], g.IsEndophobic(id))
+		if attrs == "" {
+			continue
+		}
+		lines = append(lines, "style "+encodeNodeId(id)+" "+attrs)
+	}
+	for i, edge := range edges {
+		color := nodeColors[edge.src]
+		if color == "" {
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("linkStyle %d stroke:%s,stroke-width:2px", i, color))
+	}
+	return lines
+}
+
+func normalizedPalette(palette port.GraphColorPalette) port.GraphColorPalette {
+	switch palette {
+	case "", port.ColorPaletteVibrant:
+		return port.ColorPaletteVibrant
+	case port.ColorPaletteMuted:
+		return port.ColorPaletteMuted
+	case port.ColorPaletteMono:
+		return port.ColorPaletteMono
+	case port.ColorPaletteNone:
+		return port.ColorPaletteNone
+	default:
+		return port.ColorPaletteVibrant
+	}
+}
+
+func nodeStyleAttributes(color string, endophobic bool) string {
+	attrs := make([]string, 0, 3)
+	if color != "" {
+		attrs = append(attrs, "stroke:"+color, "stroke-width:2px")
+	}
+	if endophobic {
+		if color == "" {
+			attrs = append(attrs, "stroke-width:2px")
+		}
+		attrs = append(attrs, "stroke-dasharray:5 5")
+	}
+	return strings.Join(attrs, ",")
 }
 
 func sortedNodeClasses(classes map[string]bool) []string {
@@ -249,7 +345,7 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 		}
 		if line == "flowchart TD" || line == "flowchart LR" || line == "flowchart RL" || line == "flowchart BT" ||
 			strings.HasPrefix(line, "flowchart ") || line == "graph TD" || line == "graph LR" || line == "graph RL" || line == "graph BT" ||
-			strings.HasPrefix(line, "graph ") || strings.HasPrefix(line, "classDef ") {
+			strings.HasPrefix(line, "graph ") || strings.HasPrefix(line, "classDef ") || strings.HasPrefix(line, "style ") || strings.HasPrefix(line, "linkStyle ") {
 			continue
 		}
 		if idx := strings.Index(line, "%%"); idx >= 0 {
