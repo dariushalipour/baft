@@ -1,4 +1,4 @@
-# Baft
+# 🧶 Baft
 
 Fast, multilingual architecture enforcement from Mermaid diagrams.
 

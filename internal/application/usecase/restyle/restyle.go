@@ -27,6 +27,15 @@ func (e RestyleError) Error() string {
 	return fmt.Sprintf("%s: %s", e.ContractPath, e.Err)
 }
 
+func RestyleContract(content string, repo port.GraphRepository, saveOpts port.GraphSaveOptions) (string, bool, error) {
+	g, err := repo.Load(content)
+	if err != nil {
+		return "", false, err
+	}
+	restyled := repo.Save(g, saveOpts)
+	return restyled, restyled != content, nil
+}
+
 func Run(fsys port.FileSystem, rootDir string, repo port.GraphRepository, saveOpts port.GraphSaveOptions) (*Result, error) {
 	paths, err := discoverContracts(fsys, rootDir)
 	if err != nil {
@@ -40,13 +49,11 @@ func Run(fsys port.FileSystem, rootDir string, repo port.GraphRepository, saveOp
 			result.Errors = append(result.Errors, RestyleError{ContractPath: contractPath, Err: err})
 			continue
 		}
-		g, err := repo.Load(string(raw))
+		content, changed, err := RestyleContract(string(raw), repo, saveOpts)
 		if err != nil {
 			result.Errors = append(result.Errors, RestyleError{ContractPath: contractPath, Err: err})
 			continue
 		}
-		content := repo.Save(g, saveOpts)
-		changed := content != string(raw)
 		if changed {
 			if err := fsys.WriteFile(contractPath, []byte(content), 0o644); err != nil {
 				result.Errors = append(result.Errors, RestyleError{ContractPath: contractPath, Err: err})

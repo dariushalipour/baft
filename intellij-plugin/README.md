@@ -1,4 +1,4 @@
-# BAFT for IntelliJ
+# 🧶 Baft for IntelliJ
 
 Fast, multilingual architecture enforcement from Mermaid diagrams, surfaced directly in IntelliJ.
 
@@ -8,6 +8,8 @@ This plugin does not implement architecture rules itself. It runs the [BAFT](htt
 
 - Automatic diagnostics for projects that have a `BAFT.md`
 - Live updates while you type, including unsaved files
+- `Reformat Code` support for `BAFT.md`
+- Configurable formatter palette in Settings
 - No plugin-specific architecture logic or duplicate rule system
 - The CLI stays the single source of truth
 
@@ -54,9 +56,21 @@ baft check --reporter=intellij .
 
 When a file is unsaved, the plugin adds `--overlay-stdin` and streams the current in-memory document contents to the CLI. That keeps diagnostics aligned with what is on screen, not just what is on disk.
 
+When you run `Reformat Code` on a `BAFT.md`, the plugin runs:
+
+```bash
+baft restyle --stdin --path /absolute/path/to/BAFT.md --color-palette vibrant
+```
+
+The formatter only targets the active `BAFT.md` and does not rewrite sibling contracts.
+
 ## Usage
 
 Open a project that contains a supported module and a `BAFT.md`. Violations appear automatically as annotations in the editor and as entries in the Problems tool window.
+
+To restyle a contract, run `Code | Reformat Code` while a `BAFT.md` is active.
+
+To change the formatter palette, open `Settings | Tools | 🧶 Baft` and choose one of `vibrant`, `muted`, `mono`, or `none`.
 
 ## Troubleshooting
 

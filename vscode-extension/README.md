@@ -1,4 +1,4 @@
-# BAFT for VS Code
+# 🧶 Baft for VS Code
 
 Fast, multilingual architecture enforcement from Mermaid diagrams, surfaced directly in VS Code.
 
@@ -8,7 +8,8 @@ This extension does not implement architecture rules itself. It runs the [BAFT](
 
 - Automatic diagnostics for projects that have a `BAFT.md`
 - Live updates while you type, including unsaved changes
-- No extension-specific configuration
+- `Format Document` support for `BAFT.md`
+- Configurable formatting palette with `baft.format.colorPalette`
 - The CLI stays the single source of truth
 
 ## Requirements
@@ -54,9 +55,19 @@ baft check --reporter=vsce .
 
 When a file is dirty, the extension adds `--overlay-stdin` and streams the current unsaved buffer contents to the CLI. That keeps diagnostics accurate without requiring you to save first.
 
+When you format a `BAFT.md`, the extension runs:
+
+```bash
+baft restyle --stdin --path /absolute/path/to/BAFT.md --color-palette <name>
+```
+
+The formatter only targets `BAFT.md` files and restyles the active document instead of walking the whole workspace.
+
 ## Usage
 
 Open a workspace that contains a supported project and a `BAFT.md`. Violations appear automatically in the editor and in the Problems panel.
+
+To restyle a contract, run `Format Document` on a `BAFT.md` or enable format on save for your BAFT workflow. The palette defaults to `vibrant` and can be changed with `baft.format.colorPalette`.
 
 ## Troubleshooting
 

@@ -91,3 +91,36 @@ func TestRunWithNoneOnlyStylesEndophobicNodes(t *testing.T) {
 		t.Fatalf("unexpected linkStyle in:\n%s", got)
 	}
 }
+
+func TestRestyleContractReportsUnchangedOutput(t *testing.T) {
+	repo := &mermaid.MermaidRepository{}
+	content := "```mermaid\nflowchart TD\n  alpha[\"alpha\"]\n```\n"
+
+	restyled, changed, err := RestyleContract(content, repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant})
+	if err != nil {
+		t.Fatalf("RestyleContract: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected styling to be added")
+	}
+
+	restyledAgain, changedAgain, err := RestyleContract(restyled, repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant})
+	if err != nil {
+		t.Fatalf("RestyleContract second pass: %v", err)
+	}
+	if changedAgain {
+		t.Fatalf("expected second pass to be unchanged")
+	}
+	if restyledAgain != restyled {
+		t.Fatalf("second pass changed content:\n%s", restyledAgain)
+	}
+}
+
+func TestRestyleContractReturnsParseError(t *testing.T) {
+	repo := &mermaid.MermaidRepository{}
+
+	_, _, err := RestyleContract("not mermaid", repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant})
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+}

@@ -1,8 +1,16 @@
 import * as vscode from "vscode";
-import { runCheck, verifyCompatibility } from "./baft";
+import {
+  RestyleColorPalette,
+  runCheck,
+  runRestyle,
+  verifyCompatibility,
+} from "./baft";
 import { publish } from "./diagnostics";
 
 const DEBOUNCE_MS = 750;
+const BAFT_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
+  { scheme: "file", pattern: "**/BAFT.md" },
+];
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel("BAFT");
@@ -81,7 +89,51 @@ export function activate(context: vscode.ExtensionContext): void {
     return vscode.workspace.getWorkspaceFolder(uri)?.uri.fsPath;
   }
 
+  function formatPaletteFor(document: vscode.TextDocument): RestyleColorPalette {
+    return vscode.workspace
+      .getConfiguration("baft", document.uri)
+      .get<RestyleColorPalette>("format.colorPalette", "vibrant");
+  }
+
+  async function provideFormattingEdits(
+    document: vscode.TextDocument
+  ): Promise<vscode.TextEdit[]> {
+    try {
+      if (!(await ensureCompatibility())) {
+        return [];
+      }
+      const restyled = await runRestyle(
+        document.uri.fsPath,
+        document.getText(),
+        formatPaletteFor(document),
+        output
+      );
+      if (restyled === document.getText()) {
+        return [];
+      }
+
+      const fullRange = new vscode.Range(
+        document.positionAt(0),
+        document.positionAt(document.getText().length)
+      );
+      return [vscode.TextEdit.replace(fullRange, restyled)];
+    } catch (err: unknown) {
+      if (isEnoent(err)) {
+        vscode.window.showErrorMessage("BAFT: binary not found in PATH");
+        return [];
+      }
+      const message = errorMessage(err);
+      output.appendLine(`BAFT: ${message}`);
+      vscode.window.showErrorMessage(message);
+      return [];
+    }
+  }
+
   context.subscriptions.push(
+    vscode.languages.registerDocumentFormattingEditProvider(
+      BAFT_DOCUMENT_SELECTOR,
+      { provideDocumentFormattingEdits: provideFormattingEdits }
+    ),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       const root = rootOf(doc.uri);
       if (!root) return;

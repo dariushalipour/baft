@@ -1,8 +1,8 @@
 {
   "name": "baft",
-  "displayName": "BAFT",
-  "description": "Architecture violation diagnostics powered by the BAFT CLI",
-  "version": "0.0.1",
+  "displayName": "🧶 Baft",
+  "description": "Architecture violation diagnostics powered by the 🧶 Baft CLI",
+  "version": "0.1.2",
   "publisher": "dariushalipour",
   "repository": {
     "type": "git",
@@ -11,10 +11,23 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Linters"],
+  "categories": ["Linters", "Formatters"],
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
-  "contributes": {},
+  "contributes": {
+    "configuration": {
+      "title": "BAFT",
+      "properties": {
+        "baft.format.colorPalette": {
+          "type": "string",
+          "enum": ["vibrant", "muted", "mono", "none"],
+          "default": "vibrant",
+          "scope": "resource",
+          "markdownDescription": "Specifies the Mermaid color palette BAFT uses when formatting BAFT.md files."
+        }
+      }
+    }
+  },
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./"

@@ -29,6 +29,8 @@ interface CompatibilityReport {
   warning?: string;
 }
 
+export type RestyleColorPalette = "vibrant" | "muted" | "mono" | "none";
+
 const running = new Map<string, ChildProcess>();
 
 export function verifyCompatibility(
@@ -144,6 +146,57 @@ export function runCheck(
         output.appendLine(`BAFT: failed to parse output:\n${stdout}`);
         resolve([]);
       }
+    });
+  });
+}
+
+export function runRestyle(
+  filePath: string,
+  content: string,
+  colorPalette: RestyleColorPalette,
+  output: vscode.OutputChannel
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "baft",
+      [
+        "restyle",
+        "--stdin",
+        `--path=${filePath}`,
+        `--color-palette=${colorPalette}`,
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] }
+    );
+
+    proc.stdin?.end(content);
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      stderr += text;
+      output.appendLine(text.trimEnd());
+    });
+
+    proc.on("error", (err: NodeJS.ErrnoException) => {
+      reject(err);
+    });
+
+    proc.on("close", (code, signal) => {
+      if (signal !== null) {
+        reject(new Error("BAFT restyle was interrupted"));
+        return;
+      }
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || "BAFT restyle failed"));
+        return;
+      }
+      resolve(stdout);
     });
   });
 }

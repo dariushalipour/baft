@@ -1,10 +1,10 @@
 <idea-plugin>
     <id>com.baft.intellij</id>
-    <name>BAFT</name>
+    <name>🧶 Baft</name>
     <vendor>dariushalipour</vendor>
 
     <description>
-        Surfaces BAFT architecture violations as editor diagnostics (red squiggles and Problems view entries).
+        Surfaces 🧶 Baft architecture violations as editor diagnostics (red squiggles and Problems view entries).
         Requires the baft CLI to be installed and available in PATH.
     </description>
 
@@ -17,5 +17,11 @@
         <externalAnnotator
             language=""
             implementationClass="com.baft.intellij.BaftAnnotator"/>
+        <formattingService implementation="com.baft.intellij.BaftFormattingService"/>
+        <applicationConfigurable
+            parentId="tools"
+            instance="com.baft.intellij.BaftConfigurable"
+            id="com.baft.intellij.BaftConfigurable"
+            displayName="🧶 Baft"/>
     </extensions>
 </idea-plugin>

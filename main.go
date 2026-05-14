@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 	"strconv"
@@ -364,6 +365,8 @@ func runIntegrate(args []string) {
 
 func runRestyle(args []string) {
 	var root string
+	var contractPath string
+	var stdin bool
 	saveOpts := port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant}
 
 	for i := 0; i < len(args); i++ {
@@ -372,6 +375,8 @@ func runRestyle(args []string) {
 		case "--help", "-h":
 			printRestyleUsage()
 			os.Exit(0)
+		case "--stdin":
+			stdin = true
 		default:
 			if a == "--color-palette" || strings.HasPrefix(a, "--color-palette=") {
 				val := ""
@@ -390,6 +395,18 @@ func runRestyle(args []string) {
 					os.Exit(1)
 				}
 				saveOpts.ColorPalette = palette
+			} else if a == "--path" || strings.HasPrefix(a, "--path=") {
+				val := ""
+				if strings.HasPrefix(a, "--path=") {
+					val = strings.TrimPrefix(a, "--path=")
+				} else if i+1 < len(args) {
+					i++
+					val = args[i]
+				} else {
+					fmt.Fprintf(os.Stderr, "--path requires a value\n\nRun 'baft restyle --help' for usage\n")
+					os.Exit(1)
+				}
+				contractPath = val
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft restyle --help' for usage\n", a)
 				os.Exit(1)
@@ -401,6 +418,37 @@ func runRestyle(args []string) {
 
 	if root == "" {
 		root = "."
+	}
+
+	if stdin {
+		if contractPath == "" {
+			fmt.Fprintf(os.Stderr, "--stdin requires --path\n\nRun 'baft restyle --help' for usage\n")
+			os.Exit(1)
+		}
+		if root != "." {
+			fmt.Fprintf(os.Stderr, "--stdin does not accept a root-dir\n\nRun 'baft restyle --help' for usage\n")
+			os.Exit(1)
+		}
+
+		raw, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "restyle: %s: %v\n", contractPath, err)
+			os.Exit(1)
+		}
+
+		repo := &mermaid.MermaidRepository{}
+		restyled, _, err := restyle.RestyleContract(string(raw), repo, saveOpts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "restyle: %s: %v\n", contractPath, err)
+			os.Exit(1)
+		}
+
+		fmt.Print(restyled)
+		return
+	}
+	if contractPath != "" {
+		fmt.Fprintf(os.Stderr, "--path requires --stdin\n\nRun 'baft restyle --help' for usage\n")
+		os.Exit(1)
 	}
 
 	fs := realfs.New()

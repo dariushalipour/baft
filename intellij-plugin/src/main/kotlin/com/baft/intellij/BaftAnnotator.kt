@@ -16,8 +16,8 @@ import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiFile
-import java.io.IOException
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
@@ -198,7 +198,7 @@ private fun notifyError(message: String) {
     if (lastNotification.getAndSet(message) == message) return
     ApplicationManager.getApplication().invokeLater {
         NotificationGroupManager.getInstance()
-            .getNotificationGroup("BAFT")
+            .getNotificationGroup(BAFT_NOTIFICATION_GROUP_ID)
             .createNotification(
                 message,
                 NotificationType.ERROR,
@@ -218,49 +218,4 @@ private fun collectOverlayJson(projectRoot: String): String? {
     }.distinctBy { it.path }
     if (files.isEmpty()) return null
     return gson.toJson(BaftOverlayPayload(files))
-}
-
-private fun findBinary(): String {
-    val os = System.getProperty("os.name").lowercase()
-    val isWin = os.contains("win")
-    val name = if (isWin) "baft.exe" else "baft"
-    val sep = if (isWin) ";" else ":"
-    return augmentedPath().split(sep)
-        .map { java.io.File(it, name) }
-        .firstOrNull { it.canExecute() }
-        ?.absolutePath ?: name
-}
-
-private fun augmentedPath(): String {
-    val current = System.getenv("PATH") ?: ""
-    val home = System.getProperty("user.home") ?: return current
-    val os = System.getProperty("os.name").lowercase()
-    val extras = when {
-        os.contains("win") -> listOf(
-            "$home\\go\\bin",
-            "$home\\AppData\\Local\\Programs\\Go\\bin",
-            "C:\\Go\\bin",
-            "C:\\Program Files\\Go\\bin",
-        )
-        os.contains("mac") -> listOf(
-            "$home/go/bin",
-            "$home/.local/bin",
-            "/usr/local/go/bin",
-            "/opt/homebrew/bin",
-            "/usr/local/bin",
-        )
-        else -> listOf( // Linux
-            "$home/go/bin",
-            "$home/.local/bin",
-            "/usr/local/go/bin",
-            "/usr/local/bin",
-            "/snap/bin",
-        )
-    }
-    val separator = if (os.contains("win")) ";" else ":"
-    val parts = current.split(separator).toMutableList()
-    for (extra in extras.reversed()) {
-        if (extra !in parts) parts.add(0, extra)
-    }
-    return parts.joinToString(separator)
 }
