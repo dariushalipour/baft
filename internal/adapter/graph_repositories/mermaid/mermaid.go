@@ -232,12 +232,21 @@ func buildStyleLines(g *graph.Graph, ids []string, edges []graphEdge, opts port.
 		}
 		lines = append(lines, "style "+encodeNodeId(id)+" "+attrs)
 	}
+	linkStyleOrder := make([]string, 0)
+	linkStyleGroups := map[string][]string{}
 	for i, edge := range edges {
 		color := nodeColors[edge.src]
 		if color == "" {
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("linkStyle %d stroke:%s,stroke-width:2px", i, color))
+		attrs := fmt.Sprintf("stroke:%s,stroke-width:2px", color)
+		if _, ok := linkStyleGroups[attrs]; !ok {
+			linkStyleOrder = append(linkStyleOrder, attrs)
+		}
+		linkStyleGroups[attrs] = append(linkStyleGroups[attrs], fmt.Sprintf("%d", i))
+	}
+	for _, attrs := range linkStyleOrder {
+		lines = append(lines, "linkStyle "+strings.Join(linkStyleGroups[attrs], ",")+" "+attrs)
 	}
 	return lines
 }

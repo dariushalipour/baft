@@ -208,6 +208,40 @@ func TestMermaidRepository_SaveDeterministicOrder(t *testing.T) {
 	}
 }
 
+func TestMermaidRepository_SaveGroupsRepeatedLinkStyles(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: map[string]string{
+			"alpha": "alpha",
+			"beta":  "beta",
+			"delta": "delta",
+			"gamma": "gamma",
+		},
+		Edges: map[string]map[string]bool{
+			"alpha": {
+				"beta":  true,
+				"delta": true,
+				"gamma": true,
+			},
+		},
+		Classes: map[string]map[string]bool{},
+	}
+
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+
+	if !strings.Contains(out, "linkStyle 0,1,2 stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("missing grouped linkStyle in:\n%s", out)
+	}
+	if strings.Contains(out, "linkStyle 0 stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("unexpected ungrouped first linkStyle in:\n%s", out)
+	}
+	if strings.Contains(out, "linkStyle 1 stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("unexpected ungrouped second linkStyle in:\n%s", out)
+	}
+	if strings.Contains(out, "linkStyle 2 stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("unexpected ungrouped third linkStyle in:\n%s", out)
+	}
+}
+
 func TestRoundTrip_LoadSaveLoad(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  main["."]` + "\n" +
