@@ -63,6 +63,14 @@ var (
 	)
 )
 
+var generatedStyleComment = strings.Trim(`
+  %% ------------------------------------------------------------------------------------------
+  %% AUTO-GENERATED STYLING: Do not edit manually.
+  %% If you add, delete, or reorder nodes, you MUST run 'baft restyle' or format via your IDE.
+  %% Outdated references will either break the render entirely or silently mess up the styling.
+  %% ------------------------------------------------------------------------------------------
+`, "\n")
+
 // MermaidRepository implements port.GraphRepository using mermaid flowchart format.
 type MermaidRepository struct{}
 
@@ -191,6 +199,10 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 	styleLines := buildStyleLines(g, ids, edges, opts)
 	if len(styleLines) > 0 {
 		sb.WriteString("\n")
+		for _, line := range strings.Split(generatedStyleComment, "\n") {
+			sb.WriteString(line)
+			sb.WriteByte('\n')
+		}
 		for _, line := range styleLines {
 			sb.WriteString("  ")
 			sb.WriteString(line)
@@ -310,7 +322,7 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 			strings.HasPrefix(line, "graph ") || strings.HasPrefix(line, "classDef ") || strings.HasPrefix(line, "style ") || strings.HasPrefix(line, "linkStyle ") {
 			continue
 		}
-		if idx := strings.Index(line, "%%"); idx >= 0 {
+		if idx := inlineCommentStart(line); idx >= 0 {
 			line = strings.TrimSpace(line[:idx])
 			if line == "" {
 				continue
@@ -340,6 +352,20 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 		return nil, &ParseError{Msg: "mermaid block declared no nodes"}
 	}
 	return g, nil
+}
+
+func inlineCommentStart(line string) int {
+	inQuotes := false
+	for idx := 0; idx+1 < len(line); idx++ {
+		if line[idx] == '"' {
+			inQuotes = !inQuotes
+			continue
+		}
+		if !inQuotes && line[idx] == '%' && line[idx+1] == '%' {
+			return idx
+		}
+	}
+	return -1
 }
 
 func registerNode(g *graph.Graph, m []string, lineNum int) error {

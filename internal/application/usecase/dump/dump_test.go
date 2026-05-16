@@ -3,6 +3,7 @@ package dump
 import (
 	"io"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
@@ -13,6 +14,14 @@ import (
 	"github.com/dariushalipour/baft/internal/domain/graph"
 	"github.com/dariushalipour/baft/internal/port"
 )
+
+var generatedStyleComment = strings.Trim(`
+  %% ------------------------------------------------------------------------------------------
+  %% AUTO-GENERATED STYLING: Do not edit manually.
+  %% If you add, delete, or reorder nodes, you MUST run 'baft restyle' or format via your IDE.
+  %% Outdated references will either break the render entirely or silently mess up the styling.
+  %% ------------------------------------------------------------------------------------------
+`, "\n")
 
 type recordingRepo struct {
 	delegate     mermaid.MermaidRepository
@@ -115,5 +124,51 @@ func TestRunWithOptionsPassesColorPaletteToSave(t *testing.T) {
 	}
 	if !reflect.DeepEqual(content != nil, true) {
 		t.Fatal("expected BAFT.md content to be written")
+	}
+}
+
+func TestRunWithOptionsWritesGeneratedStyleComment(t *testing.T) {
+	const rootDir = "/Users/jane/baft"
+
+	fsys := memfs.New()
+	files := map[string]string{
+		rootDir + "/package.json":        `{"name":"@myorg/app"}`,
+		rootDir + "/tsconfig.json":       `{"compilerOptions":{"baseUrl":"."}}`,
+		rootDir + "/api/entry.ts":        "import { consume } from \"../usecase/consumer\"\n\nexport function run() {\n  return consume()\n}\n",
+		rootDir + "/usecase/consumer.ts": "export function consume() {\n  return \"ok\"\n}\n",
+	}
+	for path, content := range files {
+		if err := fsys.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	discovery := service.NewCapsuleDiscovery()
+	lang := &typescript.Language{}
+	lang.Register(discovery)
+
+	_, err := RunWithOptions(
+		fsys,
+		rootDir,
+		[]port.Language{lang},
+		&mermaid.MermaidRepository{},
+		discovery,
+		port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono},
+		io.Discard,
+	)
+	if err != nil {
+		t.Fatalf("RunWithOptions: %v", err)
+	}
+
+	content, err := fsys.ReadFile(rootDir + "/BAFT.md")
+	if err != nil {
+		t.Fatalf("read BAFT.md: %v", err)
+	}
+	got := string(content)
+	if !strings.Contains(got, generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", got)
+	}
+	if !strings.Contains(got, "style api_slash_entry_dot_ts stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("missing style block in:\n%s", got)
 	}
 }

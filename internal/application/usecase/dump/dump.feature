@@ -533,6 +533,11 @@ Feature: Dump BAFT.md from actual imports
       
         usecases --> internal_slash_domain
       
+        %% ------------------------------------------------------------------------------------------
+        %% AUTO-GENERATED STYLING: Do not edit manually.
+        %% If you add, delete, or reorder nodes, you MUST run 'baft restyle' or format via your IDE.
+        %% Outdated references will either break the render entirely or silently mess up the styling.
+        %% ------------------------------------------------------------------------------------------
         style usecases stroke-width:2px,stroke-dasharray:5 5
       ```
       """

@@ -28,6 +28,25 @@ func TestMermaidRepository_Load(t *testing.T) {
 	}
 }
 
+func TestMermaidRepository_LoadToleratesComments(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		"  %% diagram note\n" +
+		`  alpha["alpha"] %% keep this node` + "\n" +
+		`  literal["literal%%label"]` + "\n" +
+		`  beta["beta"]` + "\n" +
+		"  alpha --> beta %% edge note\n" +
+		"```\n"
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if g.Nodes["literal"] != "literal%%label" {
+		t.Fatalf("literal node glob = %q, want %q", g.Nodes["literal"], "literal%%label")
+	}
+	if !g.Allows("alpha", "beta") {
+		t.Fatalf("expected edge alpha --> beta")
+	}
+}
 func TestMermaidRepository_LoadEscapedGlobs(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  dom["src/domain/&ast;&ast;"]` + "\n" +
@@ -206,6 +225,9 @@ func TestRoundTrip_LoadSaveLoad(t *testing.T) {
 	}
 
 	saved := (&MermaidRepository{}).Save(original, port.GraphSaveOptions{})
+	if !strings.Contains(saved, generatedStyleComment) {
+		t.Fatalf("expected generated style comment in:\n%s", saved)
+	}
 	roundTrip, err := (&MermaidRepository{}).Load(saved)
 	if err != nil {
 		t.Fatalf("round-trip load: %v\nsaved:\n%s", err, saved)
@@ -673,8 +695,17 @@ func TestMermaidRepository_SaveAddsDirectStyles(t *testing.T) {
 	if !strings.Contains(out, "linkStyle 0 stroke:#1f1f1f,stroke-width:2px") {
 		t.Fatalf("missing linkStyle line in:\n%s", out)
 	}
+	if !strings.Contains(out, generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", out)
+	}
 	if strings.Index(out, "linkStyle 0") < strings.Index(out, "alpha --> beta") {
 		t.Fatalf("expected styles after edges in:\n%s", out)
+	}
+	if strings.Index(out, generatedStyleComment) < strings.Index(out, "alpha --> beta") {
+		t.Fatalf("expected generated style comment after edges in:\n%s", out)
+	}
+	if strings.Index(out, "style alpha") < strings.Index(out, generatedStyleComment) {
+		t.Fatalf("expected generated style comment before style lines in:\n%s", out)
 	}
 }
 
@@ -697,11 +728,33 @@ func TestMermaidRepository_SaveNoneOnlyStylesEndophobicNodes(t *testing.T) {
 	if !strings.Contains(out, "style alpha stroke-width:2px,stroke-dasharray:5 5") {
 		t.Fatalf("missing endophobic style line in:\n%s", out)
 	}
+	if !strings.Contains(out, generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", out)
+	}
 	if strings.Contains(out, "style beta") {
 		t.Fatalf("unexpected beta style line in:\n%s", out)
 	}
 	if strings.Contains(out, "linkStyle ") {
 		t.Fatalf("unexpected linkStyle line in:\n%s", out)
+	}
+}
+
+func TestMermaidRepository_SaveOmitsStyleCommentWithoutStyles(t *testing.T) {
+	g := &graph.Graph{
+		Nodes: map[string]string{
+			"alpha": "alpha",
+		},
+		Edges:   map[string]map[string]bool{},
+		Classes: map[string]map[string]bool{},
+	}
+
+	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone})
+
+	if strings.Contains(out, generatedStyleComment) {
+		t.Fatalf("unexpected generated style comment in:\n%s", out)
+	}
+	if strings.Contains(out, "style alpha") {
+		t.Fatalf("unexpected style line in:\n%s", out)
 	}
 }
 

@@ -356,10 +356,50 @@ func assertFileContent(fsys port.FileSystem, rootDir, path, expected string) err
 	if err != nil {
 		return fmt.Errorf("%s not found: %v", path, err)
 	}
-	if strings.TrimSpace(string(content)) != strings.TrimSpace(expected) {
-		return fmt.Errorf("%s content mismatch.\n--- Expected ---\n%s\n--- Got ---\n%s", path, expected, content)
+	actual := strings.TrimSpace(string(content))
+	normalizedExpected := strings.TrimSpace(expected)
+	if actual != normalizedExpected {
+		line, char := firstDiffPosition(normalizedExpected, actual)
+		return fmt.Errorf("%s content mismatch at line %d, character %d.\n--- Expected ---\n%s\n--- Got ---\n%s", path, line, char, expected, content)
 	}
 	return nil
+}
+
+func firstDiffPosition(expected, actual string) (int, int) {
+	expectedLines := strings.Split(expected, "\n")
+	actualLines := strings.Split(actual, "\n")
+	maxLines := len(expectedLines)
+	if len(actualLines) > maxLines {
+		maxLines = len(actualLines)
+	}
+
+	for lineIndex := 0; lineIndex < maxLines; lineIndex++ {
+		var expectedLine string
+		if lineIndex < len(expectedLines) {
+			expectedLine = expectedLines[lineIndex]
+		}
+		var actualLine string
+		if lineIndex < len(actualLines) {
+			actualLine = actualLines[lineIndex]
+		}
+		if expectedLine == actualLine {
+			continue
+		}
+
+		expectedRunes := []rune(expectedLine)
+		actualRunes := []rune(actualLine)
+		maxChars := len(expectedRunes)
+		if len(actualRunes) > maxChars {
+			maxChars = len(actualRunes)
+		}
+		for charIndex := 0; charIndex < maxChars; charIndex++ {
+			if charIndex >= len(expectedRunes) || charIndex >= len(actualRunes) || expectedRunes[charIndex] != actualRunes[charIndex] {
+				return lineIndex + 1, charIndex + 1
+			}
+		}
+	}
+
+	return 1, 1
 }
 
 func assertFileNotExists(fsys port.FileSystem, rootDir, path string) error {

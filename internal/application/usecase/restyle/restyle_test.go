@@ -9,6 +9,14 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
+var generatedStyleComment = strings.Trim(`
+  %% ------------------------------------------------------------------------------------------
+  %% AUTO-GENERATED STYLING: Do not edit manually.
+  %% If you add, delete, or reorder nodes, you MUST run 'baft restyle' or format via your IDE.
+  %% Outdated references will either break the render entirely or silently mess up the styling.
+  %% ------------------------------------------------------------------------------------------
+`, "\n")
+
 func TestRunRestylesAllContractsUnderRoot(t *testing.T) {
 	const rootDir = "/Users/jane/baft"
 
@@ -46,6 +54,9 @@ func TestRunRestylesAllContractsUnderRoot(t *testing.T) {
 	if !strings.Contains(string(rootContent), "style alpha stroke:#1f1f1f,stroke-width:2px") {
 		t.Fatalf("missing root node style in:\n%s", rootContent)
 	}
+	if !strings.Contains(string(rootContent), generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", rootContent)
+	}
 	if !strings.Contains(string(rootContent), "linkStyle 0 stroke:#1f1f1f,stroke-width:2px") {
 		t.Fatalf("missing root link style in:\n%s", rootContent)
 	}
@@ -56,6 +67,9 @@ func TestRunRestylesAllContractsUnderRoot(t *testing.T) {
 	}
 	if !strings.Contains(string(nestedContent), "style gamma stroke:#1f1f1f,stroke-width:2px,stroke-dasharray:5 5") {
 		t.Fatalf("missing nested endophobic style in:\n%s", nestedContent)
+	}
+	if !strings.Contains(string(nestedContent), generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", nestedContent)
 	}
 }
 
@@ -83,6 +97,9 @@ func TestRunWithNoneOnlyStylesEndophobicNodes(t *testing.T) {
 	got := string(restyled)
 	if !strings.Contains(got, "style alpha stroke-width:2px,stroke-dasharray:5 5") {
 		t.Fatalf("missing endophobic style in:\n%s", got)
+	}
+	if !strings.Contains(got, generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", got)
 	}
 	if strings.Contains(got, "style beta") {
 		t.Fatalf("unexpected beta style in:\n%s", got)
@@ -147,6 +164,9 @@ func TestRestyleContractReportsUnchangedOutput(t *testing.T) {
 	}
 	if !changed {
 		t.Fatalf("expected styling to be added")
+	}
+	if !strings.Contains(restyled, generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", restyled)
 	}
 
 	restyledAgain, changedAgain, err := RestyleContract(restyled, repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant})
