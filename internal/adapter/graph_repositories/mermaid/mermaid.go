@@ -137,8 +137,8 @@ var paletteColors = map[port.GraphColorPalette][]string{
 func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) string {
 	var sb strings.Builder
 
-	sb.WriteString("<!-- BAFT architecture contract: edit nodes and edges to change allowed imports. -->\n")
-	sb.WriteString("<!-- If BAFT is new to you, run `baft manual`. -->\n")
+	sb.WriteString("<!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->\n")
+	sb.WriteString("<!-- If Baft is new to you, run `baft manual`. -->\n")
 	sb.WriteString("<!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->\n")
 	sb.WriteString("<!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->\n")
 	sb.WriteString("\n")
