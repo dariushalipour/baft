@@ -65,14 +65,15 @@ type fileRecord struct {
 	imports []port.ImportSpec
 }
 
-type contractLoadError struct {
+type contractError struct {
 	contractPath string
+	kind         string
 	message      string
 	cycleGroups  [][]string
 }
 
-func (e *contractLoadError) Error() string {
-	return "contract-load-error: " + e.message
+func (e *contractError) Error() string {
+	return e.kind + ": " + e.message
 }
 
 // Run walks all capsules for every supplied language, parses every

@@ -297,7 +297,7 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 	if err != nil {
 		return nil, err
 	}
-	if len(ctrCtx.loadErr) > 0 {
+	if len(ctrCtx.loadErr) > 0 && ctrCtx.rootGraph == nil {
 		return &capsuleResult{errors: ctrCtx.loadErr}, nil
 	}
 	if !ctrCtx.hasRootContract && !hasScopedContract(fsys, capsule.Dir) {
@@ -317,6 +317,7 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 	if chk.res.hasInvalidGlobError {
 		chk.res.violations = nil
 	}
+	chk.res.errors = append(chk.res.errors, ctrCtx.loadErr...)
 	sort.Slice(chk.res.errors, func(i, j int) bool {
 		return chk.res.errors[i].Message < chk.res.errors[j].Message
 	})
@@ -414,7 +415,6 @@ func loadCapsuleContract(fsys port.FileSystem, repo port.GraphRepository, contra
 	ctx.rootGraph, err = repo.Load(string(raw))
 	if err != nil {
 		ctx.loadErr = makeContractLoadErrors(ctx.contractPathAbs, err)
-		return ctx, nil
 	}
 	return ctx, nil
 }

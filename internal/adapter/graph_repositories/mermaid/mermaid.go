@@ -81,17 +81,6 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("line %d: unrecognized line in mermaid block: %q", e.Line, e.Raw)
 }
 
-// parseErrors holds multiple ParseError instances and implements error.
-type parseErrors []ParseError
-
-func (pe parseErrors) Error() string {
-	msgs := make([]string, len(pe))
-	for i, e := range pe {
-		msgs[i] = e.Msg
-	}
-	return strings.Join(msgs, "; ")
-}
-
 // ParseErrorWithNext allows chaining via Unwrap for errors.As compatibility.
 type ParseErrorWithNext struct {
 	Msg  string
@@ -133,33 +122,6 @@ var paletteColors = map[port.GraphColorPalette][]string{
 		"#777777", "#828282", "#8d8d8d", "#989898",
 		"#a3a3a3", "#aeaeae", "#b9b9b9", "#c4c4c4",
 	},
-}
-
-// toChain converts parseErrors into a linked chain of ParseErrorWithNext
-// so that errors.As can walk through every element.
-func (pe parseErrors) toChain() *ParseErrorWithNext {
-	if len(pe) == 0 {
-		return nil
-	}
-	// Sort for deterministic output: by line, then message.
-	sort.Slice(pe, func(i, j int) bool {
-		if pe[i].Line != pe[j].Line {
-			return pe[i].Line < pe[j].Line
-		}
-		return pe[i].Msg < pe[j].Msg
-	})
-	// Build chain from last to first so Unwrap points to the next error.
-	var head *ParseErrorWithNext
-	for i := len(pe) - 1; i >= 0; i-- {
-		e := &pe[i]
-		head = &ParseErrorWithNext{
-			Msg:  e.Msg,
-			Line: e.Line,
-			Raw:  e.Raw,
-			Next: head,
-		}
-	}
-	return head
 }
 
 // Save produces a mermaid flowchart from the Graph.
@@ -377,31 +339,6 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	if len(g.Nodes) == 0 {
 		return nil, &ParseError{Msg: "mermaid block declared no nodes"}
 	}
-	var allErrs parseErrors
-	if err := checkEmptyGlobs(g); err != nil {
-		if pe, ok := err.(parseErrors); ok {
-			allErrs = append(allErrs, pe...)
-		} else {
-			allErrs = append(allErrs, *err.(*ParseError))
-		}
-	}
-	if err := checkUndefinedEdgeNodes(g); err != nil {
-		if pe, ok := err.(parseErrors); ok {
-			allErrs = append(allErrs, pe...)
-		} else {
-			allErrs = append(allErrs, *err.(*ParseError))
-		}
-	}
-	if err := checkCycles(g); err != nil {
-		if pe, ok := err.(parseErrors); ok {
-			allErrs = append(allErrs, pe...)
-		} else {
-			allErrs = append(allErrs, *err.(*ParseError))
-		}
-	}
-	if len(allErrs) > 0 {
-		return nil, allErrs.toChain()
-	}
 	return g, nil
 }
 
@@ -548,22 +485,6 @@ func extractMermaidBlock(md string) (string, int, error) {
 	return "", 0, &ParseError{Msg: "no ```mermaid block found"}
 }
 
-func checkEmptyGlobs(g *graph.Graph) error {
-	var errs parseErrors
-	for id, glob := range g.Nodes {
-		if glob == "" {
-			errs = append(errs, ParseError{
-				Line: g.NodeLines[id],
-				Msg:  fmt.Sprintf("node %q has empty glob", id),
-			})
-		}
-	}
-	if len(errs) > 0 {
-		return errs
-	}
-	return nil
-}
-
 // encodeNodeGlob escapes special characters in glob/display text for mermaid output.
 func encodeNodeGlob(s string) string {
 	return strings.ReplaceAll(s, "*", "&ast;")
@@ -600,95 +521,6 @@ func decodeNodeId(s string) string {
 // quotedEncode wraps the encoded glob in Go-style double quotes for mermaid output.
 func quotedEncode(s string) string {
 	return fmt.Sprintf("%q", encodeNodeGlob(s))
-}
-
-func checkUndefinedEdgeNodes(g *graph.Graph) error {
-	var errs parseErrors
-	for src, dsts := range g.Edges {
-		for dst := range dsts {
-			if _, ok := g.Nodes[src]; !ok {
-				line := g.EdgeLines[src+"\t"+dst]
-				errs = append(errs, ParseError{Line: line, Msg: fmt.Sprintf("edge references undefined node %q", src)})
-			}
-			if _, ok := g.Nodes[dst]; !ok {
-				line := g.EdgeLines[src+"\t"+dst]
-				errs = append(errs, ParseError{Line: line, Msg: fmt.Sprintf("edge references undefined node %q", dst)})
-			}
-		}
-	}
-	if len(errs) > 0 {
-		return errs
-	}
-	return nil
-}
-
-func checkCycles(g *graph.Graph) error {
-	type state byte
-	const (
-		white state = iota
-		gray
-		black
-	)
-	color := make(map[string]state, len(g.Nodes))
-	for id := range g.Nodes {
-		color[id] = white
-	}
-	// Pre-allocate path with capacity for all nodes.
-	path := make([]string, 0, len(g.Nodes))
-	var errs parseErrors
-	seenCycles := make(map[string]struct{})
-	var dfs func(node string)
-	dfs = func(node string) {
-		color[node] = gray
-		path = append(path, node)
-		for dst := range g.Edges[node] {
-			if c, ok := color[dst]; !ok {
-				continue
-			} else if c == gray {
-				cycleStart := -1
-				for i, p := range path {
-					if p == dst {
-						cycleStart = i
-						break
-					}
-				}
-				if cycleStart >= 0 {
-					cycleStr := ""
-					for i := cycleStart; i < len(path); i++ {
-						if i > cycleStart {
-							cycleStr += " \u2192 "
-						}
-						cycleStr += path[i]
-					}
-					cycleStr += " \u2192 " + dst
-					// Deduplicate cycles by their canonical string representation.
-					if _, ok := seenCycles[cycleStr]; !ok {
-						seenCycles[cycleStr] = struct{}{}
-						line := g.EdgeLines[path[len(path)-1]+"\t"+dst]
-						errs = append(errs, ParseError{Line: line, Msg: "cycle detected: " + cycleStr})
-					}
-				}
-			} else if c == white {
-				dfs(dst)
-			}
-		}
-		path = path[:len(path)-1]
-		color[node] = black
-	}
-	ids := make([]string, 0, len(g.Nodes))
-	for id := range g.Nodes {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
-		if color[id] == white {
-			dfs(id)
-		}
-	}
-	if len(errs) > 0 {
-		return errs
-	}
-	return nil
 }
 
 func looksLikeFilePath(p string) bool {

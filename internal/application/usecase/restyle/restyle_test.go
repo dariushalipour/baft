@@ -92,6 +92,51 @@ func TestRunWithNoneOnlyStylesEndophobicNodes(t *testing.T) {
 	}
 }
 
+func TestRunRestylesCircularContract(t *testing.T) {
+	const rootDir = "/Users/jane/baft"
+
+	fsys := memfs.New()
+	content := "```mermaid\nflowchart TD\n  alpha[\"alpha\"]\n  beta[\"beta\"]\n\n  alpha --> beta\n  beta --> alpha\n```\n"
+	if err := fsys.WriteFile(rootDir+"/BAFT.md", []byte(content), 0o644); err != nil {
+		t.Fatalf("write BAFT.md: %v", err)
+	}
+
+	result, err := Run(fsys, rootDir, &mermaid.MermaidRepository{}, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("unexpected errors: %+v", result.Errors)
+	}
+	if len(result.Contracts) != 1 {
+		t.Fatalf("contracts = %d, want 1", len(result.Contracts))
+	}
+	if !result.Contracts[0].Changed {
+		t.Fatal("expected circular contract to be restyled")
+	}
+
+	restyled, err := fsys.ReadFile(rootDir + "/BAFT.md")
+	if err != nil {
+		t.Fatalf("read BAFT.md: %v", err)
+	}
+	got := string(restyled)
+	if !strings.Contains(got, "alpha --> beta") || !strings.Contains(got, "beta --> alpha") {
+		t.Fatalf("expected cycle edges to be preserved in:\n%s", got)
+	}
+	if !strings.Contains(got, "style alpha stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("missing alpha style in:\n%s", got)
+	}
+	if !strings.Contains(got, "style beta stroke:#2a2a2a,stroke-width:2px") {
+		t.Fatalf("missing beta style in:\n%s", got)
+	}
+	if !strings.Contains(got, "linkStyle 0 stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("missing first link style in:\n%s", got)
+	}
+	if !strings.Contains(got, "linkStyle 1 stroke:#2a2a2a,stroke-width:2px") {
+		t.Fatalf("missing second link style in:\n%s", got)
+	}
+}
+
 func TestRestyleContractReportsUnchangedOutput(t *testing.T) {
 	repo := &mermaid.MermaidRepository{}
 	content := "```mermaid\nflowchart TD\n  alpha[\"alpha\"]\n```\n"

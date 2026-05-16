@@ -250,7 +250,7 @@ Feature: Architecture rule checking
       /Users/jane/baft: internal/application/order.go:3:8 (app) → internal/domain (domain) — relation not allowed (add edge in /Users/jane/baft/BAFT.md or move the file)
       """
 
-  Scenario: Single capsule with multiple relation violations and two config errors
+  Scenario: Single capsule with multiple relation violations and three config errors
     Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ go.mod
@@ -275,6 +275,7 @@ Feature: Architecture rule checking
         handler["internal/api/handler.go"]
         model["internal/model/repo.go"]
         app --> domain
+        domain --> app
       ```
       """
     Given file "internal/application/order.go" has content:
@@ -296,7 +297,7 @@ Feature: Architecture rule checking
     Then 1 capsule is discovered
     And 2 relations are examined
     And 4 files are encountered and 4 files are scanned
-    And 2 errors and 2 violations are reported
+    And 3 errors and 2 violations are reported
     And the violations are:
       """violations
       /Users/jane/baft: internal/application/order.go:3:8 (app) → internal/api (api) — relation not allowed (add edge in /Users/jane/baft/BAFT.md or move the file)
@@ -304,6 +305,7 @@ Feature: Architecture rule checking
       """
     And the errors are:
       """errors
+      /Users/jane/baft: circular dependency: app → domain → app (/Users/jane/baft/BAFT.md:9)
       /Users/jane/baft: handler (/Users/jane/baft/BAFT.md:6) references internal/api/handler.go — file-shaped nodes require a language that supports file globs
       /Users/jane/baft: model (/Users/jane/baft/BAFT.md:7) references internal/model/repo.go — file-shaped nodes require a language that supports file globs
       """

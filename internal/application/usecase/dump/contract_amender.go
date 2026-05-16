@@ -12,11 +12,21 @@ import (
 func amendContract(fsys port.FileSystem, rootDir string, capsule port.Capsule, lang port.Language, repo port.GraphRepository, contractPath string, cfg draftConfig) (*AmendDiff, error) {
 	raw, err := fsys.ReadFile(contractPath)
 	if err != nil {
-		return nil, &contractLoadError{contractPath: contractPath, message: err.Error()}
+		return nil, &contractError{contractPath: contractPath, kind: "contract-load-error", message: err.Error()}
 	}
 	current, err := repo.Load(string(raw))
 	if err != nil {
-		return nil, &contractLoadError{contractPath: contractPath, message: summarizeContractLoadError(err), cycleGroups: parseCycleGroups(err.Error())}
+		return nil, &contractError{contractPath: contractPath, kind: "contract-load-error", message: summarizeContractLoadError(err), cycleGroups: parseCycleGroups(err.Error())}
+	}
+
+	validation := check.ValidateContract(fsys, lang, contractPath, current)
+	if len(validation.Errors) > 0 {
+		return nil, &contractError{
+			contractPath: contractPath,
+			kind:         contractValidationKind(validation.Errors),
+			message:      summarizeContractValidationErrors(validation.Errors),
+			cycleGroups:  cycleGroupsFromValidationErrors(validation.Errors),
+		}
 	}
 
 	updated, diff, err := applyCheckAmendments(fsys, rootDir, capsule, lang, repo, contractPath, current, cfg)

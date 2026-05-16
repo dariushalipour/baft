@@ -766,7 +766,7 @@ func rawToGraph(nodes map[string]string, edges map[string]map[string]bool) *grap
 	return g
 }
 
-func TestCheckCycles_SimpleCycle(t *testing.T) {
+func TestLoad_AllowsSimpleCycle(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  app["internal/application/&ast;&ast;"]` + "\n" +
 		`  domain["internal/domain/&ast;&ast;"]` + "\n" +
@@ -774,16 +774,22 @@ func TestCheckCycles_SimpleCycle(t *testing.T) {
 		`  domain --> app` + "\n" +
 		"```\n"
 
-	_, err := (&MermaidRepository{}).Load(md)
-	if err == nil {
-		t.Fatal("expected error for cycle")
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := err.Error(); !strings.Contains(got, "cycle detected") {
-		t.Fatalf("expected cycle error, got: %q", got)
+	if g == nil {
+		t.Fatal("expected parsed graph")
+	}
+	if !g.Allows("app", "domain") || !g.Allows("domain", "app") {
+		t.Fatal("expected cycle edges to be preserved")
+	}
+	if g.EdgeLines["domain\tapp"] != 6 {
+		t.Fatalf("expected edge line metadata for cycle edge, got %d", g.EdgeLines["domain\tapp"])
 	}
 }
 
-func TestCheckCycles_MultipleCycles(t *testing.T) {
+func TestLoad_AllowsMultipleCycles(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  a["a/&ast;&ast;"]` + "\n" +
 		`  b["b/&ast;&ast;"]` + "\n" +
@@ -795,24 +801,12 @@ func TestCheckCycles_MultipleCycles(t *testing.T) {
 		`  d --> c` + "\n" +
 		"```\n"
 
-	_, err := (&MermaidRepository{}).Load(md)
-	if err == nil {
-		t.Fatal("expected error for cycles")
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	// Walk the chain to count all cycle errors.
-	var count int
-	pwn, ok := err.(*ParseErrorWithNext)
-	for ok && pwn != nil {
-		if strings.Contains(pwn.Error(), "cycle detected") {
-			count++
-		}
-		if pwn.Next == nil {
-			break
-		}
-		pwn, ok = pwn.Next.(*ParseErrorWithNext)
-	}
-	if count < 2 {
-		t.Fatalf("expected at least 2 cycles detected, got %d", count)
+	if !g.Allows("a", "b") || !g.Allows("b", "a") || !g.Allows("c", "d") || !g.Allows("d", "c") {
+		t.Fatal("expected cycle edges to be preserved")
 	}
 }
 
@@ -834,7 +828,7 @@ func TestCheckCycles_NoCycle(t *testing.T) {
 	}
 }
 
-func TestCheckCycles_LargeCycle(t *testing.T) {
+func TestLoad_AllowsLargeCycle(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  a["a/&ast;&ast;"]` + "\n" +
 		`  b["b/&ast;&ast;"]` + "\n" +
@@ -846,38 +840,16 @@ func TestCheckCycles_LargeCycle(t *testing.T) {
 		`  d --> a` + "\n" +
 		"```\n"
 
-	_, err := (&MermaidRepository{}).Load(md)
-	if err == nil {
-		t.Fatal("expected error for cycle")
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := err.Error(); !strings.Contains(got, "cycle detected") {
-		t.Fatalf("expected cycle error, got: %q", got)
-	}
-}
-
-func TestCheckCycles_DuplicateCycleNotReportedTwice(t *testing.T) {
-	// A single cycle should not be reported multiple times.
-	md := "```mermaid\nflowchart TD\n" +
-		`  a["a/&ast;&ast;"]` + "\n" +
-		`  b["b/&ast;&ast;"]` + "\n" +
-		`  a --> b` + "\n" +
-		`  b --> a` + "\n" +
-		"```\n"
-
-	_, err := (&MermaidRepository{}).Load(md)
-	if err == nil {
-		t.Fatal("expected error for cycle")
-	}
-	errMsg := err.Error()
-	count := strings.Count(errMsg, "cycle detected")
-	if count != 1 {
-		t.Fatalf("expected exactly 1 cycle detected, got %d: %q", count, errMsg)
+	if !g.Allows("d", "a") {
+		t.Fatal("expected closing cycle edge to be preserved")
 	}
 }
 
-func TestLoad_CollectsAllValidationErrors(t *testing.T) {
-	// A graph with both empty globs and cycles should report all errors,
-	// not just the first one found.
+func TestLoad_AllowsEmptyGlobForContractValidation(t *testing.T) {
 	md := "```mermaid\nflowchart TD\n" +
 		`  a[""]` + "\n" +
 		`  b["b/&ast;&ast;"]` + "\n" +
@@ -885,25 +857,35 @@ func TestLoad_CollectsAllValidationErrors(t *testing.T) {
 		`  b --> a` + "\n" +
 		"```\n"
 
-	_, err := (&MermaidRepository{}).Load(md)
-	if err == nil {
-		t.Fatal("expected errors for empty glob and cycle")
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	// Walk the chain to check all errors are present.
-	var allMsgs string
-	pwn, ok := err.(*ParseErrorWithNext)
-	for ok && pwn != nil {
-		allMsgs += pwn.Error()
-		if pwn.Next == nil {
-			break
-		}
-		pwn, ok = pwn.Next.(*ParseErrorWithNext)
+	if got := g.Nodes["a"]; got != "" {
+		t.Fatalf("expected empty glob to be preserved for contract validation, got %q", got)
 	}
-	if !strings.Contains(allMsgs, "empty glob") {
-		t.Fatalf("expected empty glob error, got: %q", allMsgs)
+	if !g.Allows("a", "b") || !g.Allows("b", "a") {
+		t.Fatal("expected graph to load fully for contract validation")
 	}
-	if !strings.Contains(allMsgs, "cycle detected") {
-		t.Fatalf("expected cycle error, got: %q", allMsgs)
+	if g.EdgeLines["a\tb"] != 5 {
+		t.Fatalf("expected edge line metadata to be preserved, got %d", g.EdgeLines["a\tb"])
+	}
+}
+
+func TestLoad_AllowsUndefinedEdgeNodesForContractValidation(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  app["internal/app/&ast;&ast;"] --> domain` + "\n" +
+		"```\n"
+
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !g.Allows("app", "domain") {
+		t.Fatal("expected edge to be preserved for contract validation")
+	}
+	if g.EdgeLines["app\tdomain"] != 3 {
+		t.Fatalf("expected edge line metadata to be preserved, got %d", g.EdgeLines["app\tdomain"])
 	}
 }
 

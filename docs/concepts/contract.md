@@ -45,7 +45,7 @@ A BAFT.md is not:
 
 A BAFT.md is:
 
-- **An architecture contract.** It declares the intended structure of the codebase. Edges are permissions — if an edge does not exist, the import is forbidden.
+- **An architecture contract.** It declares the structure of the codebase. Edges are permissions — if an edge does not exist, the import is forbidden.
 - **A Mermaid flowchart.** The contract is a `flowchart TD` (or `flowchart LR`) block. Nodes are labeled with glob patterns. Edges are `-->` arrows. Classes are `:::modifier` annotations.
 - **A live document.** The `dump` command scans source files and generates a BAFT.md from observed imports. The `check` command validates source files against the existing BAFT.md. They work together: dump proposes, check enforces.
 - **A per-Capsule file.** Each Capsule has its own BAFT.md. Nested Capsules have their own BAFT.md tracking only their internal imports. The parent Capsule's BAFT.md tracks edges between children.
@@ -127,25 +127,11 @@ Classes add modifiers to nodes.
 
 **Syntax:** `nodeId["glob"]:::classname`
 
-Currently, Baft recognizes one class:
+Baft recognizes one class:
 
 - **`:::endophobic`** — forbids files within the same node from importing each other. This enforces a "no internal coupling" rule, useful for keeping use cases, handlers, and services independent.
 
 A node can have multiple classes: `nodeId["glob"]:::endophobic,otherclass`. Unknown classes are stored but have no effect on validation.
-
----
-
-## Discovery
-
-BAFT.md is discovered on-demand, not during capsule discovery.
-
-**`TrackingScope(filePath)`** — given a file path, walks upward to find the nearest `BAFT.md` in any ancestor directory, bounded by the capsule root. This determines which contract tracks a file.
-
-**`FindContract(startDir)`** — walks upward from a starting directory toward the capsule root, returning the path to the nearest ancestor `BAFT.md`, or `capsuleDir/BAFT.md` if none is found. Used by `dump` to decide where to create a new contract.
-
-**`FindOrCreateContractDir(startDir)`** — used by `dump` to determine where to write a new BAFT.md. If a BAFT.md exists in any ancestor, returns that directory. Otherwise returns the starting directory.
-
-BAFT.md is subject to `.gitignore` and `.baftignore`. If a BAFT.md matches an ignore pattern, it is treated as non-existent.
 
 ---
 
@@ -169,14 +155,9 @@ When a subdirectory contains its own manifest (making it a child Capsule), it ma
 
 ## Validation
 
-The `check` command validates BAFT.md files for structural correctness before enforcing them:
+For the validation model and the full list of contract diagnostics, see [validation.md](validation.md).
 
-- **Empty globs** — a node with an empty glob pattern is an error.
-- **Undefined edge nodes** — a node referenced in an edge but not defined is an error.
-- **Duplicate globs** — two nodes with the same glob pattern is an error.
-- **File-glob support** — file-shaped nodes in languages that do not support them (Go, Kotlin, Rust) is an error.
-- **Invalid globs** — globs containing `..` are rejected.
-- **Overlapping directory globs** — two directory-shaped nodes with overlapping globs are an error, with a witness path provided to help identify the conflict.
+In this document, the important point is simpler: `check` uses `BAFT.md` as the source of architecture rules for tracked files. When the contract itself has problems, `check` reports contract diagnostics. When the source files break the declared architecture, `check` reports source-level violations.
 
 ---
 
@@ -201,21 +182,27 @@ The `dump` command generates a BAFT.md from observed imports:
 
 ## The check command
 
-The `check` command validates source files against BAFT.md:
+The `check` command's main question is: **do the actual source files comply with the architecture declared in BAFT.md?**
+
+Contract validation is part of that flow, but it is not the end goal. `check` validates contracts because it needs a trustworthy graph before it can judge the codebase against it.
+
+The `check` command works like this:
 
 1. Discovers all Capsules in the target directory.
 2. For each Capsule, finds the root BAFT.md and any scoped contracts in subdirectories.
-3. Walks every tracked file and resolves its imports.
-4. For each import, determines the tracking scope and checks the edge against the appropriate graph.
-5. Validates BAFT.md files for structural correctness.
-6. Aggregates violations and reports them.
+3. Loads each contract, runs contract validation, and applies language-specific validation.
+4. Walks every tracked file and resolves its imports.
+5. For each import, determines the tracking scope and checks the edge against the appropriate graph.
+6. Aggregates both contract diagnostics and source-level violations into the result.
+
+If a contract cannot be parsed into a usable graph, `check` cannot enforce that contract's rules for the affected scope. If the contract has non-fatal validation problems but still yields a usable graph, `check` may report both contract errors and source-code violations in the same run.
 
 **Per-file check flow:**
-1. `TrackingScope()` determines which BAFT.md tracks the file.
-2. The graph for that scope is loaded and cached.
-3. `graph.NodeForPath()` maps the source file to a node ID.
-4. For each import: resolve the target, determine its scope, check `graph.Allows(src, dst)`.
-5. **Cross-scope handling:** If source and target are in different scopes, walk up ancestor BAFT.md files to find a graph that tracks both.
+1. Baft finds the `BAFT.md` that tracks the file.
+2. Baft loads that contract and reuses it for other files in the same scope.
+3. Baft matches the source file to its declared node.
+4. For each import, Baft resolves the target, determines which contract tracks it, and checks whether that source node is allowed to depend on that target node.
+5. For cross-scope imports, Baft walks up to an ancestor contract that tracks both sides of the relation.
 
 ---
 

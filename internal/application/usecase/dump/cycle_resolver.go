@@ -44,7 +44,7 @@ func retryCycleExpansion(fsys port.FileSystem, rootDir string, capsule port.Caps
 }
 
 func cycleExpansionCandidates(fsys port.FileSystem, contractDir string, lang port.Language, err error, cfg draftConfig) []string {
-	var loadErr *contractLoadError
+	var loadErr *contractError
 	if !errors.As(err, &loadErr) {
 		return nil
 	}
@@ -93,17 +93,17 @@ func expansionPlans(baseCfg draftConfig, candidates []string) []draftConfig {
 }
 
 func isFreshDraftCycle(err error) bool {
-	var loadErr *contractLoadError
+	var loadErr *contractError
 	if !errors.As(err, &loadErr) {
 		return false
 	}
-	return strings.Contains(loadErr.message, "cycle detected")
+	return loadErr.kind == "circular-dependency" && strings.Contains(loadErr.message, "circular dependency")
 }
 
 func summarizeContractLoadError(err error) string {
 	msg := strings.TrimSpace(err.Error())
-	if strings.Contains(msg, "cycle detected") {
-		return "cycle detected"
+	if strings.Contains(msg, "circular dependency") {
+		return "circular dependency"
 	}
 	return msg
 }
@@ -113,10 +113,10 @@ func parseCycleGroups(msg string) [][]string {
 	cycles := make([][]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
-		if !strings.HasPrefix(part, "cycle detected: ") {
+		if !strings.HasPrefix(part, "circular dependency: ") {
 			continue
 		}
-		body := strings.TrimSpace(strings.TrimPrefix(part, "cycle detected: "))
+		body := strings.TrimSpace(strings.TrimPrefix(part, "circular dependency: "))
 		if body == "" {
 			continue
 		}
@@ -129,11 +129,56 @@ func parseCycleGroups(msg string) [][]string {
 }
 
 func makeDumpError(label string, err error) DumpError {
-	var loadErr *contractLoadError
+	var loadErr *contractError
 	if errors.As(err, &loadErr) {
 		return DumpError{Label: loadErr.contractPath, Err: loadErr}
 	}
 	return DumpError{Label: label, Err: err}
+}
+
+func summarizeContractValidationErrors(errors []port.Violation) string {
+	parts := make([]string, 0, len(errors))
+	seen := make(map[string]bool, len(errors))
+	for _, violation := range errors {
+		msg := normalizeValidationMessage(violation.Message)
+		if violation.Rule == "circular-dependency" {
+			return "circular dependency"
+		}
+		if seen[msg] {
+			continue
+		}
+		seen[msg] = true
+		parts = append(parts, msg)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func contractValidationKind(errors []port.Violation) string {
+	if len(errors) == 0 {
+		return ""
+	}
+	for _, violation := range errors {
+		if violation.Rule == "circular-dependency" {
+			return violation.Rule
+		}
+	}
+	return errors[0].Rule
+}
+
+func cycleGroupsFromValidationErrors(errors []port.Violation) [][]string {
+	parts := make([]string, 0, len(errors))
+	for _, violation := range errors {
+		parts = append(parts, normalizeValidationMessage(violation.Message))
+	}
+	return parseCycleGroups(strings.Join(parts, "; "))
+}
+
+func normalizeValidationMessage(message string) string {
+	message = strings.TrimSpace(message)
+	if idx := strings.LastIndex(message, " ("); idx >= 0 && strings.HasSuffix(message, ")") {
+		return message[:idx]
+	}
+	return message
 }
 
 func importSpecForViolation(lang port.Language, fsys port.FileSystem, absPath string, line int, column int) (*port.ImportSpec, error) {

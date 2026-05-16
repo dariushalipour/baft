@@ -308,24 +308,35 @@ func (ch *capsuleChecker) resolveScope(scopeDir string) (string, *graph.Graph) {
 }
 
 func (ch *capsuleChecker) validateAll() {
-	if ch.hasRootContract {
-		ch.validateGraph(ch.rootGraph, ch.contractPathAbs)
+	if ch.hasRootContract && ch.rootGraph != nil {
+		ch.applyContractValidation(validateContractGraph(ch.fsys, ch.lang, ch.contractPathAbs, ch.rootGraph))
+		ch.validateLanguageGraph(ch.rootGraph, ch.contractPathAbs)
 	}
 	ch.scopeCache.iterate(func(entry *scopeEntry) {
 		if len(entry.loadErr) > 0 {
 			ch.res.errors = append(ch.res.errors, entry.loadErr...)
-			return
 		}
-		ch.validateGraph(entry.graph, entry.contractPath)
+		if entry.graph != nil {
+			ch.applyContractValidation(validateContractGraph(ch.fsys, ch.lang, entry.contractPath, entry.graph))
+			ch.validateLanguageGraph(entry.graph, entry.contractPath)
+		}
 	})
 }
 
-func (ch *capsuleChecker) validateGraph(g *graph.Graph, cfgPath string) {
-	duplicateGlobErrors := duplicateNodeGlobErrors(g, cfgPath)
-	if len(duplicateGlobErrors) > 0 {
+func (ch *capsuleChecker) applyContractValidation(result ContractValidationResult) {
+	ch.res.errors = append(ch.res.errors, result.Errors...)
+	if result.HasOverlapError {
+		ch.res.hasOverlapError = true
+	}
+	if result.HasDuplicateGlobError {
 		ch.res.hasDuplicateGlobError = true
 	}
-	ch.res.errors = append(ch.res.errors, duplicateGlobErrors...)
+	if result.HasInvalidGlobError {
+		ch.res.hasInvalidGlobError = true
+	}
+}
+
+func (ch *capsuleChecker) validateLanguageGraph(g *graph.Graph, cfgPath string) {
 	if !ch.lang.SupportsFileGlobs() {
 		for id, glob := range g.Nodes {
 			if graph.IsFileGlob(glob) {
@@ -333,141 +344,6 @@ func (ch *capsuleChecker) validateGraph(g *graph.Graph, cfgPath string) {
 			}
 		}
 	}
-	for id, glob := range g.Nodes {
-		for _, msg := range graph.ValidateNodeGlob(glob) {
-			ch.res.errors = append(ch.res.errors, makeInvalidNodeGlobError(id, cfgPath, g.NodeLines[id], glob, msg))
-			ch.res.hasInvalidGlobError = true
-		}
-	}
-	ch.findOverlappingNodes(g, cfgPath)
-}
-
-func duplicateNodeGlobErrors(g *graph.Graph, cfgPath string) []port.Violation {
-	byGlob := map[string][]string{}
-	for id, glob := range g.Nodes {
-		byGlob[glob] = append(byGlob[glob], id)
-	}
-
-	var globs []string
-	for glob, ids := range byGlob {
-		if len(ids) < 2 {
-			continue
-		}
-		sort.Strings(ids)
-		globs = append(globs, glob)
-	}
-	sort.Strings(globs)
-
-	errs := make([]port.Violation, 0, len(globs))
-	for _, glob := range globs {
-		ids := byGlob[glob]
-		line := g.NodeLines[ids[1]]
-		errs = append(errs, makeDuplicateNodeGlobError(cfgPath, line, glob, ids))
-	}
-	return errs
-}
-
-func (ch *capsuleChecker) findOverlappingNodes(g *graph.Graph, cfgPath string) {
-	ids := make([]string, 0, len(g.Nodes))
-	for id := range g.Nodes {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-
-	scopeDir := filepath.Dir(cfgPath)
-
-	// Collect candidate pairs that have overlapping globs (cheap check).
-	var candidatePairs [][2]string
-	for i := 0; i < len(ids); i++ {
-		aGlob := g.Nodes[ids[i]]
-		if graph.IsFileGlob(aGlob) {
-			continue
-		}
-		for j := i + 1; j < len(ids); j++ {
-			bGlob := g.Nodes[ids[j]]
-			if aGlob == bGlob {
-				continue
-			}
-			if graph.IsFileGlob(bGlob) {
-				continue
-			}
-			if !graph.GlobsOverlap(aGlob, bGlob) {
-				continue
-			}
-			candidatePairs = append(candidatePairs, [2]string{ids[i], ids[j]})
-		}
-	}
-
-	if len(candidatePairs) == 0 {
-		return
-	}
-
-	// Pre-collect all directory keys once, then check in-memory.
-	// This transforms O(n² * m) into O(m + n² * d) where d << m.
-	dirKeys := ch.collectDirKeys(scopeDir)
-
-	type overlapResult struct {
-		witness string
-		i       string
-		j       string
-	}
-	overlapChan := make(chan overlapResult, len(candidatePairs))
-
-	numWorkers := min(runtime.NumCPU(), len(candidatePairs))
-	if numWorkers < 1 {
-		numWorkers = 1
-	}
-
-	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for _, pair := range candidatePairs {
-				a, b := pair[0], pair[1]
-				aGlob, bGlob := g.Nodes[a], g.Nodes[b]
-				if witness := findWitnessInDirs(aGlob, bGlob, dirKeys); witness != "" {
-					overlapChan <- overlapResult{witness: witness, i: a, j: b}
-				}
-			}
-		}()
-	}
-
-	go func() {
-		wg.Wait()
-		close(overlapChan)
-	}()
-
-	for r := range overlapChan {
-		ch.res.errors = append(ch.res.errors, makeOverlapError(r.i, r.j, cfgPath, g.NodeLines[r.i], g.NodeLines[r.j], r.witness))
-		ch.res.hasOverlapError = true
-	}
-}
-
-// collectDirKeys walks the directory tree once and collects all directory keys.
-func (ch *capsuleChecker) collectDirKeys(baseDir string) []string {
-	var keys []string
-	_ = service.WalkAllFiles(ch.fsys, baseDir, ch.lang, func(abs, rel string) error {
-		keys = append(keys, rel)
-		return nil
-	})
-	return keys
-}
-
-// findWitnessInDirs checks pre-collected file paths for a witness match.
-func findWitnessInDirs(aGlob, bGlob string, fileRels []string) string {
-	seen := make(map[string]struct{})
-	for _, rel := range fileRels {
-		key := graph.NodeKeyForDir(rel)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		if graph.MatchDirGlob(aGlob, key) && graph.MatchDirGlob(bGlob, key) {
-			return rel
-		}
-	}
-	return ""
 }
 
 type scopeCache struct {
@@ -502,10 +378,9 @@ func (sc *scopeCache) load(scopeDir string) (*scopeEntry, error) {
 		e.loadErr = makeContractLoadErrors(contractPath, err)
 	} else {
 		g, loadErr := sc.repo.Load(string(data))
+		e.graph = g
 		if loadErr != nil {
 			e.loadErr = makeContractLoadErrors(contractPath, loadErr)
-		} else {
-			e.graph = g
 		}
 	}
 
@@ -547,7 +422,7 @@ func ancestorContracts(fsys port.FileSystem, scopeDir, capsuleDir string, sc *sc
 			return false
 		}
 		entry, serr := sc.load(parentDir)
-		if serr != nil || len(entry.loadErr) > 0 || entry.graph == nil {
+		if serr != nil || entry.graph == nil {
 			return true
 		}
 		result = append(result, ancestorContract{dir: parentDir, graph: entry.graph, contractPath: entry.contractPath})

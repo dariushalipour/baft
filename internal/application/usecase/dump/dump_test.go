@@ -58,7 +58,7 @@ func TestCycleExpansionCandidatesOnWrappedMemFS(t *testing.T) {
 		wrapped,
 		rootDir,
 		&typescript.Language{},
-		&contractLoadError{cycleGroups: [][]string{{"api", "usecase", "api"}}},
+		&contractError{cycleGroups: [][]string{{"api", "usecase", "api"}}},
 		draftConfig{mode: draftModeMergedDirs},
 	)
 	want := []string{"api", "usecase"}

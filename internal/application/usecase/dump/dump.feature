@@ -791,7 +791,7 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "BAFT.md" should stay the same
 
-  Scenario: Dump skips and reports existing BAFT.md with cycle detected
+  Scenario: Dump skips and reports existing BAFT.md with circular dependency
     Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree
       ├─ go.mod
@@ -826,7 +826,7 @@ Feature: Dump BAFT.md from actual imports
     When the dump runs from "/Users/jane/baft"
     Then the error is:
       """
-      /Users/jane/baft/BAFT.md: contract-load-error: cycle detected
+      /Users/jane/baft/BAFT.md: circular-dependency: circular dependency
       """
     And file "BAFT.md" should stay the same
 
