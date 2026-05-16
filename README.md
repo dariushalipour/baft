@@ -29,6 +29,26 @@ Baft fixes this by making the diagram the actual enforcement mechanism.
 - **Not a visualizer:** It enforces a diagram you provide; it doesn't generate one from scratch (though it can `dump` one).
 - **Not a framework:** It sits on top of your existing build system and language analyzers.
 
+## Baft vs Alternative Architecture Tools
+
+Tools like ArchUnit, Dependency-Cruiser, and language-specific linters are good at enforcing architecture inside their own ecosystems. Baft was built for a different operating model: one contract format, one enforcement engine, and one diagram-driven workflow across a polyglot repository.
+
+| Feature | Traditional architecture tools | Baft |
+| --- | --- | --- |
+| **Language support** | Usually one language or ecosystem at a time | **Polyglot** across Go, TypeScript, Dart, Kotlin, and Rust |
+| **Source of truth** | Rules in code or YAML | **Mermaid diagram** in `BAFT.md` |
+| **Enforcement model** | Often blacklist-oriented: define forbidden dependencies | **Default deny**: only declared edges are allowed |
+| **Exceptions** | Commonly scattered across inline suppressions or tool-specific config | **Centralized and explicit** in contract files and `.baftignore` |
+| **Scaling model** | Frequently centralized in one ruleset per tool | **Nested contracts** for bounded contexts and local ownership |
+| **Runtime** | Tied to the host toolchain or language runtime | **Standalone Go binary** |
+
+What that means in practice:
+
+- **What you draw is what you enforce.** The Mermaid diagram is not generated output or secondary documentation; it is the contract Baft checks.
+- **The architecture stays tight by default.** If a dependency is not drawn, Baft treats it as forbidden.
+- **Exceptions stay visible.** Baft does not support inline source suppressions, so architectural escapes remain reviewable instead of disappearing into random files.
+- **Large repos stay composable.** A parent contract can define cross-context boundaries while child contracts enforce local rules inside each module.
+
 ## Quick Start
 
 ### Install
