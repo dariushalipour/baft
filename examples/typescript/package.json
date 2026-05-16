@@ -1,6 +1,0 @@
-{
-  "name": "@example/monorepo",
-  "version": "1.0.0",
-  "private": true,
-  "description": "A multi-node TypeScript application demonstrating BAFT.md architecture"
-}
