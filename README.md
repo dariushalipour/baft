@@ -172,7 +172,7 @@ Baft can scan a multilingual repository in one run as long as each capsule has a
 ## Tooling
 
 - `baft check --reporter=json` for machine-readable output
-- VS Code extension in [vscode-extension](vscode-extension)
+- VS Code extension in [vscode-extension](vscode-extension) with diagnostics, a `BAFT.md` formatter exposed through `Format Document`, opt-in `baft.format.onSave`, and `Baft: Restyle Contract`
 - IntelliJ plugin in [intellij-plugin](intellij-plugin)
 - Unsaved editor buffers supported via overlay input in editor integrations
 

@@ -2,7 +2,7 @@
   "name": "baft",
   "displayName": "🧶 Baft",
   "description": "Architecture violation diagnostics powered by the 🧶 Baft CLI",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "publisher": "dariushalipour",
   "repository": {
     "type": "git",
@@ -15,6 +15,12 @@
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "baft.restyleContract",
+        "title": "Baft: Restyle Contract"
+      }
+    ],
     "configuration": {
       "title": "BAFT",
       "properties": {
@@ -24,8 +30,22 @@
           "default": "vibrant",
           "scope": "resource",
           "markdownDescription": "Specifies the Mermaid color palette BAFT uses when formatting BAFT.md files."
+        },
+        "baft.format.onSave": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "markdownDescription": "Restyles BAFT.md files with BAFT whenever they are saved."
         }
       }
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "baft.restyleContract",
+          "when": "resourceScheme == file && resourceFilename == BAFT.md"
+        }
+      ]
     }
   },
   "scripts": {

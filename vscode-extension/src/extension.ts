@@ -95,6 +95,12 @@ export function activate(context: vscode.ExtensionContext): void {
       .get<RestyleColorPalette>("format.colorPalette", "vibrant");
   }
 
+  function formatOnSaveEnabledFor(document: vscode.TextDocument): boolean {
+    return vscode.workspace
+      .getConfiguration("baft", document.uri)
+      .get<boolean>("format.onSave", false);
+  }
+
   async function provideFormattingEdits(
     document: vscode.TextDocument
   ): Promise<vscode.TextEdit[]> {
@@ -129,11 +135,50 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
+  async function restyleDocument(
+    document: vscode.TextDocument
+  ): Promise<boolean> {
+    const edits = await provideFormattingEdits(document);
+    if (edits.length === 0) {
+      return false;
+    }
+
+    const workspaceEdit = new vscode.WorkspaceEdit();
+    workspaceEdit.set(document.uri, edits);
+    return vscode.workspace.applyEdit(workspaceEdit);
+  }
+
   context.subscriptions.push(
     vscode.languages.registerDocumentFormattingEditProvider(
       BAFT_DOCUMENT_SELECTOR,
       { provideDocumentFormattingEdits: provideFormattingEdits }
     ),
+    vscode.commands.registerCommand("baft.restyleContract", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showErrorMessage("BAFT: open a BAFT.md file to restyle it");
+        return;
+      }
+
+      if (vscode.languages.match(BAFT_DOCUMENT_SELECTOR, editor.document) === 0) {
+        vscode.window.showErrorMessage("BAFT: the active editor is not a BAFT.md file");
+        return;
+      }
+
+      const applied = await restyleDocument(editor.document);
+      if (!applied) {
+        vscode.window.showInformationMessage("BAFT: contract is already restyled");
+      }
+    }),
+    vscode.workspace.onWillSaveTextDocument((event) => {
+      if (vscode.languages.match(BAFT_DOCUMENT_SELECTOR, event.document) === 0) {
+        return;
+      }
+      if (!formatOnSaveEnabledFor(event.document)) {
+        return;
+      }
+      event.waitUntil(provideFormattingEdits(event.document));
+    }),
     vscode.workspace.onDidSaveTextDocument((doc) => {
       const root = rootOf(doc.uri);
       if (!root) return;

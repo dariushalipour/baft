@@ -127,7 +127,7 @@ Common error messages:
 
 - **`baft dump --color-palette <name>`** writes a styled contract while preserving the same node and edge discovery rules as unstyled dump output.
 - **`baft restyle --color-palette <name>`** rewrites the generated Mermaid styling block for every `BAFT.md` under the selected root without changing nodes, edges, or inline semantic classes such as `:::endophobic`. The rewritten styling block starts with a Mermaid `%%` notice marking it as generated.
-- **`baft restyle --stdin --path <file> --color-palette <name>`** restyles one in-memory `BAFT.md` from stdin and writes the result to stdout. Editor integrations use this mode for Format Document and Reformat Code so only the active contract changes.
+- **`baft restyle --stdin --path <file> --color-palette <name>`** restyles one in-memory `BAFT.md` from stdin and writes the result to stdout. Editor integrations use this mode for the VS Code `BAFT.md` formatter invoked through `Format Document`, the VS Code `Baft: Restyle Contract` command, opt-in VS Code format on save, and IntelliJ Reformat Code so only the active contract changes.
 - **Edge colors:** Each edge is styled with the same stroke color as its source node.
 - **Endophobic nodes:** `:::endophobic` remains the semantic marker in the contract. Generated styling renders those nodes with a dashed stroke rather than a generated Mermaid class.
 

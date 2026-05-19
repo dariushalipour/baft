@@ -8,7 +8,9 @@ This extension does not implement architecture rules itself. It runs the [BAFT](
 
 - Automatic diagnostics for projects that have a `BAFT.md`
 - Live updates while you type, including unsaved changes
-- `Format Document` support for `BAFT.md`
+- A `BAFT.md` formatter, available through VS Code `Format Document`
+- Opt-in format on save with `baft.format.onSave`
+- Command Palette support via `Baft: Restyle Contract`
 - Configurable formatting palette with `baft.format.colorPalette`
 - The CLI stays the single source of truth
 
@@ -61,13 +63,27 @@ When you format a `BAFT.md`, the extension runs:
 baft restyle --stdin --path /absolute/path/to/BAFT.md --color-palette <name>
 ```
 
-The formatter only targets `BAFT.md` files and restyles the active document instead of walking the whole workspace.
+The formatter only targets `BAFT.md` files and restyles the active document instead of walking the whole workspace. The `Baft: Restyle Contract` command uses the same path. If `baft.format.onSave` is enabled, the extension also applies that restyle during saves for matching `BAFT.md` files.
 
 ## Usage
 
 Open a workspace that contains a supported project and a `BAFT.md`. Violations appear automatically in the editor and in the Problems panel.
 
-To restyle a contract, run `Format Document` on a `BAFT.md` or enable format on save for your BAFT workflow. The palette defaults to `vibrant` and can be changed with `baft.format.colorPalette`.
+To restyle a contract, use any of these entry points while a `BAFT.md` is active:
+
+- Run `Format Document`
+- Run `Baft: Restyle Contract` from the Command Palette
+- Enable `baft.format.onSave` if you want restyling to happen automatically on save
+
+The palette defaults to `vibrant` and can be changed with `baft.format.colorPalette`.
+
+To opt in on save, add this in VS Code settings:
+
+```json
+{
+	"baft.format.onSave": true
+}
+```
 
 ## Troubleshooting
 
