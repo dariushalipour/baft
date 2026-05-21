@@ -18,6 +18,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/fs/realfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
+	"github.com/dariushalipour/baft/internal/adapter/languages/kotlin"
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
@@ -566,6 +567,8 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 				}
 			case "typescript":
 				lang = &typescript.Language{}
+			case "kotlin":
+				lang = kotlin.Language{}
 			}
 			if lang != nil {
 				w.ws.Langs = append(w.ws.Langs, lang)

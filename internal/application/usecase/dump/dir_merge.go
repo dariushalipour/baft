@@ -83,7 +83,7 @@ func resolveFileImports(fsys port.FileSystem, imports []port.ImportSpec, fileRel
 			dstID = graph.NodeKeyForDir(dstDir)
 			nodes[dstID] = mergedDirGlob(dstDir)
 		} else {
-			dstID = nodeKey(dstRel, lang.SupportsFileGlobs())
+			dstID = resolveTargetNodeKey(fsys, targetAbs, dstRel, lang)
 			nodes[dstID] = dstID
 		}
 

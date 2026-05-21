@@ -11,6 +11,23 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
+func resolveTargetNodeKey(fsys port.FileSystem, absPath string, rel string, lang port.Language) string {
+	if lang.SupportsFileGlobs() {
+		return nodeKey(rel, true)
+	}
+	info, err := fsys.Stat(absPath)
+	if err == nil && info.IsDir() {
+		return nodeKey(rel, false)
+	}
+	dirPath := filepath.Dir(rel)
+	dirAbs := filepath.Dir(absPath)
+	dirInfo, dirErr := fsys.Stat(dirAbs)
+	if dirErr == nil && dirInfo.IsDir() {
+		return nodeKey(filepath.ToSlash(dirPath), false)
+	}
+	return nodeKey(rel, false)
+}
+
 func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo port.GraphRepository, rootDir string, contractDir string, cfg draftConfig) (*ContractDump, error) {
 	nodes := map[string]string{}
 	edges := map[string]map[string]bool{}
@@ -66,7 +83,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 			}
 
 			dstRel, _ := filepath.Rel(contractDirClean, targetAbs)
-			dstID := nodeKey(dstRel, lang.SupportsFileGlobs())
+			dstID := resolveTargetNodeKey(fsys, targetAbs, dstRel, lang)
 			nodes[dstID] = dstID
 
 			if srcID == dstID {

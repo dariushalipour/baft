@@ -17,34 +17,7 @@ type Language struct{}
 func (Language) Name() string { return "kotlin" }
 
 func (Language) IsScannableFile(rel string) bool {
-	if !strings.HasSuffix(rel, ".kt") {
-		return false
-	}
-	base := filepath.Base(rel)
-	if strings.HasSuffix(base, "Test.kt") || strings.HasSuffix(base, "_test.kt") {
-		return false
-	}
-	if strings.HasSuffix(base, ".kt.kt") {
-		return false
-	}
-	for _, skip := range generatedMarkers {
-		if strings.Contains(rel, skip) {
-			return false
-		}
-	}
-	for _, prefix := range kotlinSourcePrefixes {
-		if strings.HasPrefix(rel, prefix+"/") {
-			return true
-		}
-	}
-	return false
-}
-
-var generatedMarkers = []string{
-	"/generated/",
-	"/kapt/",
-	"/ksp/",
-	"/buildSrc/",
+	return strings.HasSuffix(rel, ".kt")
 }
 
 var importRe = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(?:\.\*)?`)
@@ -117,10 +90,9 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 }
 
 func resolveSourcePrefix(fileRel string) string {
-	for _, prefix := range kotlinSourcePrefixes {
-		if strings.HasPrefix(fileRel, prefix+"/") {
-			return prefix
-		}
+	parts := strings.Split(fileRel, "/")
+	if len(parts) >= 3 && parts[0] == "src" {
+		return strings.Join(parts[:3], "/")
 	}
 	return "src/main/kotlin"
 }
@@ -149,7 +121,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 			dir := filepath.Dir(path)
 			return findBaseCapsule(fsys, dir)
 		},
-		BaseIgnoreEntries: []string{"build", ".kotlin"},
+		BaseIgnoreEntries: []string{"build", ".gradle", ".kotlin", "gradle", "generated", "kapt", "ksp", "buildSrc", "scripts", "*Test.kt", "*_test.kt"},
 	})
 }
 
@@ -236,44 +208,4 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 	}
 
 	return strings.Join(common, "."), nil
-}
-
-var kotlinSourcePrefixes = []string{
-	"src/main/kotlin",
-	"src/main/java",
-	"src/jvmMain/kotlin",
-	"src/jvmMain/java",
-	"src/jvmTest/kotlin",
-	"src/commonMain/kotlin",
-	"src/commonTest/kotlin",
-	"src/androidMain/kotlin",
-	"src/androidUnitTest/kotlin",
-	"src/androidAndroidTest/kotlin",
-	"src/androidInstrumentedTest/kotlin",
-	"src/iosMain/kotlin",
-	"src/iosTest/kotlin",
-	"src/iosArm64Main/kotlin",
-	"src/iosArm64Test/kotlin",
-	"src/iosSimulatorArm64Main/kotlin",
-	"src/iosSimulatorArm64Test/kotlin",
-	"src/macosMain/kotlin",
-	"src/macosTest/kotlin",
-	"src/macosX64Main/kotlin",
-	"src/macosX64Test/kotlin",
-	"src/macosArm64Main/kotlin",
-	"src/macosArm64Test/kotlin",
-	"src/linuxMain/kotlin",
-	"src/linuxTest/kotlin",
-	"src/linuxX64Main/kotlin",
-	"src/linuxX64Test/kotlin",
-	"src/darwinMain/kotlin",
-	"src/darwinTest/kotlin",
-	"src/nativeMain/kotlin",
-	"src/nativeTest/kotlin",
-	"src/jsMain/kotlin",
-	"src/jsTest/kotlin",
-	"src/mingwMain/kotlin",
-	"src/mingwTest/kotlin",
-	"src/mingwX64Main/kotlin",
-	"src/mingwX64Test/kotlin",
 }

@@ -1669,3 +1669,162 @@ Feature: Dump BAFT.md from actual imports
         internal_slash_application --> internal_slash_domain
       ```
       """
+
+  Scenario: Dump runs from a deep Kotlin package subdirectory and still produces directory-level nodes
+     Given a fresh workspace at "/Users/jane/baft" with this layout:
+       """tree
+       ├─ features/
+       │  └─ mod/
+       │     ├─ build.gradle
+       │     └─ src/
+       │        └─ main/
+       │           └─ java/
+       │              └─ com/
+       │                 └─ example/
+       │                    └─ app/
+       │                       ├─ Main.kt
+       │                       └─ sub/
+       │                          └─ Helper.kt
+       └─ README.md
+       """
+     Given file "README.md" has content "# Project"
+     Given file "features/mod/build.gradle" has content 'apply plugin: "kotlin"'
+     Given file "features/mod/src/main/java/com/example/app/Main.kt" has content:
+       """kotlin
+       package com.example.app
+
+       import com.example.app.sub.Helper
+
+       fun main() {
+           Helper.greet()
+       }
+       """
+     Given file "features/mod/src/main/java/com/example/app/sub/Helper.kt" has content:
+       """kotlin
+       package com.example.app.sub
+
+       fun greet() = "hello"
+       """
+     Given the dump uses the "kotlin" language adapter
+When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example/app"
+     And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" has 2 nodes and 1 edges
+     And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" is new
+     Then file "features/mod/src/main/java/com/example/app/BAFT.md" should be:
+        """config
+        <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
+        <!-- If Baft is new to you, run `baft manual`. -->
+        <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+        <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+
+        ```mermaid
+        flowchart TD
+          root["."]
+          sub["sub"]
+
+          root --> sub
+        ```
+        """
+     And file "features/mod/BAFT.md" should not exist
+
+  Scenario: Dump maps a Kotlin class import to the target's parent directory node
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ app/
+                        ├─ Main.kt
+                        └─ sub/
+                           └─ Helper.kt
+      """
+    Given file "build.gradle" has content 'apply plugin: "kotlin"'
+    Given file "src/main/kotlin/com/example/app/Main.kt" has content:
+      """kotlin
+      package com.example.app
+
+      import com.example.app.sub.Helper
+
+      fun main() {
+          Helper.greet()
+      }
+      """
+    Given file "src/main/kotlin/com/example/app/sub/Helper.kt" has content:
+      """kotlin
+      package com.example.app.sub
+
+      fun greet() = "hello"
+      """
+    Given the dump uses the "kotlin" language adapter
+    When the dump runs from "/Users/jane/baft/src/main/kotlin/com/example/app"
+    And Contract at "src/main/kotlin/com/example/app/BAFT.md" has 2 nodes and 1 edges
+    And Contract at "src/main/kotlin/com/example/app/BAFT.md" is new
+    Then file "src/main/kotlin/com/example/app/BAFT.md" should be:
+      """config
+      <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If Baft is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+
+      ```mermaid
+      flowchart TD
+        root["."]
+        sub["sub"]
+
+        root --> sub
+      ```
+      """
+
+  Scenario: Dump maps a Kotlin class import across multiple nested subdirectories
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ app/
+                        ├─ Main.kt
+                        └─ core/
+                           └─ internal/
+                              └─ Impl.kt
+      """
+    Given file "build.gradle" has content 'apply plugin: "kotlin"'
+    Given file "src/main/kotlin/com/example/app/Main.kt" has content:
+      """kotlin
+      package com.example.app
+
+      import com.example.app.core.internal.Impl
+
+      fun main() {
+          Impl.run()
+      }
+      """
+    Given file "src/main/kotlin/com/example/app/core/internal/Impl.kt" has content:
+      """kotlin
+      package com.example.app.core.internal
+
+      fun run() = "ok"
+      """
+    Given the dump uses the "kotlin" language adapter
+    When the dump runs from "/Users/jane/baft/src/main/kotlin/com/example/app"
+    And Contract at "src/main/kotlin/com/example/app/BAFT.md" has 2 nodes and 1 edges
+    And Contract at "src/main/kotlin/com/example/app/BAFT.md" is new
+    Then file "src/main/kotlin/com/example/app/BAFT.md" should be:
+      """config
+      <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If Baft is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+
+      ```mermaid
+      flowchart TD
+        root["."]
+        core_slash_internal["core/internal"]
+
+        root --> core_slash_internal
+      ```
+      """

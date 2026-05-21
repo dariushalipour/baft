@@ -214,7 +214,11 @@ func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsu
 		return existingID, false, nil
 	}
 	if !lang.SupportsFileGlobs() {
-		return ensureDirNode(nodes, contractDir, absPath)
+		dirPath := absPath
+		if _, statErr := fsys.Stat(absPath); statErr != nil {
+			dirPath = filepath.Dir(absPath)
+		}
+		return ensureDirNode(nodes, contractDir, dirPath)
 	}
 	return ensureExactNode(nodes, rel, rel)
 }

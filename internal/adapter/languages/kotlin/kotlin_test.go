@@ -23,67 +23,18 @@ func TestSupportsFileGlobs(t *testing.T) {
 func TestIsScannableFile(t *testing.T) {
 	l := Language{}
 	cases := map[string]bool{
-		// Main source — kotlin
-		"src/main/kotlin/com/example/domain/Model.kt":   true,
-		"src/main/kotlin/com/example/api/Controller.kt": true,
-		"src/main/kotlin/com/example/infra/Repo.kt":     true,
-		"src/main/kotlin/com/example/Main.kt":           true,
-		"src/main/kotlin/com/example/deep/nested/Ok.kt": true,
+		// Any .kt file is scannable
+		"src/main/kotlin/com/example/domain/Model.kt":    true,
+		"src/main/kotlin/com/example/Main.kt":            true,
+		"src/jvmMain/kotlin/com/example/domain/Model.kt": true,
+		"scripts/run.kt": true,
+		"ModelTest.kt":   true,
 
-		// Main source — java (mixed projects can have .kt in java tree)
-		"src/main/java/com/example/domain/Model.kt": true,
-
-		// Multi-platform source sets
-		"src/jvmMain/kotlin/com/example/domain/Model.kt":     true,
-		"src/jvmMain/java/com/example/domain/Model.kt":       true,
-		"src/commonMain/kotlin/com/example/domain/Model.kt":  true,
-		"src/commonTest/kotlin/com/example/domain/Model.kt":  true,
-		"src/androidMain/kotlin/com/example/domain/Model.kt": true,
-		"src/iosMain/kotlin/com/example/domain/Model.kt":     true,
-		"src/macosMain/kotlin/com/example/domain/Model.kt":   true,
-		"src/linuxMain/kotlin/com/example/domain/Model.kt":   true,
-		"src/darwinMain/kotlin/com/example/domain/Model.kt":  true,
-		"src/nativeMain/kotlin/com/example/domain/Model.kt":  true,
-		"src/jsMain/kotlin/com/example/domain/Model.kt":      true,
-
-		// Mingw (Windows) source sets
-		"src/mingwMain/kotlin/com/example/domain/Model.kt": true,
-		"src/mingwTest/kotlin/com/example/domain/Model.kt": true,
-
-		// Binary-specific KMP source sets
-		"src/iosArm64Main/kotlin/com/example/domain/Model.kt":          true,
-		"src/iosSimulatorArm64Main/kotlin/com/example/domain/Model.kt": true,
-		"src/macosX64Main/kotlin/com/example/domain/Model.kt":          true,
-		"src/macosArm64Main/kotlin/com/example/domain/Model.kt":        true,
-		"src/linuxX64Main/kotlin/com/example/domain/Model.kt":          true,
-		"src/mingwX64Main/kotlin/com/example/domain/Model.kt":          true,
-		"src/iosArm64Test/kotlin/com/example/domain/Model.kt":          true,
-		"src/iosSimulatorArm64Test/kotlin/com/example/domain/Model.kt": true,
-		"src/macosX64Test/kotlin/com/example/domain/Model.kt":          true,
-		"src/macosArm64Test/kotlin/com/example/domain/Model.kt":        true,
-		"src/linuxX64Test/kotlin/com/example/domain/Model.kt":          true,
-		"src/mingwX64Test/kotlin/com/example/domain/Model.kt":          true,
-
-		// Android instrumented test
-		"src/androidInstrumentedTest/kotlin/com/example/domain/Model.kt": true,
-
-		// Test files excluded
-		"src/main/kotlin/com/example/ModelTest.kt":  false,
-		"src/main/kotlin/com/example/Model_test.kt": false,
-		"src/test/kotlin/com/example/ModelTest.kt":  false,
-
-		// Non-main source sets excluded
-		"src/jvmTest/kotlin/com/example/Model.kt": true,
-
-		// Non-.kt files
-		"build.gradle.kts":                      false,
-		"src/main/resources/application.yaml":   false,
-		"README.md":                             false,
-		"src/main/kotlin/com/example/Model.kts": false,
-
-		// Outside src/main
-		"scripts/run.kt":                   false,
-		"gradle/wrapper/gradle-wrapper.kt": false,
+		// Non-.kt files are not
+		"build.gradle.kts": false,
+		"application.yaml": false,
+		"README.md":        false,
+		"Model.kts":        false,
 	}
 	for rel, want := range cases {
 		if got := l.IsScannableFile(rel); got != want {
