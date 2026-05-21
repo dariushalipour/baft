@@ -108,6 +108,62 @@ A file-shaped node (e.g., `lib/main.dart`) always wins over a directory-shaped n
 
 ---
 
+## Glob Separator
+
+By default, node globs use forward slashes (`/`) as path separators:
+
+```mermaid
+flowchart TD
+  domain["src/main/kotlin/com/example/domain/**"]
+```
+
+Some ecosystems — notably Kotlin and Java — use dots (`.`) to separate package segments. The `globSeparator` config directive lets you write globs with any separator character instead of slashes:
+
+```mermaid
+flowchart TD
+  %% config globSeparator "."
+
+  domain["src.main.kotlin.com.example.domain/**"]
+  api["src.main.kotlin.com.example.api/**"]
+
+  api --> domain
+```
+
+When `globSeparator` is set, every dot that appears between path segments is treated as a separator and normalized to `/` internally. The `check` and `dump` commands then work with the normalized paths transparently.
+
+**Syntax:** `%% config globSeparator "<char>"`
+
+- The directive must be placed inside the Mermaid block, after the `flowchart` declaration.
+- It must be wrapped in `%%` so Mermaid preview tools ignore it.
+- `<char>` can be any non-empty string (single character, multi-character, or emoji).
+- The separator is applied to all node globs in the same contract.
+
+**Why the `%%` wrapper?** The `config` keyword is not valid Mermaid syntax. Without `%%`, Mermaid preview tools in your IDE will fail to render the diagram. The `%%` comment makes the line invisible to Mermaid while still being readable by Baft.
+
+**Normalization rules:** A separator character is replaced with `/` only when it appears between two path segment characters (letters, digits, `_`, `-`) or before a wildcard (`*`). Standalone `.` (current directory) and `..` (parent directory) are never replaced, even when `.` is the configured separator.
+
+**Round-trip behavior:** When Baft re-writes a contract (via `restyle` or `dump` amendment), it converts the internal slash-based paths back to the configured separator. So if you add `globSeparator "."` to an existing contract that uses slashes, the next `restyle` will rewrite all globs to use dots.
+
+**Example — migrating a Kotlin contract to dot notation:**
+
+Before (slashes):
+```mermaid
+flowchart TD
+  domain["src/main/kotlin/com/example/domain/**"]
+  api["src/main/kotlin/com/example/api/**"]
+```
+
+After adding `globSeparator "."` and running `baft restyle`:
+```mermaid
+flowchart TD
+  %% config globSeparator "."
+
+  domain["src.main.kotlin.com.example.domain/**"]
+  api["src.main.kotlin.com.example.api/**"]
+```
+
+---
+
 ## Edges
 
 Edges define allowed import directions.

@@ -103,6 +103,7 @@ In this contract:
 - `usecase` may import `domain` and `infra`
 - `infra` may import `domain`
 - `usecase` is `endophobic`, so files in that node may not import other files in the same node
+- For Kotlin/Java, use `%% config globSeparator "."` to write globs with dots instead of slashes
 
 ### Run the check
 
