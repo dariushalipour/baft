@@ -110,7 +110,7 @@ func familyForIntegrationID(id string) string {
 	switch id {
 	case "vscode", "vscode-insiders":
 		return FamilyVSCode
-	case "jetbrains", "goland", "intellij-ultimate", "intellij-community", "webstorm", "rider":
+	case "jetbrains", "goland", "intellij-ultimate", "intellij-community", "webstorm", "rider", "android-studio", "rustrover":
 		return FamilyJetBrains
 	default:
 		return ""

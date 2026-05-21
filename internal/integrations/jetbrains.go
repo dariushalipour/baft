@@ -300,6 +300,10 @@ func jetbrainsIDFromName(name string) string {
 		return "webstorm"
 	case strings.Contains(lower, "rider"):
 		return "rider"
+	case strings.Contains(lower, "android"):
+		return "android-studio"
+	case strings.Contains(lower, "rustrover"):
+		return "rustrover"
 	default:
 		return ""
 	}
