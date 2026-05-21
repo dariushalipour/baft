@@ -151,10 +151,18 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 	}
 	sort.Strings(ids)
 
+	if g.GlobSeparator != "" {
+		sb.WriteString("  %% config globSeparator ")
+		sb.WriteString(fmt.Sprintf("%q", g.GlobSeparator))
+		sb.WriteString("\n\n")
+	}
+
 	for _, id := range ids {
 		glob := g.Nodes[id]
 		display := glob
-		if preserved, ok := g.NodeDisplays[id]; ok && preserved == glob {
+		if g.GlobSeparator != "" {
+			display = strings.ReplaceAll(glob, "/", g.GlobSeparator)
+		} else if preserved, ok := g.NodeDisplays[id]; ok {
 			display = preserved
 		} else if glob != "." && !looksLikeFilePath(glob) && !strings.HasSuffix(glob, "/**") {
 			display = glob + "/**"
@@ -324,6 +332,13 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 			continue
 		}
 		if line[0] == '%' && len(line) >= 2 && line[1] == '%' {
+			stripped := strings.TrimSpace(line[2:])
+			if strings.HasPrefix(stripped, "config ") {
+				if err := parseConfigLine(stripped, g, absLine); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			continue
 		}
 		if line == "flowchart TD" || line == "flowchart LR" || line == "flowchart RL" || line == "flowchart BT" ||
@@ -418,6 +433,33 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 			}
 		}
 	}
+	return nil
+}
+
+// parseConfigLine handles config directives like 'config globSeparator "."'.
+func parseConfigLine(line string, g *graph.Graph, lineNum int) error {
+	trimmed := strings.TrimSpace(line[len("config "):])
+	if !strings.HasPrefix(trimmed, `globSeparator "`) {
+		return &ParseError{
+			Line: lineNum,
+			Msg:  fmt.Sprintf("unrecognized config directive: %q", line),
+		}
+	}
+	val := trimmed[len(`globSeparator "`):]
+	if !strings.HasSuffix(val, `"`) {
+		return &ParseError{
+			Line: lineNum,
+			Msg:  fmt.Sprintf("invalid config directive: %q", line),
+		}
+	}
+	val = val[:len(val)-1]
+	if val == "" {
+		return &ParseError{
+			Line: lineNum,
+			Msg:  "globSeparator must not be empty",
+		}
+	}
+	g.GlobSeparator = val
 	return nil
 }
 

@@ -3,6 +3,7 @@ package graph
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -26,6 +27,11 @@ type Graph struct {
 	Classes      map[string]map[string]bool
 	NodeLines    map[string]int
 	EdgeLines    map[string]int
+
+	// GlobSeparator, when non-empty, indicates the character used as path separator
+	// in node glob patterns (e.g. "." for Kotlin/Java style). Patterns are normalized
+	// to slash-based internally, but the original form is preserved in NodeDisplays.
+	GlobSeparator string
 
 	// edgeCount caches the total edge count to avoid O(n) iteration.
 	edgeCount int
@@ -69,10 +75,15 @@ func (g *Graph) buildNodeInfos() {
 		g.edgeCount += len(targets)
 	}
 	for id, pattern := range g.Nodes {
+		normalized := pattern
+		if g.GlobSeparator != "" {
+			normalized = normalizeGlobSeparator(pattern, g.GlobSeparator)
+			g.Nodes[id] = normalized
+		}
 		ni := &nodeInfo{
-			pattern:    pattern,
-			segments:   splitPath(pattern),
-			isFileGlob: isFileGlobFast(pattern),
+			pattern:    normalized,
+			segments:   splitPath(normalized),
+			isFileGlob: isFileGlobFast(normalized),
 		}
 		ni.hasWildcard = hasWildcardInSegments(ni.segments)
 		ni.isDirGlob = !ni.isFileGlob
@@ -85,6 +96,40 @@ func (g *Graph) buildNodeInfos() {
 			g.dirNodes = append(g.dirNodes, id)
 		}
 	}
+}
+
+// normalizeGlobSeparator replaces occurrences of the custom separator string with slashes.
+// The separator is replaced only when preceded by a segment character and followed by a
+// segment character or '*'. Standalone "." and ".." segments are preserved.
+func normalizeGlobSeparator(pattern, sep string) string {
+	if sep == "" {
+		return pattern
+	}
+	var result strings.Builder
+	result.Grow(len(pattern))
+	i := 0
+	for i < len(pattern) {
+		if strings.HasPrefix(pattern[i:], sep) {
+			beforeOk := i > 0 && isSegmentChar(pattern[i-1])
+			afterIdx := i + len(sep)
+			afterOk := afterIdx < len(pattern) && (isSegmentChar(pattern[afterIdx]) || pattern[afterIdx] == '*')
+			if beforeOk && afterOk {
+				result.WriteByte('/')
+			} else {
+				result.WriteString(sep)
+			}
+			i += len(sep)
+		} else {
+			result.WriteByte(pattern[i])
+			i++
+		}
+	}
+	return result.String()
+}
+
+func isSegmentChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') || c == '_' || c == '-'
 }
 
 func (g *Graph) NodeForDir(dirPath string) string {

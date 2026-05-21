@@ -1671,60 +1671,60 @@ Feature: Dump BAFT.md from actual imports
       """
 
   Scenario: Dump runs from a deep Kotlin package subdirectory and still produces directory-level nodes
-     Given a fresh workspace at "/Users/jane/baft" with this layout:
-       """tree
-       ├─ features/
-       │  └─ mod/
-       │     ├─ build.gradle
-       │     └─ src/
-       │        └─ main/
-       │           └─ java/
-       │              └─ com/
-       │                 └─ example/
-       │                    └─ app/
-       │                       ├─ Main.kt
-       │                       └─ sub/
-       │                          └─ Helper.kt
-       └─ README.md
-       """
-     Given file "README.md" has content "# Project"
-     Given file "features/mod/build.gradle" has content 'apply plugin: "kotlin"'
-     Given file "features/mod/src/main/java/com/example/app/Main.kt" has content:
-       """kotlin
-       package com.example.app
-
-       import com.example.app.sub.Helper
-
-       fun main() {
-           Helper.greet()
-       }
-       """
-     Given file "features/mod/src/main/java/com/example/app/sub/Helper.kt" has content:
-       """kotlin
-       package com.example.app.sub
-
-       fun greet() = "hello"
-       """
-     Given the dump uses the "kotlin" language adapter
-When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example/app"
-     And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" has 2 nodes and 1 edges
-     And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" is new
-     Then file "features/mod/src/main/java/com/example/app/BAFT.md" should be:
-        """config
-        <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
-        <!-- If Baft is new to you, run `baft manual`. -->
-        <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
-        <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
-
-        ```mermaid
-        flowchart TD
-          root["."]
-          sub["sub"]
-
-          root --> sub
-        ```
-        """
-     And file "features/mod/BAFT.md" should not exist
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ features/
+      │  └─ mod/
+      │     ├─ build.gradle
+      │     └─ src/
+      │        └─ main/
+      │           └─ java/
+      │              └─ com/
+      │                 └─ example/
+      │                    └─ app/
+      │                       ├─ Main.kt
+      │                       └─ sub/
+      │                          └─ Helper.kt
+      └─ README.md
+      """
+    Given file "README.md" has content "# Project"
+    Given file "features/mod/build.gradle" has content 'apply plugin: "kotlin"'
+    Given file "features/mod/src/main/java/com/example/app/Main.kt" has content:
+      """kotlin
+      package com.example.app
+      
+      import com.example.app.sub.Helper
+      
+      fun main() {
+          Helper.greet()
+      }
+      """
+    Given file "features/mod/src/main/java/com/example/app/sub/Helper.kt" has content:
+      """kotlin
+      package com.example.app.sub
+      
+      fun greet() = "hello"
+      """
+    Given the dump uses the "kotlin" language adapter
+    When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example/app"
+    And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" has 2 nodes and 1 edges
+    And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" is new
+    Then file "features/mod/src/main/java/com/example/app/BAFT.md" should be:
+      """config
+      <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If Baft is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+      
+      ```mermaid
+      flowchart TD
+        root["."]
+        sub["sub"]
+      
+        root --> sub
+      ```
+      """
+    And file "features/mod/BAFT.md" should not exist
 
   Scenario: Dump maps a Kotlin class import to the target's parent directory node
     Given a fresh workspace at "/Users/jane/baft" with this layout:
@@ -1744,9 +1744,9 @@ When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example
     Given file "src/main/kotlin/com/example/app/Main.kt" has content:
       """kotlin
       package com.example.app
-
+      
       import com.example.app.sub.Helper
-
+      
       fun main() {
           Helper.greet()
       }
@@ -1754,7 +1754,7 @@ When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example
     Given file "src/main/kotlin/com/example/app/sub/Helper.kt" has content:
       """kotlin
       package com.example.app.sub
-
+      
       fun greet() = "hello"
       """
     Given the dump uses the "kotlin" language adapter
@@ -1767,12 +1767,12 @@ When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example
       <!-- If Baft is new to you, run `baft manual`. -->
       <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
       <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
-
+      
       ```mermaid
       flowchart TD
         root["."]
         sub["sub"]
-
+      
         root --> sub
       ```
       """
@@ -1796,9 +1796,9 @@ When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example
     Given file "src/main/kotlin/com/example/app/Main.kt" has content:
       """kotlin
       package com.example.app
-
+      
       import com.example.app.core.internal.Impl
-
+      
       fun main() {
           Impl.run()
       }
@@ -1806,7 +1806,7 @@ When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example
     Given file "src/main/kotlin/com/example/app/core/internal/Impl.kt" has content:
       """kotlin
       package com.example.app.core.internal
-
+      
       fun run() = "ok"
       """
     Given the dump uses the "kotlin" language adapter
@@ -1819,12 +1819,58 @@ When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example
       <!-- If Baft is new to you, run `baft manual`. -->
       <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
       <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
-
+      
       ```mermaid
       flowchart TD
         root["."]
         core_slash_internal["core/internal"]
-
+      
         root --> core_slash_internal
+      ```
+      """
+
+  Scenario: Dump does not emit globSeparator config when the contract has none
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      └─ internal/
+         ├─ domain/
+         │  └─ model.go
+         └─ usecase/
+            └─ create.go
+      """
+    Given file "go.mod" has content "module example.com/test"
+    Given file "internal/domain/model.go" has content:
+      """go
+      package domain
+      type User struct{}
+      """
+    Given file "internal/usecase/create.go" has content:
+      """go
+      package usecase
+      
+      import "example.com/test/internal/domain"
+      
+      func Create() domain.User {
+        return domain.User{}
+      }
+      """
+    Given the dump uses the "go" language adapter
+    When the dump runs from "/Users/jane/baft"
+    And Contract at "BAFT.md" has 2 nodes and 1 edges
+    And Contract at "BAFT.md" is new
+    Then file "BAFT.md" should be:
+      """config
+      <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If Baft is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+      
+      ```mermaid
+      flowchart TD
+        internal_slash_domain["internal/domain"]
+        internal_slash_usecase["internal/usecase"]
+      
+        internal_slash_usecase --> internal_slash_domain
       ```
       """

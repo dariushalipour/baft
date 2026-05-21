@@ -1759,3 +1759,357 @@ Feature: Architecture rule checking
       /Users/alice/dev/auth: api (/Users/alice/dev/auth/BAFT.md:4) references api/login.go — file-shaped nodes require a language that supports file globs
       /Users/alice/dev/billing: api (/Users/alice/dev/billing/BAFT.md:4) references api/handler.go — file-shaped nodes require a language that supports file globs
       """
+
+  Scenario: Node named "config" is not confused with the config directive
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     ├─ config/
+                     │  └─ Settings.kt
+                     └─ feature/
+                        └─ Handler.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        config["src/main/kotlin/com/example/config/&ast;&ast;"]
+        feature["src/main/kotlin/com/example/feature/&ast;&ast;"]
+      
+        feature --> config
+      ```
+      """
+    Given file "src/main/kotlin/com/example/config/Settings.kt" has content "package com.example.config"
+    Given file "src/main/kotlin/com/example/feature/Handler.kt" has content:
+      """kotlin
+      package com.example.feature
+      
+      import com.example.config.Settings
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 relations are examined
+    And 2 files are encountered and 2 files are scanned
+    And 0 errors and 0 violations are reported
+
+  Scenario: Dot separator config allows Kotlin-style dot-based globs, check passes
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     ├─ core/
+                     │  └─ Model.kt
+                     └─ feature/
+                        └─ Handler.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config globSeparator "."
+        
+        core["src.main.kotlin.com.example.core.&ast;&ast;"]
+        feature["src.main.kotlin.com.example.feature.&ast;&ast;"]
+      
+        feature --> core
+      ```
+      """
+    Given file "src/main/kotlin/com/example/core/Model.kt" has content "package com.example.core"
+    Given file "src/main/kotlin/com/example/feature/Handler.kt" has content:
+      """kotlin
+      package com.example.feature
+      
+      import com.example.core.Model
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 relations are examined
+    And 2 files are encountered and 2 files are scanned
+    And 0 errors and 0 violations are reported
+
+  Scenario: Dot separator config detects violations with dot-based globs
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     ├─ core/
+                     │  └─ Model.kt
+                     └─ feature/
+                        └─ Handler.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config globSeparator "."
+        
+        core["src.main.kotlin.com.example.core.&ast;&ast;"]
+        feature["src.main.kotlin.com.example.feature.&ast;&ast;"]
+      ```
+      """
+    Given file "src/main/kotlin/com/example/core/Model.kt" has content "package com.example.core"
+    Given file "src/main/kotlin/com/example/feature/Handler.kt" has content:
+      """kotlin
+      package com.example.feature
+      
+      import com.example.core.Model
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 relations are examined
+    And 2 files are encountered and 2 files are scanned
+    And 0 errors and 1 violations are reported
+    And the violation is:
+      """violations
+      /Users/jane/baft: src/main/kotlin/com/example/feature/Handler.kt:3:8 (feature) → src/main/kotlin/com/example/core/Model (core) — relation not allowed (add edge in /Users/jane/baft/BAFT.md or move the file)
+      """
+
+  Scenario: Dot separator config with overlapping dot-based globs is detected
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ core/
+                        └─ Model.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "src/main/kotlin/com/example/core/Model.kt" has content "package com.example.core"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config globSeparator "."
+        
+        core["src.main.kotlin.com.example.core.&ast;&ast;"]
+        overlap["src.main.kotlin.com.example.&ast;&ast;"]
+      ```
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 errors and 0 violations are reported
+    And the error is:
+      """errors
+      /Users/jane/baft: node "core" (/Users/jane/baft/BAFT.md:5) and node "overlap" (/Users/jane/baft/BAFT.md:6) overlap — file src/main/kotlin/com/example/core/Model.kt matches both globs
+      """
+
+  Scenario: Dot separator config with duplicate dot-based globs is detected
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ core/
+                        └─ Model.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "src/main/kotlin/com/example/core/Model.kt" has content "package com.example.core"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config globSeparator "."
+        
+        core["src.main.kotlin.com.example.core.&ast;&ast;"]
+        dup["src.main.kotlin.com.example.core.&ast;&ast;"]
+      ```
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 errors and 0 violations are reported
+    And the error is:
+      """errors
+      /Users/jane/baft: glob "src/main/kotlin/com/example/core/**" claimed by multiple nodes: core, dup (/Users/jane/baft/BAFT.md:6)
+      """
+
+  Scenario: Dot separator config with endophobic node works correctly
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ feature/
+                        ├─ A.kt
+                        └─ B.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config globSeparator "."
+        
+        feature["src.main.kotlin.com.example.feature.&ast;&ast;"]:::endophobic
+      ```
+      """
+    Given file "src/main/kotlin/com/example/feature/A.kt" has content:
+      """kotlin
+      package com.example.feature
+      
+      import com.example.feature.B
+      """
+    Given file "src/main/kotlin/com/example/feature/B.kt" has content "package com.example.feature"
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 relations are examined
+    And 2 files are encountered and 2 files are scanned
+    And 0 errors and 1 violations are reported
+    And the violation is:
+      """violations
+      /Users/jane/baft: src/main/kotlin/com/example/feature/A.kt:3:8 (feature) → src/main/kotlin/com/example/feature/B (feature) — feature is endophobic (/Users/jane/baft/BAFT.md)
+      """
+
+  Scenario: Without dot separator config, dot-based patterns are treated as literal paths
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ core/
+                        └─ Model.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        core["com.example.core.&ast;&ast;"]
+      ```
+      """
+    Given file "src/main/kotlin/com/example/core/Model.kt" has content "package com.example.core"
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 0 relations are examined
+    And 1 files are encountered and 0 files are scanned
+    And 1 errors and 1 violations are reported
+
+  Scenario: Dot separator config with circular dependency is detected
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ core/
+                        └─ Model.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "src/main/kotlin/com/example/core/Model.kt" has content "package com.example.core"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config globSeparator "."
+        
+        core["src.main.kotlin.com.example.core.&ast;&ast;"]
+        feature["src.main.kotlin.com.example.feature.&ast;&ast;"]
+      
+        core --> feature
+        feature --> core
+      ```
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 errors and 0 violations are reported
+    And the error is:
+      """errors
+      /Users/jane/baft: circular dependency: core → feature → core (/Users/jane/baft/BAFT.md:9)
+      """
+
+  Scenario: Dot separator config with multi-level package hierarchy and edges
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     ├─ domain/
+                     │  └─ Model.kt
+                     ├─ service/
+                     │  └─ OrderService.kt
+                     └─ api/
+                        └─ Controller.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config globSeparator "."
+        
+        api["src.main.kotlin.com.example.api.&ast;&ast;"]
+        service["src.main.kotlin.com.example.service.&ast;&ast;"]
+        domain["src.main.kotlin.com.example.domain.&ast;&ast;"]
+      
+        api --> service
+        service --> domain
+      ```
+      """
+    Given file "src/main/kotlin/com/example/domain/Model.kt" has content "package com.example.domain"
+    Given file "src/main/kotlin/com/example/service/OrderService.kt" has content:
+      """kotlin
+      package com.example.service
+      
+      import com.example.domain.Model
+      """
+    Given file "src/main/kotlin/com/example/api/Controller.kt" has content:
+      """kotlin
+      package com.example.api
+      
+      import com.example.service.OrderService
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 2 relations are examined
+    And 3 files are encountered and 3 files are scanned
+    And 0 errors and 0 violations are reported

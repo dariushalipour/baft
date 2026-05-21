@@ -243,6 +243,8 @@ func addLanguage(w *workspace, langName string) error {
 		w.Langs = append(w.Langs, golang.Language{})
 	case "typescript":
 		w.Langs = append(w.Langs, &typescript.Language{})
+	case "kotlin":
+		w.Langs = append(w.Langs, kotlin.Language{})
 	}
 	return nil
 }
