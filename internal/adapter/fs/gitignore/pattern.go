@@ -365,7 +365,7 @@ func (p *pattern) globMatch(path []string, isDir bool) bool {
 		}
 		if pat == zeroToManyDirs {
 			if i == len(p.pattern)-1 {
-				if len(path) > 1 || isDir {
+				if (i == 0 || matched) && (len(path) > 1 || isDir) {
 					matched = true
 					trailingStar = true
 				}
