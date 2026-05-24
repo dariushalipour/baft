@@ -66,7 +66,7 @@ class BaftAnnotator : ExternalAnnotator<BaftAnnotatorInfo, List<BaftViolation>>(
             pb.environment()["PATH"] = augmentedPath()
             pb.start()
         } catch (e: IOException) {
-            notifyError("BAFT: binary not found in PATH")
+            notifyError("Baft: binary not found in PATH")
             return emptyList()
         }
 
@@ -90,7 +90,7 @@ class BaftAnnotator : ExternalAnnotator<BaftAnnotatorInfo, List<BaftViolation>>(
             val all: List<BaftViolation> = gson.fromJson(stdoutText.trim(), violationType) ?: emptyList()
             all.filter { it.file == info.filePath }
         } catch (e: JsonSyntaxException) {
-            log.warn("BAFT: failed to parse output: $stdoutText")
+            log.warn("Baft: failed to parse output: $stdoutText")
             emptyList()
         }
     }
@@ -158,7 +158,7 @@ private fun ensureCompatible(): String? {
             pb.environment()["PATH"] = augmentedPath()
             pb.start()
         } catch (e: IOException) {
-            compatibilityFailure.set("BAFT: binary not found in PATH")
+            compatibilityFailure.set("Baft: binary not found in PATH")
             compatibilityChecked.set(true)
             return compatibilityFailure.get()
         }
@@ -174,14 +174,14 @@ private fun ensureCompatible(): String? {
         }
 
         if (!report?.warning.isNullOrBlank()) {
-            log.warn("BAFT: ${report?.warning}")
+            log.warn("Baft: ${report?.warning}")
         }
 
         val failure = when {
             process.exitValue() == 0 && report?.compatible == true -> null
             !report?.message.isNullOrBlank() -> report?.message
             stderrText.isNotBlank() -> stderrText
-            else -> "BAFT compatibility check failed"
+            else -> "Baft compatibility check failed"
         }
 
         compatibilityFailure.set(failure)

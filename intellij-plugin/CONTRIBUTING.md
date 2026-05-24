@@ -1,6 +1,6 @@
-# BAFT — IntelliJ Plugin
+# Baft — IntelliJ Plugin
 
-Shows BAFT architecture violations as red squiggles and Problems tool window entries by running the BAFT CLI and mapping its output to IntelliJ annotations.
+Shows Baft architecture violations as red squiggles and Problems tool window entries by running the Baft CLI and mapping its output to IntelliJ annotations.
 
 ## Prerequisites
 

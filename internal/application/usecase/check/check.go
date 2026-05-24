@@ -1,10 +1,10 @@
 // Package check verifies that code imports respect architecture rules
-// declared in BAFT.md contract files across one or more capsules.
+// declared in contract files across one or more capsules.
 //
 // Algorithm:
 //
 //  1. Discover capsules (modules with manifest files like go.mod)
-//  2. For each capsule, find the root BAFT.md and any scoped contracts
+//  2. For each capsule, find the root contract file and any scoped contracts
 //  3. Walk every scannable file, resolve its imports to internal targets
 //  4. For each import, determine the tracking scope and check the
 //     relation against the appropriate graph, walking up ancestor scopes

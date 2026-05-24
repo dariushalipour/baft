@@ -11,17 +11,17 @@ import (
 	"testing"
 )
 
-func TestInstallJetBrainsArchiveReplacesExistingBAFTPlugin(t *testing.T) {
+func TestInstallJetBrainsArchiveReplacesExistingBaftPlugin(t *testing.T) {
 	pluginDir := t.TempDir()
 	targetDir := filepath.Join(pluginDir, jetbrainsArchiveRoot)
 	if err := os.MkdirAll(filepath.Join(targetDir, "lib"), 0o755); err != nil {
 		t.Fatalf("MkdirAll: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(targetDir, "lib", "baft-intellij-0.0.9.jar"), pluginJar(t, jetbrainsPluginID, "BAFT", "0.0.9"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(targetDir, "lib", "baft-intellij-0.0.9.jar"), pluginJar(t, jetbrainsPluginID, "Baft", "0.0.9"), 0o644); err != nil {
 		t.Fatalf("WriteFile old jar: %v", err)
 	}
 
-	archive := pluginArchive(t, jetbrainsArchiveRoot, "baft-intellij-0.2.0.jar", jetbrainsPluginID, "BAFT", "0.2.0")
+	archive := pluginArchive(t, jetbrainsArchiveRoot, "baft-intellij-0.2.0.jar", jetbrainsPluginID, "Baft", "0.2.0")
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
 		t.Fatalf("zip.NewReader: %v", err)
@@ -57,7 +57,7 @@ func TestInstallJetBrainsArchiveRefusesUnknownExistingPlugin(t *testing.T) {
 		t.Fatalf("WriteFile old jar: %v", err)
 	}
 
-	archive := pluginArchive(t, jetbrainsArchiveRoot, "baft-intellij-0.2.0.jar", jetbrainsPluginID, "BAFT", "0.2.0")
+	archive := pluginArchive(t, jetbrainsArchiveRoot, "baft-intellij-0.2.0.jar", jetbrainsPluginID, "Baft", "0.2.0")
 	reader, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
 	if err != nil {
 		t.Fatalf("zip.NewReader: %v", err)
@@ -74,7 +74,7 @@ func TestInstallJetBrainsArchiveRefusesUnknownExistingPlugin(t *testing.T) {
 		t.Fatalf("expected existing plugin to remain in place: %v", statErr)
 	}
 	if _, statErr := os.Stat(filepath.Join(targetDir, "lib", "baft-intellij-0.2.0.jar")); !os.IsNotExist(statErr) {
-		t.Fatalf("expected new BAFT plugin not to be installed, stat err = %v", statErr)
+		t.Fatalf("expected new Baft plugin not to be installed, stat err = %v", statErr)
 	}
 }
 
@@ -85,7 +85,7 @@ func TestJetBrainsVerifyRejectsStaleInstalledVersion(t *testing.T) {
 		t.Fatalf("MkdirAll: %v", err)
 	}
 	staleVersion := "0.1.0"
-	if err := os.WriteFile(filepath.Join(targetDir, "lib", "baft-intellij-"+staleVersion+".jar"), pluginJar(t, jetbrainsPluginID, "BAFT", staleVersion), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(targetDir, "lib", "baft-intellij-"+staleVersion+".jar"), pluginJar(t, jetbrainsPluginID, "Baft", staleVersion), 0o644); err != nil {
 		t.Fatalf("WriteFile stale jar: %v", err)
 	}
 

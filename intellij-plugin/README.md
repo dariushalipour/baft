@@ -2,7 +2,7 @@
 
 Fast, multilingual architecture enforcement from Mermaid diagrams, surfaced directly in IntelliJ.
 
-This plugin does not implement architecture rules itself. It runs the [BAFT](https://github.com/dariushalipour/baft) CLI, reads its diagnostics, and turns violations into editor annotations.
+This plugin does not implement architecture rules itself. It runs the [Baft](https://github.com/dariushalipour/baft) CLI, reads its diagnostics, and turns violations into editor annotations.
 
 ## What You Get
 
@@ -18,7 +18,7 @@ This plugin does not implement architecture rules itself. It runs the [BAFT](htt
 - IntelliJ IDEA 2024.1+ or another IntelliJ-based IDE
 - `baft` installed and available in `PATH`
 
-## Install BAFT
+## Install Baft
 
 ```bash
 go install github.com/dariushalipour/baft@latest
@@ -74,6 +74,6 @@ To change the formatter palette, open `Settings | Tools | 🧶 Baft` and choose 
 
 ## Troubleshooting
 
-**"BAFT: binary not found in PATH"**
+**"Baft: binary not found in PATH"**
 
 The plugin cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.

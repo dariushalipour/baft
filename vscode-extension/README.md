@@ -2,7 +2,7 @@
 
 Fast, multilingual architecture enforcement from Mermaid diagrams, surfaced directly in VS Code.
 
-This extension does not implement architecture rules itself. It runs the [BAFT](https://github.com/dariushalipour/baft) CLI, reads its diagnostics, and turns violations into red squiggles and Problems entries.
+This extension does not implement architecture rules itself. It runs the [Baft](https://github.com/dariushalipour/baft) CLI, reads its diagnostics, and turns violations into red squiggles and Problems entries.
 
 ## What You Get
 
@@ -19,7 +19,7 @@ This extension does not implement architecture rules itself. It runs the [BAFT](
 - VS Code 1.85+
 - `baft` installed and available in `PATH`
 
-## Install BAFT
+## Install Baft
 
 ```bash
 go install github.com/dariushalipour/baft@latest
@@ -87,6 +87,6 @@ To opt in on save, add this in VS Code settings:
 
 ## Troubleshooting
 
-**"BAFT: binary not found in PATH"**
+**"Baft: binary not found in PATH"**
 
 VS Code cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.

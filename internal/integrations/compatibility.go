@@ -75,18 +75,18 @@ func VerifyCompatibility(cliVersion, integrationID, pluginVersion string, protoc
 	expectedVersion := expectedPluginVersion(family)
 	if expectedVersion == "" {
 		report.Compatible = false
-		report.Message = "BAFT CLI could not determine the expected plugin version for " + family
+		report.Message = "Baft CLI could not determine the expected plugin version for " + family
 		return report
 	}
 
 	if protocol != spec.Protocol {
 		report.Compatible = false
-		report.Message = fmt.Sprintf("BAFT plugin protocol mismatch: plugin uses protocol %d, CLI expects protocol %d", protocol, spec.Protocol)
+		report.Message = fmt.Sprintf("Baft plugin protocol mismatch: plugin uses protocol %d, CLI expects protocol %d", protocol, spec.Protocol)
 		return report
 	}
 	if pluginVersion != expectedVersion {
 		report.Compatible = false
-		report.Message = fmt.Sprintf("BAFT plugin version mismatch: expected %s, got %s", expectedVersion, pluginVersion)
+		report.Message = fmt.Sprintf("Baft plugin version mismatch: expected %s, got %s", expectedVersion, pluginVersion)
 		return report
 	}
 	if isDevVersion(cliVersion) {
@@ -101,7 +101,7 @@ func VerifyCompatibility(cliVersion, integrationID, pluginVersion string, protoc
 	}
 	if cmp < 0 {
 		report.Compatible = false
-		report.Message = fmt.Sprintf("BAFT plugin requires CLI >= %s. Current version: %s", spec.CLIMin, cliVersion)
+		report.Message = fmt.Sprintf("Baft plugin requires CLI >= %s. Current version: %s", spec.CLIMin, cliVersion)
 	}
 	return report
 }

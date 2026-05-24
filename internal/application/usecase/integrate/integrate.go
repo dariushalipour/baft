@@ -72,7 +72,7 @@ func Run(ctx context.Context, manager Manager, opts Options) error {
 	}
 
 	fmt.Fprintln(out)
-	fmt.Fprintf(out, "BAFT integration installed successfully for %s\n", displayLabel(selection))
+	fmt.Fprintf(out, "Baft integration installed successfully for %s\n", displayLabel(selection))
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Restart the IDE to activate the plugin.")
 	return nil

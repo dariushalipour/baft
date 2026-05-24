@@ -12,7 +12,7 @@ Without a way to exclude them, Baft would either:
 
 - Scan them unnecessarily (wasting time and producing noise).
 - Report their imports as real dependencies (producing false violations).
-- Force developers to work around them in `BAFT.md` (polluting the architecture contract with implementation details).
+- Force developers to work around them in the contract file (polluting the architecture contract with implementation details).
 
 Different ecosystems have different conventions for what to skip. Go uses `vendor/`. TypeScript uses `node_modules/`. Rust uses `target/`. But these are only the broadest categories. Each project has its own granular needs.
 
@@ -35,9 +35,9 @@ When a file is ignored:
 
 A .baftignore is not:
 
-- **A BAFT.md rule.** It does not define nodes, edges, or allowed imports. It removes files from consideration entirely. A file that is `.baftignore`d does not need a node glob and cannot have a violation.
+- **A contract file rule.** It does not define nodes, edges, or allowed imports. It removes files from consideration entirely. A file that is `.baftignore`d does not need a node glob and cannot have a violation.
 - **A language-specific skip list.** Language adapters provide built-in exclusions (`vendor/`, `node_modules/`, `target/`, etc.) via registration. `.baftignore` is for project-specific exclusions beyond those.
-- **A BAFT.md exclusion mechanism.** You do not need to create an "ignored" node in `BAFT.md` and leave it with no edges. `.baftignore` removes the file before the graph is built.
+- **A contract file exclusion mechanism.** You do not need to create an "ignored" node in the contract file and leave it with no edges. `.baftignore` removes the file before the graph is built.
 - **A per-command flag.** `.baftignore` applies to all Baft operations — `check`, `dump`, `discover`. There is no way to run Baft while bypassing `.baftignore`.
 
 ---
@@ -107,9 +107,9 @@ A `.baftignore` in a subdirectory applies only to that directory and its childre
 
 Baft intentionally does not support inline suppression comments (e.g., `// baft:ignore`) within source files themselves.
 
-This design choice goes exactly against the idea of centralized architectural tracking. Currently, the only files that require extra vigilance from reviewers are the contract files (`BAFT.md`) and `.baftignore` files. 
+This design choice goes exactly against the idea of centralized architectural tracking. Currently, the only files that require extra vigilance from reviewers are the contract files and `.baftignore` files.
 
-If we allowed suppressions from within each source file, it would make it extremely easy to overlook when they happen. Reviewers would have to scrutinize every changing file to ensure an architecture bypass wasn't sneaked in. This would make it easy for less caring contributors to take the easy path rather than addressing the actual architectural violation. Exemptions must be overt, deliberate, and centralized in explicit `.baftignore` or `BAFT.md` files.
+If we allowed suppressions from within each source file, it would make it extremely easy to overlook when they happen. Reviewers would have to scrutinize every changing file to ensure an architecture bypass wasn't sneaked in. This would make it easy for less caring contributors to take the easy path rather than addressing the actual architectural violation. Exemptions must be overt, deliberate, and centralized in explicit `.baftignore` or contract files.
 
 ---
 
@@ -121,16 +121,16 @@ If the repo root is unreachable (e.g., due to filesystem permissions), the wrapp
 
 ---
 
-## Interaction with BAFT.md
+## Interaction with the contract file
 
-`.baftignore` and `BAFT.md` operate at different layers:
+`.baftignore` and the contract file operate at different layers:
 
 - `.baftignore` is a **filesystem filter**. It runs before any graph analysis. Ignored files are invisible to everything.
-- `BAFT.md` is an **architecture contract**. It runs after file discovery. It defines which files belong to which nodes and which imports are allowed.
+- The contract file is an **architecture contract**. It runs after file discovery. It defines which files belong to which nodes and which imports are allowed.
 
-A file that is `.baftignore`d never reaches `BAFT.md`. It does not need a node glob, it cannot have a violation, and it cannot appear in any edge.
+A file that is `.baftignore`d never reaches the contract file. It does not need a node glob, it cannot have a violation, and it cannot appear in any edge.
 
-A file that is NOT `.baftignore`d but also does not match any node in `BAFT.md` is reported as a violation: `... is tracked by BAFT.md but matches no node`.
+A file that is NOT `.baftignore`d but also does not match any node in the contract file is reported as a violation: `... is tracked by the contract but matches no node`.
 
 ---
 
@@ -144,17 +144,17 @@ This means a manifest inside an ignored directory is never discovered. A `go.mod
 
 ## Interaction with import resolution
 
-During import resolution, if a target file is ignored (either by `.gitignore` or `.baftignore`), the import is treated as external. The core receives `internal: false` and does not check it against `BAFT.md` rules.
+During import resolution, if a target file is ignored (either by `.gitignore` or `.baftignore`), the import is treated as external. The core receives `internal: false` and does not check it against contract file rules.
 
 This handles the common case where a project imports from a vendored or generated dependency that should not be part of the architectural graph.
 
 ---
 
-## BAFT.md itself can be ignored
+## Contract file itself can be ignored
 
-If `BAFT.md` matches a `.gitignore` or `.baftignore` pattern, the filesystem wrapper returns `ErrNotExist` when attempting to read it. The system treats the capsule as having no architecture contract — no violations are reported, and `dump` will create a new `BAFT.md`.
+If the contract file matches a `.gitignore` or `.baftignore` pattern, the filesystem wrapper returns `ErrNotExist` when attempting to read it. The system treats the capsule as having no architecture contract — no violations are reported, and `dump` will create a new contract file.
 
-This is an edge case. Normally `BAFT.md` should not be ignored. But the behavior is consistent: ignored files are invisible, including the contract file itself.
+This is an edge case. Normally the contract file should not be ignored. But the behavior is consistent: ignored files are invisible, including the contract file itself.
 
 ---
 

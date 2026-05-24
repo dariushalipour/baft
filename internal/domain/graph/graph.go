@@ -19,7 +19,7 @@ type nodeInfo struct {
 	hasDirGlob  bool // node has at least one directory-glob pattern
 }
 
-// Graph is the parsed contract from a BAFT.md mermaid block.
+// Graph is the parsed contract from a contract file mermaid block.
 type Graph struct {
 	Nodes        map[string]string
 	NodeDisplays map[string]string

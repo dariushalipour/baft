@@ -263,7 +263,7 @@ func runManual(args []string) {
 			printManual()
 			os.Exit(0)
 		default:
-			fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft manual' for the BAFT.md manual\n", a)
+			fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft manual' for the Baft manual\n", a)
 			os.Exit(1)
 		}
 	}

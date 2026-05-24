@@ -57,7 +57,7 @@ code boundary defined by:
    `build.gradle.kts`).
 2. **A dependency graph** — the set of internal imports and external
    dependencies that the manifest and source files collectively define.
-3. **Architecture rules** — BAFT.md defines nodes, edges, and constraints that track internal imports, along with other declarations that shape how the code boundary is interpreted.
+3. **Architecture rules** — a contract file defines nodes, edges, and constraints that track internal imports, along with other declarations that shape how the code boundary is interpreted.
 4. **A lifecycle** — the ability to be discovered, parsed, validated, and
    addressed as a unit by tooling.
 5. **Independently addressable operations** — tooling commands (check, dump)
@@ -83,7 +83,7 @@ A Capsule is not:
 - **A compilation unit.** A Rust crate is a compilation unit. A Go module is
   not. A Capsule is neither — it is the normalized boundary that tooling
   uses regardless of compilation model.
-- **A scope for architecture rules.** Architecture rules (BAFT.md) apply
+- **A scope for architecture rules.** Architecture rules (contract file) apply
   per-Capsule, but the Capsule itself does not define the rules. It is the
   container that holds them.
 
@@ -100,7 +100,7 @@ A Capsule is:
   unit. Commands resolve to Capsules, report against Capsules, and validate
   Capsules independently.
 - **A scoping boundary for architecture rules.** Each Capsule may contain
-  its own `BAFT.md`. Rules inside a Capsule track only imports within that
+  its own contract file. Rules inside a Capsule track only imports within that
   Capsule. Cross-Capsule imports are tracked by the parent Capsule or by
   external dependency declarations.
 - **A discovery target.** Capsule discovery walks the filesystem, locates
@@ -277,11 +277,11 @@ directories/files) and edges (internal imports) to the dependency graph.
 Cross-Capsule imports are external edges.
 
 **Check.** The check command evaluates each Capsule independently. A
-Capsule's `BAFT.md` tracks only imports within that Capsule's directory.
+Capsule's contract file tracks only imports within that Capsule's directory.
 Cross-Capsule imports are validated by the parent Capsule's rules or by
 external dependency declarations.
 
-**Dump.** The dump command generates `BAFT.md` files per Capsule by
+**Dump.** The dump command generates contract files per Capsule by
 scanning the Capsule's source files, resolving imports, and mapping them to
 graph nodes.
 

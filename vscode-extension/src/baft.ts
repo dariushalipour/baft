@@ -68,7 +68,7 @@ export function verifyCompatibility(
 
     proc.on("close", (code, signal) => {
       if (signal !== null) {
-        reject(new Error("BAFT compatibility check was interrupted"));
+        reject(new Error("Baft compatibility check was interrupted"));
         return;
       }
 
@@ -80,7 +80,7 @@ export function verifyCompatibility(
       }
 
       if (report?.warning) {
-        output.appendLine(`BAFT: ${report.warning}`);
+        output.appendLine(`Baft: ${report.warning}`);
       }
 
       if (code === 0 && report?.compatible) {
@@ -88,7 +88,7 @@ export function verifyCompatibility(
         return;
       }
 
-      const message = report?.message || stderr.trim() || "BAFT compatibility check failed";
+      const message = report?.message || stderr.trim() || "Baft compatibility check failed";
       reject(new Error(message));
     });
   });
@@ -143,7 +143,7 @@ export function runCheck(
       try {
         resolve(JSON.parse(stdout.trim()));
       } catch {
-        output.appendLine(`BAFT: failed to parse output:\n${stdout}`);
+        output.appendLine(`Baft: failed to parse output:\n${stdout}`);
         resolve([]);
       }
     });
@@ -189,11 +189,11 @@ export function runRestyle(
 
     proc.on("close", (code, signal) => {
       if (signal !== null) {
-        reject(new Error("BAFT restyle was interrupted"));
+        reject(new Error("Baft restyle was interrupted"));
         return;
       }
       if (code !== 0) {
-        reject(new Error(stderr.trim() || "BAFT restyle failed"));
+        reject(new Error(stderr.trim() || "Baft restyle failed"));
         return;
       }
       resolve(stdout);

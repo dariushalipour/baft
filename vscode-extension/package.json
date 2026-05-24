@@ -2,7 +2,7 @@
   "name": "baft",
   "displayName": "🧶 Baft",
   "description": "Architecture violation diagnostics powered by the 🧶 Baft CLI",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "dariushalipour",
   "repository": {
     "type": "git",
@@ -22,20 +22,20 @@
       }
     ],
     "configuration": {
-      "title": "BAFT",
+      "title": "Baft",
       "properties": {
         "baft.format.colorPalette": {
           "type": "string",
           "enum": ["vibrant", "muted", "mono", "none"],
           "default": "vibrant",
           "scope": "resource",
-          "markdownDescription": "Specifies the Mermaid color palette BAFT uses when formatting BAFT.md files."
+          "markdownDescription": "Specifies the Mermaid color palette Baft uses when formatting contract files."
         },
         "baft.format.onSave": {
           "type": "boolean",
           "default": false,
           "scope": "resource",
-          "markdownDescription": "Restyles BAFT.md files with BAFT whenever they are saved."
+          "markdownDescription": "Restyles contract files with Baft whenever they are saved."
         }
       }
     },

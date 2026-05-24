@@ -32,7 +32,7 @@ baft/
     │   │   └── capsule.go                           # Capsule walking utilities
     │   └── usecase/
     │       ├── check/check.go                       # `baft check` — validates architecture
-    │       └── dump/dump.go                       # `baft dump` — generates BAFT.md
+    │       └── dump/dump.go                       # `baft dump` — generates contract
     └── adapter/
         ├── languages/                               # Language adapters (adapters)
         │   ├── golang/golang.go
@@ -99,9 +99,9 @@ result := check.Run(fsys, root, []port.Language{
 
 That's it. No other changes needed.
 
-## BAFT.md format
+## Contract format
 
-Each tracked capsule has a `BAFT.md` at its root and/or in some subdirectories. The first mermaid block is parsed:
+Each tracked capsule has a contract file at its root and/or in some subdirectories. The first mermaid block is parsed:
 
 ````markdown
 ```mermaid

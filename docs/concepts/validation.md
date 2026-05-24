@@ -14,14 +14,14 @@ The `check` command exists primarily to answer whether the codebase complies wit
 
 To answer that, Baft produces two different kinds of output during a check run:
 
-- **Contract diagnostics** tell you that the BAFT.md itself is malformed, structurally invalid, or incompatible with the current language.
+- **Contract diagnostics** tell you that the contract file itself is malformed, structurally invalid, or incompatible with the current language.
 - **Relation violations** tell you that the source code imports something the contract does not allow.
 
 The three categories in this document apply to **contract diagnostics**, not to relation violations.
 
 The high-level flow is:
 
-1. Read the BAFT.md contract text.
+1. Read the contract file text.
 2. Validate the contract itself.
 3. Validate language-specific constraints.
 4. Compare real imports against the contract.
@@ -62,7 +62,7 @@ In short: **Baft could not read the contract into a usable structure.**
 
 ### 2. Contract validation, graph-based
 
-This category answers a different question: **given a readable contract, is it a valid BAFT contract?**
+This category answers a different question: **given a readable contract, is it a valid Baft contract?**
 
 These errors happen after the contract text has been read successfully. At this point Baft already has a usable map of the declared nodes and allowed directions. The contract may still be invalid, but the text itself was readable.
 

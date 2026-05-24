@@ -1,6 +1,6 @@
 Usage: baft dump [flags] [root-dir]
 
-Dump BAFT.md from current dependency reality.
+Dump contract from current dependency reality.
 
 Flags:
   --lang <name>             Language filter (can be repeated): go, typescript, dart, kotlin, rust

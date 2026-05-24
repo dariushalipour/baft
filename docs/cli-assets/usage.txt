@@ -4,13 +4,13 @@ Commands:
   ----------------------------
   🧐 check [flags] [root-dir]   Check packages for architecture violations
   ----------------------------
-  🚜 dump [flags] [root-dir]    Dump BAFT.md from current dependency reality
+  🚜 dump [flags] [root-dir]    Dump contract from current dependency reality
   ----------------------------
-  🎨 restyle [flags] [root-dir] Regenerate Mermaid styling in existing BAFT.md files
+  🎨 restyle [flags] [root-dir] Regenerate Mermaid styling in existing contract files
   ----------------------------
   🔌 integrate                  Detect, install, and verify a supported IDE integration
   ----------------------------
-  📄 manual                     Stdout the manual for working in BAFT-tracked code
+  📄 manual                     Stdout the manual for working in Baft-tracked code
   ----------------------------
 
 Files:

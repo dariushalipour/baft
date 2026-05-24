@@ -112,7 +112,7 @@ func TestWalkDirSkipsGitIgnored(t *testing.T) {
 	}
 }
 
-func TestDiscoverSkipsGitIgnoredBAFT(t *testing.T) {
+func TestDiscoverSkipsGitIgnoredBaft(t *testing.T) {
 	dir := t.TempDir()
 
 	// Create a Rust capsule with a git-ignored BAFT.md

@@ -13,7 +13,7 @@ const BAFT_DOCUMENT_SELECTOR: vscode.DocumentSelector = [
 ];
 
 export function activate(context: vscode.ExtensionContext): void {
-  const output = vscode.window.createOutputChannel("BAFT");
+  const output = vscode.window.createOutputChannel("Baft");
   context.subscriptions.push(output);
   const pluginVersion = String(context.extension.packageJSON.version ?? "0.0.1");
 
@@ -37,7 +37,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const message = errorMessage(err);
       if (message !== lastCompatibilityError) {
         lastCompatibilityError = message;
-        output.appendLine(`BAFT: ${message}`);
+      output.appendLine(`Baft: ${message}`);
         vscode.window.showErrorMessage(message);
       }
       return false;
@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
     } catch (err: unknown) {
       if (runs.get(root) !== runId) return;
       if (isEnoent(err)) {
-        vscode.window.showErrorMessage("BAFT: binary not found in PATH");
+        vscode.window.showErrorMessage("Baft: binary not found in PATH");
       }
     }
   }
@@ -125,11 +125,11 @@ export function activate(context: vscode.ExtensionContext): void {
       return [vscode.TextEdit.replace(fullRange, restyled)];
     } catch (err: unknown) {
       if (isEnoent(err)) {
-        vscode.window.showErrorMessage("BAFT: binary not found in PATH");
+        vscode.window.showErrorMessage("Baft: binary not found in PATH");
         return [];
       }
       const message = errorMessage(err);
-      output.appendLine(`BAFT: ${message}`);
+      output.appendLine(`Baft: ${message}`);
       vscode.window.showErrorMessage(message);
       return [];
     }
@@ -156,18 +156,18 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("baft.restyleContract", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) {
-        vscode.window.showErrorMessage("BAFT: open a BAFT.md file to restyle it");
+        vscode.window.showErrorMessage("Baft: open a contract file to restyle it");
         return;
       }
 
       if (vscode.languages.match(BAFT_DOCUMENT_SELECTOR, editor.document) === 0) {
-        vscode.window.showErrorMessage("BAFT: the active editor is not a BAFT.md file");
+        vscode.window.showErrorMessage("Baft: the active editor is not a contract file");
         return;
       }
 
       const applied = await restyleDocument(editor.document);
       if (!applied) {
-        vscode.window.showInformationMessage("BAFT: contract is already restyled");
+        vscode.window.showInformationMessage("Baft: contract is already restyled");
       }
     }),
     vscode.workspace.onWillSaveTextDocument((event) => {
@@ -218,5 +218,5 @@ function errorMessage(err: unknown): string {
   if (err instanceof Error && err.message.trim() !== "") {
     return err.message;
   }
-  return "BAFT compatibility check failed";
+  return "Baft compatibility check failed";
 }

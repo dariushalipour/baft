@@ -1,6 +1,6 @@
-# BAFT — VS Code Extension
+# Baft — VS Code Extension
 
-Shows BAFT architecture violations as red squiggles and Problems panel entries by running the BAFT CLI and mapping its output to VS Code diagnostics.
+Shows Baft architecture violations as red squiggles and Problems panel entries by running the Baft CLI and mapping its output to VS Code diagnostics.
 
 ## Prerequisites
 

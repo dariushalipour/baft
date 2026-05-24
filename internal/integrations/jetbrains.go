@@ -101,7 +101,7 @@ func (i *jetbrainsInstaller) Verify(ctx context.Context, ide IDEInstallation) er
 		return fmt.Errorf("JetBrains plugin was not found after installation: %w", err)
 	}
 	if descriptor.ID != jetbrainsPluginID {
-		return fmt.Errorf("JetBrains plugin at %s is not the BAFT plugin", targetDir)
+		return fmt.Errorf("JetBrains plugin at %s is not the Baft plugin", targetDir)
 	}
 	if descriptor.Version != expectedPluginVersion(FamilyJetBrains) {
 		return fmt.Errorf("JetBrains plugin version mismatch after installation: expected %s, found %s", expectedPluginVersion(FamilyJetBrains), descriptor.Version)
@@ -134,7 +134,7 @@ func installJetBrainsArchive(ide IDEInstallation, reader *zip.Reader) error {
 		return fmt.Errorf("embedded JetBrains plugin archive is invalid: %w", err)
 	}
 	if stagedDescriptor.ID != jetbrainsPluginID {
-		return fmt.Errorf("embedded JetBrains plugin archive is not the BAFT plugin")
+		return fmt.Errorf("embedded JetBrains plugin archive is not the Baft plugin")
 	}
 
 	targetDir := filepath.Join(ide.PluginDir, rootDir)
@@ -145,32 +145,32 @@ func installJetBrainsArchive(ide IDEInstallation, reader *zip.Reader) error {
 		}
 		existingDescriptor, _, descriptorErr := readJetBrainsPluginDescriptor(targetDir)
 		if descriptorErr != nil {
-			return jetbrainsManualInstallError(ide, targetDir, "found an existing plugin directory but could not confirm that it belongs to BAFT", descriptorErr)
+			return jetbrainsManualInstallError(ide, targetDir, "found an existing plugin directory but could not confirm that it belongs to Baft", descriptorErr)
 		}
 		if existingDescriptor.ID != jetbrainsPluginID {
-			return jetbrainsManualInstallError(ide, targetDir, "found an existing plugin directory that is not the BAFT plugin", nil)
+			return jetbrainsManualInstallError(ide, targetDir, "found an existing plugin directory that is not the Baft plugin", nil)
 		}
 
 		backupDir = filepath.Join(ide.PluginDir, rootDir+".backup-"+time.Now().UTC().Format("20060102150405"))
 		if err := os.Rename(targetDir, backupDir); err != nil {
-			return jetbrainsManualInstallError(ide, targetDir, "could not move the existing BAFT plugin out of the way; close the IDE and retry", err)
+			return jetbrainsManualInstallError(ide, targetDir, "could not move the existing Baft plugin out of the way; close the IDE and retry", err)
 		}
 	}
 
 	if err := os.Rename(stagedPluginDir, targetDir); err != nil {
 		if rollbackErr := rollbackJetBrainsPlugin(targetDir, backupDir); rollbackErr != nil {
-			return jetbrainsManualInstallError(ide, targetDir, "could not move the new BAFT plugin into place and rollback also failed", errorsJoin(err, rollbackErr))
+			return jetbrainsManualInstallError(ide, targetDir, "could not move the new Baft plugin into place and rollback also failed", errorsJoin(err, rollbackErr))
 		}
-		return jetbrainsManualInstallError(ide, targetDir, "could not move the new BAFT plugin into place", err)
+		return jetbrainsManualInstallError(ide, targetDir, "could not move the new Baft plugin into place", err)
 	}
 
 	installedDescriptor, _, err := readJetBrainsPluginDescriptor(targetDir)
 	if err != nil || installedDescriptor.ID != jetbrainsPluginID {
 		rollbackErr := rollbackJetBrainsPlugin(targetDir, backupDir)
 		if rollbackErr != nil {
-			return jetbrainsManualInstallError(ide, targetDir, "the new BAFT plugin was copied but could not be validated, and rollback failed", errorsJoin(err, rollbackErr))
+			return jetbrainsManualInstallError(ide, targetDir, "the new Baft plugin was copied but could not be validated, and rollback failed", errorsJoin(err, rollbackErr))
 		}
-		return jetbrainsManualInstallError(ide, targetDir, "the new BAFT plugin was copied but could not be validated", err)
+		return jetbrainsManualInstallError(ide, targetDir, "the new Baft plugin was copied but could not be validated", err)
 	}
 
 	if backupDir != "" {
@@ -490,14 +490,14 @@ func rollbackJetBrainsPlugin(targetDir, backupDir string) error {
 }
 
 func jetbrainsManualInstallError(ide IDEInstallation, targetDir, reason string, cause error) error {
-	message := fmt.Sprintf("could not update the BAFT JetBrains plugin for %s: %s", ide.DisplayName, reason)
+	message := fmt.Sprintf("could not update the Baft JetBrains plugin for %s: %s", ide.DisplayName, reason)
 	if cause != nil {
 		message += ": " + cause.Error()
 	}
 	message += "\n\nManual install:\n"
 	message += fmt.Sprintf("1. Close %s.\n", ide.DisplayName)
-	message += fmt.Sprintf("2. Remove the existing BAFT plugin directory if it exists: %s\n", targetDir)
-	message += "3. Install the BAFT JetBrains plugin ZIP manually from the public repository or a local checkout: internal/integrations/embedded/jetbrains/baft-intellij.zip\n"
+	message += fmt.Sprintf("2. Remove the existing Baft plugin directory if it exists: %s\n", targetDir)
+	message += "3. Install the Baft JetBrains plugin ZIP manually from the public repository or a local checkout: internal/integrations/embedded/jetbrains/baft-intellij.zip\n"
 	message += "4. In the IDE, open Settings > Plugins > gear icon > Install Plugin from Disk..., choose baft-intellij.zip, and restart the IDE."
 	return errors.New(message)
 }

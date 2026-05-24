@@ -45,7 +45,7 @@ func isNotExist(err error) bool {
 	return os.IsNotExist(err)
 }
 
-// WalkAllFiles walks a capsule directory including child BAFT.md
+// WalkAllFiles walks a capsule directory including child contract file
 // directories. Hidden/vendor dirs and non-scannable files are still
 // skipped. For each scannable file it calls fn with the absolute path
 // and the capsule-relative path (forward-slash).
@@ -70,8 +70,8 @@ func WalkAllFiles(fsys port.FileSystem, capsuleDir string, lang port.Language, f
 }
 
 // TrackingScope returns the directory of the nearest ancestor
-// BAFT.md for the given file, bounded by capsuleDir. Returns capsuleDir
-// if no child BAFT.md is found.
+// contract file for the given file, bounded by capsuleDir. Returns capsuleDir
+// if no child contract file is found.
 func TrackingScope(fsys port.FileSystem, absFile string, capsuleDir string) string {
 	dir := filepath.Dir(absFile)
 	for {
@@ -90,8 +90,8 @@ func TrackingScope(fsys port.FileSystem, absFile string, capsuleDir string) stri
 }
 
 // FindContract walks upward from startDir toward capsuleDir looking for
-// BAFT.md. It returns the absolute path to the nearest ancestor
-// BAFT.md, or capsuleDir/BAFT.md if none is found.
+// a contract file. It returns the absolute path to the nearest ancestor
+// contract file, or capsuleDir/BAFT.md if none is found.
 func FindContract(fsys port.FileSystem, startDir string, capsuleDir string) string {
 	dir := startDir
 	for {
@@ -111,10 +111,10 @@ func FindContract(fsys port.FileSystem, startDir string, capsuleDir string) stri
 }
 
 // FindOrCreateContractDir walks upward from startDir toward capsuleDir.
-// If BAFT.md already exists in any directory along the way, it
-// returns that directory (contract exists). If no BAFT.md is found,
+// If a contract file already exists in any directory along the way, it
+// returns that directory (contract exists). If no contract file is found,
 // it returns startDir (contract should be created there). The second
-// return value is true if BAFT.md already exists.
+// return value is true if the contract file already exists.
 func FindOrCreateContractDir(fsys port.FileSystem, startDir string, capsuleDir string) (contractDir string, exists bool) {
 	dir := startDir
 	for {

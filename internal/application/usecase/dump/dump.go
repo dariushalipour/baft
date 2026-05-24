@@ -77,7 +77,7 @@ func (e *contractError) Error() string {
 }
 
 // Run walks all capsules for every supplied language, parses every
-// import in every scannable file, and writes a comprehensive BAFT.md
+// import in every scannable file, and writes a comprehensive contract file
 // that reflects the current dependency reality at maximum granularity.
 func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) (*DumpResult, error) {
 	return RunWith(fsys, rootDir, languages, repo, discovery, os.Stderr)

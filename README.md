@@ -2,7 +2,7 @@
 
 Fast, multilingual architecture enforcement from Mermaid diagrams.
 
-Baft turns your architecture diagrams into executable contracts. It reads a Mermaid flowchart from `BAFT.md`, maps nodes to code via glob patterns, and verifies that your imports respect the defined boundaries.
+Baft turns your architecture diagrams into executable contracts. It reads a Mermaid flowchart from a contract file, maps nodes to code via glob patterns, and verifies that your imports respect the defined boundaries.
 
 One diagram. One source of truth. Zero drift.
 
@@ -36,7 +36,7 @@ Tools like ArchUnit, Dependency-Cruiser, and language-specific linters are good 
 | Feature | Traditional architecture tools | Baft |
 | --- | --- | --- |
 | **Language support** | Usually one language or ecosystem at a time | **Polyglot** across Go, TypeScript, Dart, Kotlin, and Rust |
-| **Source of truth** | Rules in code or YAML | **Mermaid diagram** in `BAFT.md` |
+| **Source of truth** | Rules in code or YAML | **Mermaid diagram** in contract file |
 | **Enforcement model** | Often blacklist-oriented: define forbidden dependencies | **Default deny**: only declared edges are allowed |
 | **Exceptions** | Commonly scattered across inline suppressions or tool-specific config | **Centralized and explicit** in contract files and `.baftignore` |
 | **Scaling model** | Frequently centralized in one ruleset per tool | **Nested contracts** for bounded contexts and local ownership |
@@ -65,7 +65,7 @@ go build -o baft .
 
 ### Write a contract
 
-Create `BAFT.md` beside your module manifest.
+Create a contract file beside your module manifest.
 
 ````markdown
 ```mermaid
@@ -121,7 +121,7 @@ Violation output:
 
 ```text
 ✗ myservice (432 files scanned, 847 internal imports checked, graph: 11 nodes, 28 edges)
-    violation [import-not-allowed]: internal/api/handler.go:12:2 (api) → internal/domain (domain) — relation not allowed (add edge in /repo/BAFT.md or move the file)
+    violation [import-not-allowed]: internal/api/handler.go:12:2 (api) → internal/domain (domain) — relation not allowed (add edge in contract file or move the file)
 ```
 
 Exit code `0` means clean. Exit code `1` means violations or an error.
@@ -134,19 +134,19 @@ If you do not want to write the first contract by hand:
 baft dump .
 ```
 
-Baft will generate a `BAFT.md` dump from current dependency reality.
+Baft will generate a contract dump from current dependency reality.
 
 That dump is intentionally too literal. It is a starting point, not the final architecture. You still need to prune edges and merge low-level nodes into the model you actually want to enforce.
 
 ## How It Works
 
 1. Baft discovers capsules from standard manifests such as `go.mod`, `package.json`, `pubspec.yaml`, `build.gradle.kts`, and `Cargo.toml`.
-2. For each capsule with a `BAFT.md`, it parses the Mermaid flowchart.
+2. For each capsule with a contract file, it parses the Mermaid flowchart.
 3. Node globs claim tracked files.
 4. Arrows become the allow-list for cross-node imports.
 5. Language adapters resolve internal imports and Baft reports every undeclared edge.
 
-Nested capsules are supported. A child directory with its own `BAFT.md` is treated as an independent bounded context, while the parent contract tracks cross-context edges between children.
+Nested capsules are supported. A child directory with its own contract file is treated as an independent bounded context, while the parent contract tracks cross-context edges between children.
 
 ## Contract Model
 
@@ -168,12 +168,12 @@ TypeScript and Dart support file-shaped nodes. Go, Kotlin, and Rust require dire
 - Kotlin, including common multiplatform layouts
 - Rust
 
-Baft can scan a multilingual repository in one run as long as each capsule has a supported manifest and a `BAFT.md`.
+Baft can scan a multilingual repository in one run as long as each capsule has a supported manifest and a contract file.
 
 ## Tooling
 
 - `baft check --reporter=json` for machine-readable output
-- VS Code extension in [vscode-extension](vscode-extension) with diagnostics, a `BAFT.md` formatter exposed through `Format Document`, opt-in `baft.format.onSave`, and `Baft: Restyle Contract`
+- VS Code extension in [vscode-extension](vscode-extension) with diagnostics, a contract formatter exposed through `Format Document`, opt-in `baft.format.onSave`, and `Baft: Restyle Contract`
 - IntelliJ plugin in [intellij-plugin](intellij-plugin)
 - Unsaved editor buffers supported via overlay input in editor integrations
 

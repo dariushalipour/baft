@@ -1,18 +1,18 @@
-# BAFT.md Manual: Working in BAFT-Tracked Code
+# Baft Manual: Working in Baft-Tracked Code
 
-If you are editing code in a repository containing a `BAFT.md` file, this guide explains how the architecture is enforced and how to work with it.
+If you are editing code in a repository containing a contract file, this guide explains how the architecture is enforced and how to work with it.
 
 **Local command:** `baft manual`
 
-`BAFT.md` is an **executable architecture contract**. It defines which files belong to which architectural nodes and which nodes are allowed to import each other. It serves as both live documentation and automated enforcement.
+A contract file is an **executable architecture contract**. It defines which files belong to which architectural nodes and which nodes are allowed to import each other. It serves as both live documentation and automated enforcement.
 
 ---
 
 ## 🤖 AI Agent Fast Path
 
-When modifying code in a BAFT-tracked repository, follow these steps to avoid violations:
+When modifying code in a Baft-tracked repository, follow these steps to avoid violations:
 
-1. **Identify the Contract:** Find the nearest `BAFT.md` tracking the file you are editing.
+1. **Identify the Contract:** Find the nearest contract file tracking the file you are editing.
 2. **Map the Source:** Match the source file's path against the node globs in the Mermaid diagram.
 3. **Map the Target:** For every internal import, identify which node the target file belongs to.
 4. **Verify the Edge:** The import is allowed ONLY if:
@@ -20,13 +20,13 @@ When modifying code in a BAFT-tracked repository, follow these steps to avoid vi
    - There is an explicit edge in the diagram: `sourceNode --> targetNode`.
 5. **Resolve Violations:** If an import is forbidden:
    - **Move the file** to a node that already has the required dependency.
-   - **Add the edge** to `BAFT.md` if the architecture should be updated.
+   - **Add the edge** to the contract file if the architecture should be updated.
    - **Refactor** to use an allowed intermediary.
 6. **Verify:** Run `baft check` before submitting changes.
 
 ---
 
-## Understanding BAFT.md
+## Understanding Contract Files
 
 ### Core Concepts
 
@@ -100,7 +100,7 @@ If some files should be completely invisible to Baft (e.g., generated code, buil
 
 ### Nested Capsules (Bounded Contexts)
 
-A child directory with its own `BAFT.md` is treated as an independent bounded context.
+A child directory with its own contract file is treated as an independent bounded context.
 
 **Child Scope:**
 
@@ -109,7 +109,7 @@ A child directory with its own `BAFT.md` is treated as an independent bounded co
 
 **Parent Scope:**
 
-- The parent `BAFT.md` can treat child directories as nodes (e.g., `auth["auth/**"]`).
+- The parent contract can treat child directories as nodes (e.g., `auth["auth/**"]`).
 - The parent tracks edges _between_ children (e.g., `billing --> auth`).
 - The parent does not check for unmatched files inside children; that is the child's responsibility.
 
@@ -117,7 +117,7 @@ A child directory with its own `BAFT.md` is treated as an independent bounded co
 
 Common error messages:
 
-- `... is tracked by BAFT.md but matches no node`: The file isn't covered by any glob in `BAFT.md`.
+- `... is tracked by the contract but matches no node`: The file isn't covered by any glob in the contract.
 - `... imports ... - target matches no node`: The imported file isn't part of the contract.
 - `... imports ... - A -> B not allowed`: The import violates the defined edges.
 - `... cross-directory edge not declared in parent`: A violation occurring between nested capsules.
@@ -127,8 +127,8 @@ Common error messages:
 ## Styling Workflow
 
 - **`baft dump --color-palette <name>`** writes a styled contract while preserving the same node and edge discovery rules as unstyled dump output.
-- **`baft restyle --color-palette <name>`** rewrites the generated Mermaid styling block for every `BAFT.md` under the selected root without changing nodes, edges, or inline semantic classes such as `:::endophobic`. The rewritten styling block starts with a Mermaid `%%` notice marking it as generated.
-- **`baft restyle --stdin --path <file> --color-palette <name>`** restyles one in-memory `BAFT.md` from stdin and writes the result to stdout. Editor integrations use this mode for the VS Code `BAFT.md` formatter invoked through `Format Document`, the VS Code `Baft: Restyle Contract` command, opt-in VS Code format on save, and IntelliJ Reformat Code so only the active contract changes.
+- **`baft restyle --color-palette <name>`** rewrites the generated Mermaid styling block for every contract file under the selected root without changing nodes, edges, or inline semantic classes such as `:::endophobic`. The rewritten styling block starts with a Mermaid `%%` notice marking it as generated.
+- **`baft restyle --stdin --path <file> --color-palette <name>`** restyles one in-memory contract from stdin and writes the result to stdout. Editor integrations use this mode for the VS Code contract formatter invoked through `Format Document`, the VS Code `Baft: Restyle Contract` command, opt-in VS Code format on save, and IntelliJ Reformat Code so only the active contract changes.
 - **Edge colors:** Each edge is styled with the same stroke color as its source node.
 - **Endophobic nodes:** `:::endophobic` remains the semantic marker in the contract. Generated styling renders those nodes with a dashed stroke rather than a generated Mermaid class.
 
@@ -139,5 +139,5 @@ Common error messages:
 - **No Implicit Edges:** Do not add imports just because they compile; check the contract.
 - **Claim New Files:** Ensure every new file is covered by a node glob.
 - **Scope Respect:** Authorize sibling imports in the **parent** contract, never the child.
-- **Atomic Updates:** Update `BAFT.md` in the same commit as the code changes that require it.
+- **Atomic Updates:** Update the contract file in the same commit as the code changes that require it.
 - **Final Check:** Always run `baft check` before finishing.

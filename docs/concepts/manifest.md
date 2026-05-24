@@ -84,7 +84,7 @@ build`, `dart pub get`, or `gradle build`.
   are not Capsules in Baft because they declare no module identity.
   Baft only treats manifests that declare a module identifier as
   Capsule manifests.
-- **A BAFT.md.** The manifest defines identity and dependencies.
+- **A contract file.** The manifest defines identity and dependencies.
   `BAFT.md` defines architecture rules (nodes and allowed imports).
   They are separate files with separate purposes. A Capsule may have a
   manifest without a `BAFT.md` (meaning no architecture rules yet),

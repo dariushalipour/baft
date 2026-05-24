@@ -9,7 +9,7 @@ import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
 
 private val formatterLog = Logger.getInstance(BaftFormattingService::class.java)
-private const val BAFT_FORMATTER_NAME = "BAFT"
+private const val BAFT_FORMATTER_NAME = "Baft"
 
 class BaftFormattingService : AsyncDocumentFormattingService() {
 
@@ -44,7 +44,7 @@ class BaftFormattingService : AsyncDocumentFormattingService() {
                     pb.environment()["PATH"] = augmentedPath()
                     pb.start()
                 } catch (e: IOException) {
-                    request.onError("BAFT: binary not found in PATH", e.message ?: "")
+                    request.onError("Baft: binary not found in PATH", e.message ?: "")
                     return
                 }
 
@@ -65,7 +65,7 @@ class BaftFormattingService : AsyncDocumentFormattingService() {
                     process.waitFor()
                     if (process.exitValue() != 0) {
                         request.onError(
-                            "BAFT restyle failed",
+                            "Baft restyle failed",
                             stderrText.ifBlank { "Formatter exited with code ${process.exitValue()}" },
                             process.exitValue(),
                         )
@@ -74,7 +74,7 @@ class BaftFormattingService : AsyncDocumentFormattingService() {
 
                     request.onTextReady(stdoutText)
                 } catch (e: Exception) {
-                    request.onError("BAFT restyle failed", e.message ?: "unknown error")
+                    request.onError("Baft restyle failed", e.message ?: "unknown error")
                 } finally {
                     runningProcess.compareAndSet(process, null)
                 }
