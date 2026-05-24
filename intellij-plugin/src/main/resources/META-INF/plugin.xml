@@ -1,13 +1,7 @@
 <idea-plugin>
     <id>com.baft.intellij</id>
     <name>🧶 Baft</name>
-    <vendor>dariushalipour</vendor>
-
-    <icon>icons/plugin13x13.png</icon>
-    <icon>icons/plugin16x16.png</icon>
-    <icon>icons/plugin32x32.png</icon>
-    <icon>icons/plugin48x48.png</icon>
-    <icon>icons/plugin64x64.png</icon>
+    <vendor email="dariushalipour@github.com" url="https://github.com/dariushalipour">Dariush Alipour</vendor>
 
     <description>
         Surfaces 🧶 Baft architecture violations as editor diagnostics (red squiggles and Problems view entries).
