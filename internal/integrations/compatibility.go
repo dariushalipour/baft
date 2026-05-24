@@ -13,15 +13,16 @@ import (
 const protocolVersion = 3
 
 type CompatibilityReport struct {
-	Compatible    bool   `json:"compatible"`
-	IntegrationID string `json:"integration_id"`
-	Family        string `json:"family"`
-	Protocol      int    `json:"protocol"`
-	PluginVersion string `json:"plugin_version"`
-	CLIVersion    string `json:"cli_version"`
-	CLIMin        string `json:"cli_min"`
-	Message       string `json:"message"`
-	Warning       string `json:"warning,omitempty"`
+	Compatible      bool   `json:"compatible"`
+	IntegrationID   string `json:"integration_id"`
+	Family          string `json:"family"`
+	Protocol        int    `json:"protocol"`
+	PluginVersion   string `json:"plugin_version"`
+	ExpectedVersion string `json:"expected_version,omitempty"`
+	CLIVersion      string `json:"cli_version"`
+	CLIMin          string `json:"cli_min"`
+	Message         string `json:"message"`
+	Warning         string `json:"warning,omitempty"`
 }
 
 type compatibilitySpec struct {
@@ -86,6 +87,7 @@ func VerifyCompatibility(cliVersion, integrationID, pluginVersion string, protoc
 	}
 	if pluginVersion != expectedVersion {
 		report.Compatible = false
+		report.ExpectedVersion = expectedVersion
 		report.Message = fmt.Sprintf("Baft plugin version mismatch: expected %s, got %s", expectedVersion, pluginVersion)
 		return report
 	}

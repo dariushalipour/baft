@@ -273,6 +273,8 @@ func runManual(args []string) {
 
 func runIntegrate(args []string) {
 	var verifyCompatible bool
+	var autoSelect bool
+	var family string
 	var integrationID string
 	var pluginVersion string
 	var protocol int
@@ -285,16 +287,20 @@ func runIntegrate(args []string) {
 			os.Exit(0)
 		case "--verify-compatible":
 			verifyCompatible = true
+		case "--yes", "-y":
+			autoSelect = true
 		default:
 			if strings.HasPrefix(a, "--integration=") {
-				integrationID = strings.TrimPrefix(a, "--integration=")
+				family = strings.TrimPrefix(a, "--integration=")
+				integrationID = family
 			} else if a == "--integration" {
 				if i+1 >= len(args) {
 					fmt.Fprintf(os.Stderr, "--integration requires a value\n")
 					os.Exit(1)
 				}
 				i++
-				integrationID = args[i]
+				family = args[i]
+				integrationID = family
 			} else if strings.HasPrefix(a, "--plugin-version=") {
 				pluginVersion = strings.TrimPrefix(a, "--plugin-version=")
 			} else if a == "--plugin-version" {
@@ -354,8 +360,10 @@ func runIntegrate(args []string) {
 	}
 
 	err := integrateusecase.Run(context.Background(), catalog, integrateusecase.Options{
-		In:  os.Stdin,
-		Out: os.Stdout,
+		In:         os.Stdin,
+		Out:        os.Stdout,
+		AutoSelect: autoSelect,
+		Family:     family,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -27,6 +27,8 @@ interface CompatibilityReport {
   compatible: boolean;
   message: string;
   warning?: string;
+  expected_version?: string;
+  plugin_version?: string;
 }
 
 export type RestyleColorPalette = "vibrant" | "muted" | "mono" | "none";
@@ -37,7 +39,7 @@ export function verifyCompatibility(
   integrationId: string,
   pluginVersion: string,
   output: vscode.OutputChannel
-): Promise<void> {
+): Promise<CompatibilityReport | undefined> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
       "baft",
@@ -84,12 +86,12 @@ export function verifyCompatibility(
       }
 
       if (code === 0 && report?.compatible) {
-        resolve();
+        resolve(report);
         return;
       }
 
       const message = report?.message || stderr.trim() || "Baft compatibility check failed";
-      reject(new Error(message));
+      resolve(report);
     });
   });
 }

@@ -18,6 +18,8 @@ dependencies {
     intellijPlatform {
         intellijIdeaCommunity(providers.gradleProperty("platformVersion"))
     }
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 }
 
 intellijPlatform {
@@ -28,12 +30,16 @@ intellijPlatform {
 }
 
 tasks {
+    withType<Test>().configureEach {
+        useJUnitPlatform()
+        systemProperty("java.awt.headless", "true")
+    }
     withType<JavaCompile>().configureEach {
-        sourceCompatibility = "21"
-        targetCompatibility = "21"
+        sourceCompatibility = "17"
+        targetCompatibility = "17"
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
-        compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
     buildSearchableOptions {
         enabled = false

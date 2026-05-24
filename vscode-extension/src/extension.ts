@@ -29,19 +29,92 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     try {
-      await verifyCompatibility("vscode", pluginVersion, output);
-      compatibilityVerified = true;
-      lastCompatibilityError = "";
-      return true;
+      const report = await verifyCompatibility("vscode", pluginVersion, output);
+      if (report?.compatible) {
+        compatibilityVerified = true;
+        lastCompatibilityError = "";
+        return true;
+      }
+
+      const message = report?.message || "Baft compatibility check failed";
+      if (message.includes("version mismatch") && report) {
+        handleVersionMismatch(message, report, output);
+      } else if (message !== lastCompatibilityError) {
+        lastCompatibilityError = message;
+        output.appendLine(`Baft: ${message}`);
+        vscode.window.showErrorMessage(message);
+      }
+      return false;
     } catch (err: unknown) {
       const message = errorMessage(err);
       if (message !== lastCompatibilityError) {
         lastCompatibilityError = message;
-      output.appendLine(`Baft: ${message}`);
+        output.appendLine(`Baft: ${message}`);
         vscode.window.showErrorMessage(message);
       }
       return false;
     }
+  }
+
+  function handleVersionMismatch(
+    message: string,
+    report: { expected_version?: string; plugin_version?: string },
+    _output: vscode.OutputChannel
+  ): void {
+    const expected = report.expected_version;
+    const detail = expected
+      ? `Installed: ${report.plugin_version}, Expected: ${expected}`
+      : message;
+
+    vscode.window
+      .showErrorMessage(`Baft plugin version mismatch\n${detail}`, "Reinstall")
+      .then((selection) => {
+        if (selection === "Reinstall") {
+          runReinstall();
+        }
+      });
+  }
+
+  function runReinstall(): void {
+    const { spawn } = require("child_process");
+    const proc = spawn("baft", ["integrate", "--integration=vscode", "--yes"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    proc.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+
+    proc.on("close", (code: number) => {
+      if (code === 0) {
+        vscode.window.showInformationMessage(
+          "Baft extension reinstalled successfully. Please reload VS Code to activate it.",
+          "Reload Window"
+        ).then((selection) => {
+          if (selection === "Reload Window") {
+            vscode.commands.executeCommand("workbench.action.reloadWindow");
+          }
+        });
+      } else {
+        const error = stderr.trim() || "Reinstall failed";
+        vscode.window.showErrorMessage(
+          `Baft reinstall failed: ${error}`
+        );
+      }
+    });
+
+    proc.on("error", () => {
+      vscode.window.showErrorMessage(
+        "Baft: Could not run reinstall. Make sure 'baft' is in your PATH."
+      );
+    });
   }
 
   function getCollection(root: string): vscode.DiagnosticCollection {

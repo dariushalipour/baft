@@ -20,8 +20,10 @@ type Manager interface {
 }
 
 type Options struct {
-	In  io.Reader
-	Out io.Writer
+	In         io.Reader
+	Out        io.Writer
+	AutoSelect bool
+	Family     string
 }
 
 func Run(ctx context.Context, manager Manager, opts Options) error {
@@ -53,15 +55,24 @@ func Run(ctx context.Context, manager Manager, opts Options) error {
 		fmt.Fprintf(out, "Some integrations could not be inspected: %v\n\n", err)
 	}
 
-	fmt.Fprintln(out, "Available integrations:")
-	fmt.Fprintln(out)
-	for i, ide := range installations {
-		fmt.Fprintf(out, "%d. %s\n", i+1, displayLabel(ide))
-	}
+	var selection integrations.IDEInstallation
 
-	selection, err := promptForSelection(in, out, installations)
-	if err != nil {
-		return err
+	if opts.AutoSelect {
+		selection, err = autoSelectInstallation(installations, opts.Family)
+		if err != nil {
+			return err
+		}
+	} else {
+		fmt.Fprintln(out, "Available integrations:")
+		fmt.Fprintln(out)
+		for i, ide := range installations {
+			fmt.Fprintf(out, "%d. %s\n", i+1, displayLabel(ide))
+		}
+
+		selection, err = promptForSelection(in, out, installations)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := manager.Install(ctx, selection); err != nil {
@@ -76,6 +87,32 @@ func Run(ctx context.Context, manager Manager, opts Options) error {
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Restart the IDE to activate the plugin.")
 	return nil
+}
+
+func autoSelectInstallation(installations []integrations.IDEInstallation, family string) (integrations.IDEInstallation, error) {
+	if family == "" {
+		return installations[0], nil
+	}
+
+	targetFamily := familyForDisplay(family)
+	for _, ide := range installations {
+		if ide.Family == targetFamily {
+			return ide, nil
+		}
+	}
+
+	return integrations.IDEInstallation{}, fmt.Errorf("no installation found for family %q", family)
+}
+
+func familyForDisplay(family string) string {
+	switch family {
+	case "vscode", "vscode-insiders":
+		return integrations.FamilyVSCode
+	case "jetbrains", "goland", "intellij-ultimate", "intellij-community", "webstorm", "rider", "android-studio", "rustrover":
+		return integrations.FamilyJetBrains
+	default:
+		return family
+	}
 }
 
 func displayLabel(ide integrations.IDEInstallation) string {

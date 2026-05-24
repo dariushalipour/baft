@@ -90,3 +90,7 @@ To opt in on save, add this in VS Code settings:
 **"Baft: binary not found in PATH"**
 
 VS Code cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.
+
+**"Baft plugin version mismatch"**
+
+This happens when you upgrade the `baft` CLI but haven't re-run `baft integrate`. The extension detects the mismatch and shows a **Reinstall** button. Clicking it runs `baft integrate --integration=vscode --yes` to install the matching extension, then prompts you to reload VS Code.

@@ -94,3 +94,65 @@ func TestRunReturnsDetectErrorWhenNothingFound(t *testing.T) {
 		t.Fatalf("Run error = %v, want detector failed", err)
 	}
 }
+
+func TestRunAutoSelectFirst(t *testing.T) {
+	manager := &fakeManager{
+		detected: []integrations.IDEInstallation{
+			{ID: "vscode", Family: integrations.FamilyVSCode, DisplayName: "VS Code", Version: "1.100.0"},
+			{ID: "goland", Family: integrations.FamilyJetBrains, DisplayName: "GoLand", Version: "2026.1"},
+		},
+	}
+	var out bytes.Buffer
+
+	err := Run(context.Background(), manager, Options{
+		AutoSelect: true,
+		Out:        &out,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := manager.installed; len(got) != 1 {
+		t.Fatalf("installed = %v, want exactly 1", got)
+	}
+	if strings.Contains(out.String(), "Available integrations:") {
+		t.Fatalf("auto-select should skip interactive prompt, got output: %s", out.String())
+	}
+}
+
+func TestRunAutoSelectWithFamily(t *testing.T) {
+	manager := &fakeManager{
+		detected: []integrations.IDEInstallation{
+			{ID: "vscode", Family: integrations.FamilyVSCode, DisplayName: "VS Code", Version: "1.100.0"},
+			{ID: "goland", Family: integrations.FamilyJetBrains, DisplayName: "GoLand", Version: "2026.1"},
+		},
+	}
+	var out bytes.Buffer
+
+	err := Run(context.Background(), manager, Options{
+		AutoSelect: true,
+		Family:     "jetbrains",
+		Out:        &out,
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := manager.installed; len(got) != 1 || got[0] != "goland" {
+		t.Fatalf("installed = %v, want [goland]", got)
+	}
+}
+
+func TestRunAutoSelectUnknownFamily(t *testing.T) {
+	manager := &fakeManager{
+		detected: []integrations.IDEInstallation{
+			{ID: "vscode", Family: integrations.FamilyVSCode, DisplayName: "VS Code", Version: "1.100.0"},
+		},
+	}
+
+	err := Run(context.Background(), manager, Options{
+		AutoSelect: true,
+		Family:     "jetbrains",
+	})
+	if err == nil {
+		t.Fatalf("expected error for unknown family, got nil")
+	}
+}

@@ -77,3 +77,7 @@ To change the formatter palette, open `Settings | Tools | 🧶 Baft` and choose 
 **"Baft: binary not found in PATH"**
 
 The plugin cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.
+
+**"Baft plugin version mismatch"**
+
+This happens when you upgrade the `baft` CLI but haven't re-run `baft integrate`. The plugin detects the mismatch and shows a **Reinstall** button in the notification. Clicking it runs `baft integrate --integration=jetbrains --yes` to install the matching plugin, then prompts you to restart the IDE.
