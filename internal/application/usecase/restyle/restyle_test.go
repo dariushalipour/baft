@@ -189,3 +189,60 @@ func TestRestyleContractReturnsParseError(t *testing.T) {
 		t.Fatal("expected parse error")
 	}
 }
+
+func TestRestylePreservesNodeDeclarationOrder(t *testing.T) {
+	repo := &mermaid.MermaidRepository{}
+
+	content := "```mermaid\nflowchart TD\n  z_last[\"z_last\"]\n  a_first[\"a_first\"]\n  m_mid[\"m_mid\"]\n\n  z_last --> a_first\n```\n"
+
+	restyled, changed, err := RestyleContract(content, repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("RestyleContract: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected styling to be added")
+	}
+
+	lines := strings.Split(restyled, "\n")
+	var nodeLines []string
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "z_last[") {
+			nodeLines = append(nodeLines, "z_last")
+		}
+		if strings.HasPrefix(trimmed, "a_first[") {
+			nodeLines = append(nodeLines, "a_first")
+		}
+		if strings.HasPrefix(trimmed, "m_mid[") {
+			nodeLines = append(nodeLines, "m_mid")
+		}
+	}
+	if len(nodeLines) != 3 {
+		t.Fatalf("expected 3 node lines, got %d in:\n%s", len(nodeLines), restyled)
+	}
+	if nodeLines[0] != "z_last" || nodeLines[1] != "a_first" || nodeLines[2] != "m_mid" {
+		t.Errorf("node order = %v, want [z_last a_first m_mid] (declaration order should be preserved)", nodeLines)
+	}
+}
+
+func TestRestyleDeterministicAcrossMultiplePasses(t *testing.T) {
+	repo := &mermaid.MermaidRepository{}
+
+	content := "```mermaid\nflowchart TD\n  z_last[\"z_last\"]\n  a_first[\"a_first\"]\n  m_mid[\"m_mid\"]\n```\n"
+
+	var results []string
+	for i := 0; i < 5; i++ {
+		restyled, _, err := RestyleContract(content, repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+		if err != nil {
+			t.Fatalf("pass %d: RestyleContract: %v", i, err)
+		}
+		results = append(results, restyled)
+		content = restyled
+	}
+
+	for i := 1; i < len(results); i++ {
+		if results[i] != results[0] {
+			t.Errorf("pass %d produced different output than pass 0", i)
+		}
+	}
+}

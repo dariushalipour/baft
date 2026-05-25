@@ -25,11 +25,11 @@ func benchmarkGraph(nNodes, nEdges int) *graph.Graph {
 		dst := filepath.ToSlash(filepath.Join("pkg", "layer", string(rune('a'+(i+1)%26)), "**"))
 		edges[src][dst] = true
 	}
-	return graph.NewGraph(nodes, edges)
+	return graph.NewGraph(nodes, edges, nil, nil)
 }
 
 func BenchmarkNodeForDir(b *testing.B) {
-	g := benchmarkGraph(100, 50)
+	gi := graph.NewGraphIndex(benchmarkGraph(100, 50))
 	testPaths := []string{
 		"pkg/layer/a/sub/deep",
 		"pkg/layer/b/nested/path",
@@ -40,12 +40,12 @@ func BenchmarkNodeForDir(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = g.NodeForDir(testPaths[i%len(testPaths)])
+		_ = gi.NodeForDir(testPaths[i%len(testPaths)])
 	}
 }
 
 func BenchmarkNodeForPath(b *testing.B) {
-	g := benchmarkGraph(100, 50)
+	gi := graph.NewGraphIndex(benchmarkGraph(100, 50))
 	testPaths := []string{
 		"pkg/layer/a/file.go",
 		"pkg/layer/b/src/main.ts",
@@ -56,7 +56,7 @@ func BenchmarkNodeForPath(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = g.NodeForPath(testPaths[i%len(testPaths)])
+		_ = gi.NodeForPath(testPaths[i%len(testPaths)])
 	}
 }
 
@@ -151,11 +151,11 @@ func BenchmarkIsFileGlob(b *testing.B) {
 }
 
 func BenchmarkNodeForPath_Cached(b *testing.B) {
-	g := benchmarkGraph(100, 50)
+	gi := graph.NewGraphIndex(benchmarkGraph(100, 50))
 	testPath := "pkg/layer/a/sub/deep"
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = g.NodeForDir(testPath)
+		_ = gi.NodeForDir(testPath)
 	}
 }

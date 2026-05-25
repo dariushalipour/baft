@@ -4,15 +4,11 @@ import (
 	"strings"
 )
 
-// MatchResult defines outcomes of a match: no match, exclusion or inclusion.
 type MatchResult int
 
 const (
-	// NoMatch defines the no match outcome of a match check.
 	NoMatch MatchResult = iota
-	// Exclude defines an exclusion of a file as a result of a match check.
 	Exclude
-	// Include defines an explicit inclusion of a file as a result of a match check.
 	Include
 )
 
@@ -24,7 +20,6 @@ const (
 
 // Pattern defines a single gitignore pattern.
 type Pattern interface {
-	// Match matches the given path to the pattern.
 	Match(path []string, isDir bool) MatchResult
 }
 
@@ -36,7 +31,6 @@ type pattern struct {
 	isGlob    bool
 }
 
-// ParsePattern parses a gitignore pattern string into the Pattern structure.
 func ParsePattern(p string, domain []string) Pattern {
 	domain = append([]string(nil), domain...)
 	res := pattern{domain: domain}

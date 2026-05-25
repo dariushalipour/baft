@@ -1,6 +1,7 @@
 package port
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"testing"
@@ -13,7 +14,7 @@ type mockFS struct {
 	readDirFn   func(path string) ([]fs.DirEntry, error)
 	readFileFn  func(path string) ([]byte, error)
 	writeFileFn func(path string, data []byte, perm os.FileMode) error
-	walkDirFn   func(root string, fn func(abs string, d fs.DirEntry) error) error
+	walkDirFn   func(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error
 }
 
 func (m *mockFS) ReadFile(path string) ([]byte, error) {
@@ -44,9 +45,9 @@ func (m *mockFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return nil, fs.ErrNotExist
 }
 
-func (m *mockFS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) error {
+func (m *mockFS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
 	if m.walkDirFn != nil {
-		return m.walkDirFn(root, fn)
+		return m.walkDirFn(ctx, root, fn)
 	}
 	return nil
 }

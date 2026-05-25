@@ -11,15 +11,16 @@ import (
 // repeated string splitting during hot-path lookups.
 type nodeInfo struct {
 	pattern     string
-	segments    []string // pre-split pattern segments
-	hasWildcard bool     // segment contains '*'
+	segments    []string
+	hasWildcard bool
 	isFileGlob  bool
 	isDirGlob   bool
 	specificity int
-	hasDirGlob  bool // node has at least one directory-glob pattern
+	hasDirGlob  bool
 }
 
 // Graph is the parsed contract from a contract file mermaid block.
+// It is a pure domain model with no mutable cache state or concurrency primitives.
 type Graph struct {
 	Nodes        map[string]string
 	NodeDisplays map[string]string
@@ -28,57 +29,64 @@ type Graph struct {
 	NodeLines    map[string]int
 	EdgeLines    map[string]int
 
+	// NodeOrder is the declaration order of nodes as defined by the user
+	// in the contract file. It serves as the tiebreaker when multiple
+	// nodes have equal specificity for a given path. Serializers should
+	// preserve this order, and new graph constructors must populate it.
+	NodeOrder []string
+
+	// EdgeOrder is the declaration order of edges as defined by the user
+	// in the contract file. Each entry is "src\tdst". Serializers should
+	// preserve this order, and new graph constructors must populate it.
+	EdgeOrder []string
+
 	// GlobSeparator, when non-empty, indicates the character used as path separator
 	// in node glob patterns (e.g. "." for Kotlin/Java style). Patterns are normalized
 	// to slash-based internally, but the original form is preserved in NodeDisplays.
 	GlobSeparator string
+}
 
-	// edgeCount caches the total edge count to avoid O(n) iteration.
+// GraphIndex provides fast cached lookups over a Graph. It holds all mutable
+// cache state and concurrency primitives, keeping the Graph domain entity pristine.
+type GraphIndex struct {
+	graph     *Graph
 	edgeCount int
-
-	// nodeInfos holds pre-computed info per node ID for fast matching.
 	nodeInfos map[string]*nodeInfo
-	// nodeInfosOnce ensures buildNodeInfos runs exactly once.
-	nodeInfosOnce sync.Once
-	// dirCache caches NodeForDir results for O(1) repeated lookups.
-	dirCache map[string]string
-	// fileCache caches NodeForPath results for file glob lookups.
-	fileCache map[string]string
-	// cacheMu protects dirCache and fileCache writes.
-	cacheMu sync.RWMutex
-	// dirNodes and fileNodes hold pre-partitioned node IDs for fast iteration.
 	dirNodes  []string
 	fileNodes []string
+	dirCache  map[string]string
+	fileCache map[string]string
+	cacheMu   sync.RWMutex
+
+	// onCompute is nil in production. Tests set it to verify the double-check
+	// pattern prevents redundant computation under concurrent cache misses.
+	// It is called only when a goroutine wins the double-check race and is
+	// about to write the cached result — never for cache hits or losers.
+	onCompute func()
 }
 
-func (g *Graph) IsEndophobic(nodeID string) bool {
-	return g.Classes[nodeID]["endophobic"]
+func (gi *GraphIndex) Graph() *Graph {
+	return gi.graph
 }
 
-// ensureNodeInfos lazily builds nodeInfos if not already done.
-func (g *Graph) ensureNodeInfos() {
-	g.nodeInfosOnce.Do(g.buildNodeInfos)
-}
-
-// buildNodeInfos pre-comutes nodeInfo for every node in the graph.
-// Must be called after Nodes and Edges are populated.
-func (g *Graph) buildNodeInfos() {
-	if g.nodeInfos == nil {
-		g.nodeInfos = make(map[string]*nodeInfo, len(g.Nodes))
+// NewGraphIndex builds a GraphIndex for the given graph, pre-computing all
+// node info and partitioning nodes into directory and file categories.
+func NewGraphIndex(g *Graph) *GraphIndex {
+	gi := &GraphIndex{
+		graph:     g,
+		nodeInfos: make(map[string]*nodeInfo, len(g.Nodes)),
 	}
-	// Pre-allocate partition slices to avoid repeated resizing.
-	g.dirNodes = make([]string, 0, len(g.Nodes))
-	g.fileNodes = make([]string, 0, len(g.Nodes))
-	// Pre-compute edge count.
-	g.edgeCount = 0
+
+	gi.dirNodes = make([]string, 0, len(g.Nodes))
+	gi.fileNodes = make([]string, 0, len(g.Nodes))
+	gi.edgeCount = 0
 	for _, targets := range g.Edges {
-		g.edgeCount += len(targets)
+		gi.edgeCount += len(targets)
 	}
 	for id, pattern := range g.Nodes {
 		normalized := pattern
 		if g.GlobSeparator != "" {
 			normalized = normalizeGlobSeparator(pattern, g.GlobSeparator)
-			g.Nodes[id] = normalized
 		}
 		ni := &nodeInfo{
 			pattern:    normalized,
@@ -89,13 +97,26 @@ func (g *Graph) buildNodeInfos() {
 		ni.isDirGlob = !ni.isFileGlob
 		ni.hasDirGlob = !ni.isFileGlob
 		ni.specificity = globSpecificityFast(ni.segments)
-		g.nodeInfos[id] = ni
+		gi.nodeInfos[id] = ni
 		if ni.isFileGlob {
-			g.fileNodes = append(g.fileNodes, id)
+			gi.fileNodes = append(gi.fileNodes, id)
 		} else {
-			g.dirNodes = append(g.dirNodes, id)
+			gi.dirNodes = append(gi.dirNodes, id)
 		}
 	}
+
+	sort.Slice(gi.dirNodes, func(i, j int) bool {
+		return nodeOrderIdx(g, gi.dirNodes[i]) < nodeOrderIdx(g, gi.dirNodes[j])
+	})
+	sort.Slice(gi.fileNodes, func(i, j int) bool {
+		return nodeOrderIdx(g, gi.fileNodes[i]) < nodeOrderIdx(g, gi.fileNodes[j])
+	})
+
+	return gi
+}
+
+func (g *Graph) IsEndophobic(nodeID string) bool {
+	return g.Classes[nodeID]["endophobic"]
 }
 
 // normalizeGlobSeparator replaces occurrences of the custom separator string with slashes.
@@ -132,71 +153,107 @@ func isSegmentChar(c byte) bool {
 		(c >= '0' && c <= '9') || c == '_' || c == '-'
 }
 
-func (g *Graph) NodeForDir(dirPath string) string {
+func (g *Graph) Allows(sourceID, targetID string) bool {
+	if sourceID == targetID {
+		return true
+	}
+	return g.Edges[sourceID][targetID]
+}
+
+// NodeForDir returns the node ID that best matches the given directory path.
+func (gi *GraphIndex) NodeForDir(dirPath string) string {
 	if dirPath == "" {
 		dirPath = "."
 	}
-	g.cacheMu.RLock()
-	if g.dirCache != nil {
-		if cached, ok := g.dirCache[dirPath]; ok {
-			g.cacheMu.RUnlock()
+	gi.cacheMu.RLock()
+	if gi.dirCache != nil {
+		if cached, ok := gi.dirCache[dirPath]; ok {
+			gi.cacheMu.RUnlock()
 			return cached
 		}
 	}
-	g.cacheMu.RUnlock()
-	g.ensureNodeInfos()
-	result := g.findMostSpecificDir(dirPath)
-	g.cacheMu.Lock()
-	if g.dirCache == nil {
-		g.dirCache = make(map[string]string, len(g.Nodes))
+	gi.cacheMu.RUnlock()
+	result := gi.findMostSpecificDir(dirPath)
+	gi.cacheMu.Lock()
+	if gi.dirCache == nil {
+		gi.dirCache = make(map[string]string, len(gi.graph.Nodes))
 	}
-	g.dirCache[dirPath] = result
-	g.cacheMu.Unlock()
+	if cached, ok := gi.dirCache[dirPath]; ok {
+		gi.cacheMu.Unlock()
+		return cached
+	}
+	if gi.onCompute != nil {
+		gi.onCompute()
+	}
+	gi.dirCache[dirPath] = result
+	gi.cacheMu.Unlock()
 	return result
 }
 
-func (g *Graph) NodeForPath(filePath string) string {
+// NodeForPath returns the node ID that best matches the given file path.
+func (gi *GraphIndex) NodeForPath(filePath string) string {
 	if filePath == "" {
 		filePath = "."
 	}
-	g.cacheMu.RLock()
-	if g.fileCache != nil {
-		if cached, ok := g.fileCache[filePath]; ok {
-			g.cacheMu.RUnlock()
+	gi.cacheMu.RLock()
+	if gi.fileCache != nil {
+		if cached, ok := gi.fileCache[filePath]; ok {
+			gi.cacheMu.RUnlock()
 			return cached
 		}
 	}
-	g.cacheMu.RUnlock()
-	g.ensureNodeInfos()
-	best := g.findMostSpecificFile(filePath)
+	gi.cacheMu.RUnlock()
+	best := gi.findMostSpecificFile(filePath)
 	if best != "" {
-		g.cacheMu.Lock()
-		if g.fileCache == nil {
-			g.fileCache = make(map[string]string, len(g.Nodes))
+		gi.cacheMu.Lock()
+		if gi.fileCache == nil {
+			gi.fileCache = make(map[string]string, len(gi.graph.Nodes))
 		}
-		g.fileCache[filePath] = best
-		g.cacheMu.Unlock()
+		if cached, ok := gi.fileCache[filePath]; ok {
+			gi.cacheMu.Unlock()
+			return cached
+		}
+		if gi.onCompute != nil {
+			gi.onCompute()
+		}
+		gi.fileCache[filePath] = best
+		gi.cacheMu.Unlock()
 		return best
 	}
 	if isFileGlobFast(filePath) {
 		filePath = DirOf(filePath)
 	}
-	result := g.NodeForDir(filePath)
-	g.cacheMu.Lock()
-	if g.fileCache == nil {
-		g.fileCache = make(map[string]string, len(g.Nodes))
+	result := gi.NodeForDir(filePath)
+	gi.cacheMu.Lock()
+	if gi.fileCache == nil {
+		gi.fileCache = make(map[string]string, len(gi.graph.Nodes))
 	}
-	g.fileCache[filePath] = result
-	g.cacheMu.Unlock()
+	if cached, ok := gi.fileCache[filePath]; ok {
+		gi.cacheMu.Unlock()
+		return cached
+	}
+	gi.fileCache[filePath] = result
+	gi.cacheMu.Unlock()
 	return result
 }
 
-func (g *Graph) findMostSpecificDir(dirPath string) string {
+func (gi *GraphIndex) EdgeCount() int {
+	return gi.edgeCount
+}
+
+func (gi *GraphIndex) FileGlobNodes() []string {
+	ids := make([]string, len(gi.fileNodes))
+	copy(ids, gi.fileNodes)
+	sort.Strings(ids)
+	return ids
+}
+
+func (gi *GraphIndex) findMostSpecificDir(dirPath string) string {
 	bestID := ""
 	bestScore := -1
 	dirSegs := splitPath(dirPath)
-	for _, id := range g.dirNodes {
-		ni := g.nodeInfos[id]
+	for _, id := range gi.dirNodes {
+		ni := gi.nodeInfos[id]
 		if matchDirGlobSegments(ni.segments, ni.hasWildcard, dirSegs) {
 			if ni.specificity > bestScore {
 				bestID = id
@@ -207,13 +264,13 @@ func (g *Graph) findMostSpecificDir(dirPath string) string {
 	return bestID
 }
 
-func (g *Graph) findMostSpecificFile(filePath string) string {
+func (gi *GraphIndex) findMostSpecificFile(filePath string) string {
 	bestID := ""
 	bestScore := -1
 	pathSegs := splitPath(filePath)
-	for _, id := range g.fileNodes {
-		ni := g.nodeInfos[id]
-		if matchFileGlobSegments(ni.segments, ni.hasWildcard, pathSegs) {
+	for _, id := range gi.fileNodes {
+		ni := gi.nodeInfos[id]
+		if matchFileGlobSegments(ni.segments, pathSegs) {
 			if ni.specificity > bestScore {
 				bestID = id
 				bestScore = ni.specificity
@@ -221,25 +278,6 @@ func (g *Graph) findMostSpecificFile(filePath string) string {
 		}
 	}
 	return bestID
-}
-
-func (g *Graph) Allows(sourceID, targetID string) bool {
-	if sourceID == targetID {
-		return true
-	}
-	return g.Edges[sourceID][targetID]
-}
-
-func (g *Graph) EdgeCount() int {
-	return g.edgeCount
-}
-
-func (g *Graph) FileGlobNodes() []string {
-	g.ensureNodeInfos()
-	ids := make([]string, len(g.fileNodes))
-	copy(ids, g.fileNodes)
-	sort.Strings(ids)
-	return ids
 }
 
 // MatchDirGlob reports whether dirPath matches the directory glob pattern.
@@ -253,7 +291,6 @@ func MatchDirGlob(pattern, dirPath string) bool {
 	return matchDirGlobSegments(seg, hasW, dirSegs)
 }
 
-// matchDirGlobSegments matches pre-split segments against a dir path.
 func matchDirGlobSegments(patternSegs []string, patternHasWildcard bool, dirSegs []string) bool {
 	if len(patternSegs) == 0 {
 		return len(dirSegs) == 0
@@ -307,8 +344,6 @@ func MatchSegment(segPattern, segment string) bool {
 	return matchSegmentFast(segPattern, segment)
 }
 
-// matchSegmentFast is the internal fast path for segment matching.
-// Uses byte-level operations to avoid string allocations.
 func matchSegmentFast(segPattern, segment string) bool {
 	if !stringsContainsByte(segPattern, '*') {
 		return segPattern == segment
@@ -316,7 +351,6 @@ func matchSegmentFast(segPattern, segment string) bool {
 	p := segPattern
 	s := segment
 
-	// Find first and last '*' positions.
 	firstStar := -1
 	lastStar := -1
 	for i := 0; i < len(p); i++ {
@@ -356,7 +390,7 @@ func matchSegmentFast(segPattern, segment string) bool {
 			i++
 			continue
 		}
-		// Find end of this middle part.
+		// Find end of this middle part between wildcards.
 		end := i
 		for end <= lastStar && p[end] != '*' {
 			end++
@@ -372,7 +406,7 @@ func matchSegmentFast(segPattern, segment string) bool {
 		i = end + 1
 	}
 
-	// Check suffix after last wildcard.
+	// Check suffix after last wildcard against remaining string.
 	suffixLen := len(p) - lastStar - 1
 	if suffixLen > 0 {
 		return strHasSuffix(remaining, p[len(p)-suffixLen:])
@@ -380,7 +414,6 @@ func matchSegmentFast(segPattern, segment string) bool {
 	return true
 }
 
-// strHasPrefix checks if s starts with prefix using byte-level comparison.
 func strHasPrefix(s, prefix string) bool {
 	if len(s) < len(prefix) {
 		return false
@@ -393,7 +426,6 @@ func strHasPrefix(s, prefix string) bool {
 	return true
 }
 
-// strHasSuffix checks if s ends with suffix using byte-level comparison.
 func strHasSuffix(s, suffix string) bool {
 	if len(s) < len(suffix) {
 		return false
@@ -407,7 +439,6 @@ func strHasSuffix(s, suffix string) bool {
 	return true
 }
 
-// strIndex finds the first occurrence of sep in s, returns -1 if not found.
 func strIndex(s, sep string) int {
 	if len(sep) == 0 {
 		return 0
@@ -432,7 +463,6 @@ func strIndex(s, sep string) int {
 	return -1
 }
 
-// stringsContainsByte checks if s contains the given byte.
 func stringsContainsByte(s string, b byte) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] == b {
@@ -450,7 +480,6 @@ func GlobSpecificity(pattern string) int {
 	return globSpecificityFast(splitPath(pattern))
 }
 
-// globSpecificityFast computes specificity from pre-split segments.
 func globSpecificityFast(segments []string) int {
 	score := 0
 	for _, segment := range segments {
@@ -471,12 +500,10 @@ func IsFileGlob(pattern string) bool {
 	return isFileGlobFast(pattern)
 }
 
-// isFileGlobFast checks if a pattern is a file glob without splitting the full path.
 func isFileGlobFast(pattern string) bool {
 	if pattern == "" || pattern == "." {
 		return false
 	}
-	// Find last '/' efficiently.
 	lastSlash := -1
 	for i := len(pattern) - 1; i >= 0; i-- {
 		if pattern[i] == '/' {
@@ -493,7 +520,6 @@ func isFileGlobFast(pattern string) bool {
 	if last == "." || last == ".." {
 		return false
 	}
-	// Check for dot in last segment.
 	for i := 0; i < len(last); i++ {
 		if last[i] == '.' {
 			return true
@@ -520,8 +546,7 @@ func MatchFileGlob(pattern, filePath string) bool {
 	return true
 }
 
-// matchFileGlobSegments matches pre-split segments for file globs.
-func matchFileGlobSegments(patternSegs []string, patternHasWildcard bool, pathSegs []string) bool {
+func matchFileGlobSegments(patternSegs, pathSegs []string) bool {
 	if len(pathSegs) == 0 {
 		return false
 	}
@@ -572,6 +597,18 @@ func NodeKeyForDir(path string) string {
 // NodeKeyForFile returns the full path as the node key.
 func NodeKeyForFile(path string) string {
 	return path
+}
+
+// NormalizeGlobs converts custom glob separators (e.g., "." for Kotlin/Java)
+// to slash-based patterns. It should be called once after parsing, so that
+// all consumers of Graph.Nodes see canonical slash-based globs.
+func (g *Graph) NormalizeGlobs() {
+	if g.GlobSeparator == "" {
+		return
+	}
+	for id, pattern := range g.Nodes {
+		g.Nodes[id] = normalizeGlobSeparator(pattern, g.GlobSeparator)
+	}
 }
 
 func (g *Graph) Validate() []string {
@@ -728,12 +765,10 @@ func pairCanOverlap(a, b string) bool {
 	return true
 }
 
-// splitPath splits a path into segments efficiently using byte operations.
 func splitPath(p string) []string {
 	if p == "" || p == "." {
 		return nil
 	}
-	// Count segments.
 	n := 1
 	for i := 0; i < len(p); i++ {
 		if p[i] == '/' {
@@ -751,7 +786,6 @@ func splitPath(p string) []string {
 	return segs
 }
 
-// hasWildcardInSegments checks if any segment contains '*'.
 func hasWildcardInSegments(segments []string) bool {
 	for _, s := range segments {
 		if stringsContainsByte(s, '*') {
@@ -761,8 +795,19 @@ func hasWildcardInSegments(segments []string) bool {
 	return false
 }
 
-// NewGraph creates a new Graph and pre-computes node info.
-func NewGraph(nodes map[string]string, edges map[string]map[string]bool) *Graph {
+func nodeOrderIdx(g *Graph, id string) int {
+	if len(g.NodeOrder) == 0 {
+		return g.NodeLines[id]
+	}
+	for i, nid := range g.NodeOrder {
+		if nid == id {
+			return i
+		}
+	}
+	return len(g.NodeOrder)
+}
+
+func NewGraph(nodes map[string]string, edges map[string]map[string]bool, nodeOrder, edgeOrder []string) *Graph {
 	g := &Graph{
 		Nodes:        make(map[string]string, len(nodes)),
 		NodeDisplays: map[string]string{},
@@ -770,10 +815,22 @@ func NewGraph(nodes map[string]string, edges map[string]map[string]bool) *Graph 
 		Classes:      map[string]map[string]bool{},
 		NodeLines:    map[string]int{},
 		EdgeLines:    map[string]int{},
+		NodeOrder:    make([]string, 0, len(nodes)),
+		EdgeOrder:    make([]string, 0, len(edges)),
 	}
 
 	for id, glob := range nodes {
 		g.Nodes[id] = glob
+	}
+
+	if len(nodeOrder) == len(nodes) {
+		g.NodeOrder = make([]string, len(nodeOrder))
+		copy(g.NodeOrder, nodeOrder)
+	} else {
+		for id := range nodes {
+			g.NodeOrder = append(g.NodeOrder, id)
+		}
+		sort.Strings(g.NodeOrder)
 	}
 
 	for src, dsts := range edges {
@@ -783,7 +840,25 @@ func NewGraph(nodes map[string]string, edges map[string]map[string]bool) *Graph 
 		}
 	}
 
-	g.buildNodeInfos()
+	if len(edgeOrder) == lenEdgeCount(edges) {
+		g.EdgeOrder = make([]string, len(edgeOrder))
+		copy(g.EdgeOrder, edgeOrder)
+	} else {
+		for src, dsts := range edges {
+			for dst := range dsts {
+				g.EdgeOrder = append(g.EdgeOrder, src+"\t"+dst)
+			}
+		}
+		sort.Strings(g.EdgeOrder)
+	}
 
 	return g
+}
+
+func lenEdgeCount(edges map[string]map[string]bool) int {
+	n := 0
+	for _, dsts := range edges {
+		n += len(dsts)
+	}
+	return n
 }

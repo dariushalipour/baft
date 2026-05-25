@@ -1,6 +1,7 @@
 package overlayfs
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"io/fs"
@@ -118,7 +119,7 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return result, nil
 }
 
-func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) error {
+func (f *FS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
 	rootClean := filepath.Clean(root)
 	rootSep := rootClean + string(filepath.Separator)
 
@@ -143,7 +144,12 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 
 	lowerEmitted := make(map[string]bool)
 
-	err := f.lower.WalkDir(rootClean, func(abs string, d fs.DirEntry) error {
+	err := f.lower.WalkDir(ctx, rootClean, func(abs string, d fs.DirEntry) error {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		lowerEmitted[abs] = true
 		if d.IsDir() {
 			bufByDir[abs] = &dirBuf{hasDir: true}
@@ -165,7 +171,7 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 
 	// If lower emitted nothing, walk overlay-only content.
 	if len(lowerEmitted) == 0 {
-		return f.walkOverlayOnly(rootClean, overlayByDir, fn)
+		return f.walkOverlayOnlyCtx(ctx, rootClean, overlayByDir, fn)
 	}
 
 	// Collect all directories that had content, sorted for deterministic output.
@@ -177,6 +183,11 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 
 	// Emit buffered entries per directory: merge lower + overlay, sort, emit.
 	for _, dir := range dirs {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		buf := bufByDir[dir]
 		if buf == nil {
 			continue
@@ -210,7 +221,7 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 	return nil
 }
 
-func (f *FS) walkOverlayOnly(root string, overlayByDir map[string][]overlayEntry, fn func(abs string, d fs.DirEntry) error) error {
+func (f *FS) walkOverlayOnlyCtx(ctx context.Context, root string, overlayByDir map[string][]overlayEntry, fn func(abs string, d fs.DirEntry) error) error {
 	var dirs []string
 	for dir := range overlayByDir {
 		dirs = append(dirs, dir)
@@ -218,6 +229,11 @@ func (f *FS) walkOverlayOnly(root string, overlayByDir map[string][]overlayEntry
 	sort.Strings(dirs)
 
 	for _, dir := range dirs {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 		entries := overlayByDir[dir]
 		for _, entry := range entries {
 			over := &syntheticEntry{name: entry.name, size: len(entry.data)}

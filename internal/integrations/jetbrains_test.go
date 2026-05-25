@@ -27,7 +27,7 @@ func TestInstallJetBrainsArchiveReplacesExistingBaftPlugin(t *testing.T) {
 		t.Fatalf("zip.NewReader: %v", err)
 	}
 
-	err = installJetBrainsArchive(IDEInstallation{DisplayName: "GoLand", PluginDir: pluginDir}, reader)
+	err = installJetBrainsArchive(context.Background(), IDEInstallation{DisplayName: "GoLand", PluginDir: pluginDir}, reader)
 	if err != nil {
 		t.Fatalf("installJetBrainsArchive returned error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestInstallJetBrainsArchiveRefusesUnknownExistingPlugin(t *testing.T) {
 		t.Fatalf("zip.NewReader: %v", err)
 	}
 
-	err = installJetBrainsArchive(IDEInstallation{DisplayName: "GoLand", PluginDir: pluginDir}, reader)
+	err = installJetBrainsArchive(context.Background(), IDEInstallation{DisplayName: "GoLand", PluginDir: pluginDir}, reader)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -98,7 +98,11 @@ func TestJetBrainsVerifyRejectsStaleInstalledVersion(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected version mismatch error, got nil")
 	}
-	if !strings.Contains(err.Error(), "expected "+expectedPluginVersion(FamilyJetBrains)) {
+	jetbrainsVersion, verr := expectedPluginVersion(FamilyJetBrains)
+	if verr != nil {
+		t.Fatalf("could not get embedded JetBrains version: %v", verr)
+	}
+	if !strings.Contains(err.Error(), "expected "+jetbrainsVersion) {
 		t.Fatalf("expected version mismatch message, got %v", err)
 	}
 }

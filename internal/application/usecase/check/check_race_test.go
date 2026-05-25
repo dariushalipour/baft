@@ -9,7 +9,7 @@ import (
 
 func TestCapsuleChecker_ConcurrentMerge(t *testing.T) {
 	ch := &capsuleChecker{
-		res: &capsuleResult{graph: &graph.Graph{}},
+		res: &capsuleResult{graphIndex: graph.NewGraphIndex(&graph.Graph{})},
 	}
 
 	numWorkers := 10

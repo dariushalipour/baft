@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
+	golangLang "github.com/dariushalipour/baft/internal/adapter/languages/golang"
 	"github.com/dariushalipour/baft/internal/domain/graph"
 )
 
@@ -142,5 +144,44 @@ func TestValidateContractGraph_InvalidGlob(t *testing.T) {
 	}
 	if result.Errors[0].Rule != "invalid-node-glob" {
 		t.Fatalf("expected invalid-node-glob rule, got %q", result.Errors[0].Rule)
+	}
+}
+
+// TestContractOverlapErrors_NoDuplicates verifies that each overlapping node
+// pair produces exactly one overlap error. Before the fix, every worker
+// goroutine iterated the entire candidatePairs slice, so with N workers and
+// M pairs, N×M results were produced instead of M.
+func TestContractOverlapErrors_NoDuplicates(t *testing.T) {
+	fsys := memfs.New()
+
+	// Two overlapping pairs with witness files.
+	if err := fsys.WriteFile("/tmp/a/b/x.go", []byte("package b\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := fsys.WriteFile("/tmp/c/d/x.go", []byte("package d\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	md := "```mermaid\nflowchart TD\n" +
+		`  n1["a/&ast;&ast;"]` + "\n" +
+		`  n2["a/&ast;"]` + "\n" +
+		`  n3["c/&ast;&ast;"]` + "\n" +
+		`  n4["c/&ast;"]` + "\n" +
+		"```\n"
+
+	g := mustLoadContractGraph(t, md)
+	lang := golangLang.Language{}
+
+	result := validateContractGraph(fsys, lang, "/tmp/BAFT.md", g)
+
+	overlapCount := 0
+	for _, e := range result.Errors {
+		if e.Rule == "node-overlap" {
+			overlapCount++
+		}
+	}
+
+	if overlapCount != 2 {
+		t.Fatalf("expected 2 overlap errors, got %d: %v", overlapCount, result.Errors)
 	}
 }

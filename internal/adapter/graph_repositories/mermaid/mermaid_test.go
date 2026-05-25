@@ -276,8 +276,8 @@ func TestRoundTrip_LoadSaveLoad(t *testing.T) {
 		}
 	}
 
-	origEdges := original.EdgeCount()
-	rtEdges := roundTrip.EdgeCount()
+	origEdges := graph.NewGraphIndex(original).EdgeCount()
+	rtEdges := graph.NewGraphIndex(roundTrip).EdgeCount()
 	if origEdges != rtEdges {
 		t.Fatalf("edge count mismatch: %d vs %d", origEdges, rtEdges)
 	}
@@ -666,7 +666,7 @@ func TestSave_DeterministicOutput(t *testing.T) {
 		"internal_slash_usecase": {"internal_slash_domain": true},
 		"internal_slash_api":     {"internal_slash_usecase": true},
 	}
-	g := graph.NewGraph(nodes, edges)
+	g := graph.NewGraph(nodes, edges, nil, nil)
 
 	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 
@@ -696,7 +696,7 @@ func TestSave_DeterministicOutput(t *testing.T) {
 func TestSave_NoEdges(t *testing.T) {
 	g := graph.NewGraph(map[string]string{
 		"src_slash_domain": "src/domain",
-	}, nil)
+	}, nil, nil, nil)
 
 	out := (&MermaidRepository{}).Save(g, port.GraphSaveOptions{})
 	if !strings.Contains(out, "src_slash_domain") {
@@ -973,6 +973,106 @@ func TestLoad_AllowsUndefinedEdgeNodesForContractValidation(t *testing.T) {
 	}
 	if g.EdgeLines["app\tdomain"] != 3 {
 		t.Fatalf("expected edge line metadata to be preserved, got %d", g.EdgeLines["app\tdomain"])
+	}
+}
+
+func TestLoad_Save_PreservesNodeAndEdgeOrder(t *testing.T) {
+	repo := &MermaidRepository{}
+
+	md := "```mermaid\nflowchart TD\n" +
+		`  z_last["z_last"]` + "\n" +
+		`  a_first["a_first"]` + "\n" +
+		`  m_mid["m_mid"]` + "\n" +
+		"  z_last --> m_mid\n" +
+		"  a_first --> z_last\n" +
+		"  m_mid --> a_first\n" +
+		"```\n"
+
+	g, err := repo.Load(md)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(g.NodeOrder) != 3 {
+		t.Fatalf("NodeOrder length: got %d, want 3", len(g.NodeOrder))
+	}
+	if g.NodeOrder[0] != "z_last" || g.NodeOrder[1] != "a_first" || g.NodeOrder[2] != "m_mid" {
+		t.Errorf("NodeOrder = %v, want [z_last a_first m_mid]", g.NodeOrder)
+	}
+	if len(g.EdgeOrder) != 3 {
+		t.Fatalf("EdgeOrder length: got %d, want 3", len(g.EdgeOrder))
+	}
+	if g.EdgeOrder[0] != "z_last\tm_mid" || g.EdgeOrder[1] != "a_first\tz_last" || g.EdgeOrder[2] != "m_mid\ta_first" {
+		t.Errorf("EdgeOrder = %v, want [z_last\\tm_mid a_first\\tz_last m_mid\\ta_first]", g.EdgeOrder)
+	}
+
+	saved := repo.Save(g, port.GraphSaveOptions{})
+
+	lines := strings.Split(saved, "\n")
+	var nodeOrder []string
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.HasPrefix(trimmed, "z_last[") {
+			nodeOrder = append(nodeOrder, "z_last")
+		}
+		if strings.HasPrefix(trimmed, "a_first[") {
+			nodeOrder = append(nodeOrder, "a_first")
+		}
+		if strings.HasPrefix(trimmed, "m_mid[") {
+			nodeOrder = append(nodeOrder, "m_mid")
+		}
+	}
+	if len(nodeOrder) != 3 {
+		t.Fatalf("expected 3 node lines in saved output, got %d:\n%s", len(nodeOrder), saved)
+	}
+	if nodeOrder[0] != "z_last" || nodeOrder[1] != "a_first" || nodeOrder[2] != "m_mid" {
+		t.Errorf("saved node order = %v, want [z_last a_first m_mid]", nodeOrder)
+	}
+
+	var edgeOrder []string
+	for _, l := range lines {
+		trimmed := strings.TrimSpace(l)
+		if strings.Contains(trimmed, " --> ") && !strings.HasPrefix(trimmed, "linkStyle") {
+			edgeOrder = append(edgeOrder, trimmed)
+		}
+	}
+	if len(edgeOrder) != 3 {
+		t.Fatalf("expected 3 edge lines in saved output, got %d:\n%s", len(edgeOrder), saved)
+	}
+	if edgeOrder[0] != "z_last --> m_mid" || edgeOrder[1] != "a_first --> z_last" || edgeOrder[2] != "m_mid --> a_first" {
+		t.Errorf("saved edge order = %v, want [z_last --> m_mid a_first --> z_last m_mid --> a_first]", edgeOrder)
+	}
+}
+
+func TestLoad_Save_RoundTripDeterministic(t *testing.T) {
+	repo := &MermaidRepository{}
+
+	md := "```mermaid\nflowchart TD\n" +
+		`  z_last["z_last"]` + "\n" +
+		`  a_first["a_first"]` + "\n" +
+		`  m_mid["m_mid"]` + "\n" +
+		"  z_last --> a_first\n" +
+		"```\n"
+
+	g, err := repo.Load(md)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	var results []string
+	current := g
+	for i := 0; i < 5; i++ {
+		saved := repo.Save(current, port.GraphSaveOptions{})
+		results = append(results, saved)
+		current, err = repo.Load(saved)
+		if err != nil {
+			t.Fatalf("round %d Load: %v", i, err)
+		}
+	}
+
+	for i := 1; i < len(results); i++ {
+		if results[i] != results[0] {
+			t.Errorf("round %d produced different output than round 0", i)
+		}
 	}
 }
 

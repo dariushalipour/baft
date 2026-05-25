@@ -1,6 +1,7 @@
 package typescript
 
 import (
+	"context"
 	"sort"
 	"testing"
 
@@ -322,6 +323,66 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 			t.Errorf("got (%q, %v), want (src/lib/utils, true)", gotPath, gotIntl)
 		}
 	})
+
+	t.Run("circular extends stops infinite recursion", func(t *testing.T) {
+		l := &Language{}
+		tsconfigA := `{
+			"extends": "/tsconfig.b.json",
+			"compilerOptions": {
+				"paths": {"@a/*": ["a/*"]}
+			}
+		}`
+		tsconfigB := `{
+			"extends": "/tsconfig.a.json",
+			"compilerOptions": {
+				"paths": {"@b/*": ["b/*"]}
+			}
+		}`
+		fs := memfs.New()
+		fs.WriteFile("/tsconfig.a.json", []byte(tsconfigA), 0o644)
+		fs.WriteFile("/tsconfig.b.json", []byte(tsconfigB), 0o644)
+		fs.WriteFile("/tsconfig.json", []byte(`{"extends": "/tsconfig.a.json"}`), 0o644)
+
+		capsule := port.Capsule{CapsuleID: "my-app", Dir: "/"}
+
+		gotPath, gotIntl := l.ResolveInternalTarget(fs, port.ImportSpec{Path: "@a/test"}, capsule, "src/app.ts")
+		if !gotIntl {
+			t.Error("expected @a/test to resolve with partial config before cycle detected")
+		}
+		if gotPath != "a/test" {
+			t.Errorf("got %q, want a/test", gotPath)
+		}
+
+		gotPath, gotIntl = l.ResolveInternalTarget(fs, port.ImportSpec{Path: "@b/test"}, capsule, "src/app.ts")
+		if !gotIntl {
+			t.Error("expected @b/test to resolve with partial config before cycle detected")
+		}
+		if gotPath != "b/test" {
+			t.Errorf("got %q, want b/test", gotPath)
+		}
+	})
+
+	t.Run("self-referencing extends stops infinite recursion", func(t *testing.T) {
+		l := &Language{}
+		tsconfig := `{
+			"extends": "./tsconfig.json",
+			"compilerOptions": {
+				"paths": {"@self/*": ["self/*"]}
+			}
+		}`
+		fs := memfs.New()
+		fs.WriteFile("/tsconfig.json", []byte(tsconfig), 0o644)
+
+		capsule := port.Capsule{CapsuleID: "my-app", Dir: "/"}
+
+		gotPath, gotIntl := l.ResolveInternalTarget(fs, port.ImportSpec{Path: "@self/test"}, capsule, "src/app.ts")
+		if !gotIntl {
+			t.Error("expected @self/test to resolve from root config even though self-extends is skipped")
+		}
+		if gotPath != "self/test" {
+			t.Errorf("got %q, want self/test", gotPath)
+		}
+	})
 }
 
 func TestReadPackageName(t *testing.T) {
@@ -369,7 +430,7 @@ func TestDiscoverSkipsNamelessPackage(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	(&Language{}).Register(disco)
-	got, err := disco.Discover(fs, "/")
+	got, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +455,7 @@ func TestDiscoverDraftSkipsNamelessPackage(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	(&Language{}).Register(disco)
-	got, err := disco.Discover(fs, "/")
+	got, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -417,7 +478,7 @@ func TestDiscoverAllNamelessSkipped(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	(&Language{}).Register(disco)
-	got, err := disco.Discover(fs, "/")
+	got, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}

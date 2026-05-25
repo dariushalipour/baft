@@ -1,21 +1,19 @@
 package typescript
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"path"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 
+	"github.com/dariushalipour/baft/internal/adapter/languages/internal/lineoffsets"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
 type Language struct {
-	// tsconfigCache caches resolved tsconfig results per directory.
 	tsconfigCache sync.Map
 }
 
@@ -35,8 +33,6 @@ func (l *Language) IsScannableFile(rel string) bool {
 	return false
 }
 
-// Combined import regex: matches all four import patterns in a single pass.
-// Group 1: single-quoted path, Group 2: double-quoted path.
 var combinedImportRe = regexp.MustCompile(`(?m)(?:^\s*(?:import|export)\s+.*?|^\s*import\s+\w+\s*=\s*require\s*\(|\bimport\s*\(|\brequire\s*\()('([^']+)'|\"([^\"]+)\")`)
 
 func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
@@ -44,30 +40,21 @@ func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Im
 	if err != nil {
 		return nil, err
 	}
-	lineOffsets := makeLineOffsets(data)
+	lineOffsets := lineoffsets.MakeLineOffsets(data)
 	dataStr := string(data)
 	seen := make(map[string]bool, 16)
 	out := make([]port.ImportSpec, 0, 16)
-	// Single-pass: find all import paths at once instead of 4 separate regex scans.
-	// m[0]=full, m[1]='full-single', m[2]=single-content, m[3]="full-double", m[4]=double-content
 	for _, m := range combinedImportRe.FindAllStringSubmatchIndex(dataStr, -1) {
 		var pathStart, pathEnd int
 		if m[2] >= 0 {
-			// Single-quoted: m[1] = 'path' (with quotes), m[2] = path content (without quotes)
-			// But m[1] includes the quotes, so content is m[1]+1 : m[2]
-			// Actually from debug: m[2]=20 is start of ' and m[3]=27 is end of '
-			// m[4]=21 is start of content and m[5]=26 is end of content
-			// Since m[4]>=0 means double-quote match, m[2]>=0 means single-quote match
-			// For single-quote: content is at m[2]+1 : m[3]-1
 			pathStart = m[2] + 1
 			pathEnd = m[3] - 1
 		} else {
-			// Double-quoted: content is at m[4]+1 : m[5]-1
 			pathStart = m[4] + 1
 			pathEnd = m[5] - 1
 		}
-		line, col := offsetToLineCol(lineOffsets, data, pathStart)
-		_, colEnd := offsetToLineCol(lineOffsets, data, pathEnd)
+		line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, pathStart)
+		_, colEnd := lineoffsets.OffsetToLineCol(lineOffsets, data, pathEnd)
 		spec := dataStr[pathStart:pathEnd]
 		if !seen[spec] {
 			seen[spec] = true
@@ -75,39 +62,6 @@ func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Im
 		}
 	}
 	return out, nil
-}
-
-// makeLineOffsets precomputes the byte offset of each line start for O(1) line/col lookup.
-func makeLineOffsets(data []byte) []int {
-	offsets := make([]int, 0, bytes.Count(data, []byte{'\n'})+1)
-	offsets = append(offsets, 0)
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\n' {
-			offsets = append(offsets, i+1)
-		}
-	}
-	return offsets
-}
-
-// offsetToLineCol converts a byte offset to line/col using precomputed line offsets.
-// Both line and col are 1-indexed to match the original byteOffsetToLineCol behavior.
-func offsetToLineCol(lineOffsets []int, data []byte, offset int) (int, int) {
-	if offset > len(data) {
-		offset = len(data)
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	// Binary search for the first line offset greater than the target offset.
-	idx := sort.Search(len(lineOffsets), func(i int) bool {
-		return lineOffsets[i] > offset
-	})
-	line := idx - 1
-	if line < 0 {
-		line = 0
-	}
-	// Return 1-indexed line number.
-	return line + 1, offset - lineOffsets[line] + 1
 }
 
 func (l *Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
@@ -149,7 +103,6 @@ func (l *Language) resolveTsconfigCached(fsys port.FileSystem, capsuleDir string
 		return nil, err
 	}
 	if cfg != nil {
-		// Store in cache using LoadOrStore to avoid duplicate resolution.
 		if loaded, ok := l.tsconfigCache.LoadOrStore(capsuleDir, cfg); ok {
 			return loaded.(*tsconfig), nil
 		}
@@ -286,7 +239,8 @@ func resolveTsconfig(fsys port.FileSystem, capsuleDir string) (*tsconfig, error)
 	cfg.configDir = capsuleDir
 
 	if cfg.Extends != "" {
-		parent, err := resolveTsconfigExtends(fsys, cfg.Extends, capsuleDir)
+		visited := map[string]bool{filepath.Clean(capsuleDir): true}
+		parent, err := resolveTsconfigExtends(fsys, cfg.Extends, capsuleDir, visited)
 		if err == nil && parent != nil {
 			cfg.merge(parent)
 		}
@@ -295,7 +249,7 @@ func resolveTsconfig(fsys port.FileSystem, capsuleDir string) (*tsconfig, error)
 	return &cfg, nil
 }
 
-func resolveTsconfigExtends(fsys port.FileSystem, extends string, capsuleDir string) (*tsconfig, error) {
+func resolveTsconfigExtends(fsys port.FileSystem, extends string, capsuleDir string, visited map[string]bool) (*tsconfig, error) {
 	target := extends
 	if !filepath.IsAbs(extends) {
 		if !strings.HasPrefix(extends, "@") && !strings.Contains(extends, "/") {
@@ -308,6 +262,12 @@ func resolveTsconfigExtends(fsys port.FileSystem, extends string, capsuleDir str
 		}
 	}
 
+	targetClean := filepath.Clean(target)
+	if visited[targetClean] {
+		return nil, fmt.Errorf("circular extends detected: %s", targetClean)
+	}
+	visited[targetClean] = true
+
 	data, err := fsys.ReadFile(target)
 	if err != nil {
 		return nil, err
@@ -319,7 +279,7 @@ func resolveTsconfigExtends(fsys port.FileSystem, extends string, capsuleDir str
 	cfg.configDir = filepath.Dir(target)
 
 	if cfg.Extends != "" {
-		parent, err := resolveTsconfigExtends(fsys, cfg.Extends, filepath.Dir(target))
+		parent, err := resolveTsconfigExtends(fsys, cfg.Extends, filepath.Dir(target), visited)
 		if err == nil && parent != nil {
 			cfg.merge(parent)
 		}

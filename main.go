@@ -55,38 +55,44 @@ var helpIntroText string
 //go:embed docs/manual.md
 var manualText string
 
+const (
+	exitSuccess = 0
+	exitError   = 1
+)
+
 func main() {
 	args := os.Args[1:]
 
 	if len(args) == 0 {
 		printUsage()
-		os.Exit(0)
+		os.Exit(exitSuccess)
 	}
 
+	var exitCode int
 	switch args[0] {
 	case "--help", "-h":
 		printUsage()
-		os.Exit(0)
 	case "--version", "-v":
 		printVersion()
-		os.Exit(0)
 	case "check":
-		runCheck(args[1:])
+		exitCode = runCheck(args[1:])
 	case "dump":
-		runDump(args[1:])
+		exitCode = runDump(args[1:])
 	case "restyle":
-		runRestyle(args[1:])
+		exitCode = runRestyle(args[1:])
 	case "integrate":
-		runIntegrate(args[1:])
+		exitCode = runIntegrate(args[1:])
 	case "manual":
-		runManual(args[1:])
+		exitCode = runManual(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\nRun 'baft --help' for usage\n", args[0])
-		os.Exit(1)
+		exitCode = exitError
 	}
+
+	os.Exit(exitCode)
 }
 
-func runCheck(args []string) {
+func runCheck(args []string) int {
 	var root string
 	var reporterName = "text"
 	var langs []string
@@ -97,7 +103,7 @@ func runCheck(args []string) {
 		switch a {
 		case "--help", "-h":
 			printCheckUsage()
-			os.Exit(0)
+			return exitSuccess
 		case "--overlay-stdin":
 			overlayStdin = true
 		default:
@@ -111,13 +117,13 @@ func runCheck(args []string) {
 						val = args[i]
 					} else {
 						fmt.Fprintf(os.Stderr, "--lang requires a value\n\nRun 'baft check --help' for usage\n")
-						os.Exit(1)
+						return exitError
 					}
 				}
 				langs = append(langs, val)
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft check --help' for usage\n", a)
-				os.Exit(1)
+				return exitError
 			} else if root == "" {
 				root = a
 			}
@@ -130,7 +136,7 @@ func runCheck(args []string) {
 
 	if reporterName != "text" && reporterName != "json" && reporterName != "vsce" && reporterName != "intellij" {
 		fmt.Fprintf(os.Stderr, "unknown reporter: %s\n\nRun 'baft check --help' for usage\n", reporterName)
-		os.Exit(1)
+		return exitError
 	}
 
 	var fs port.FileSystem = realfs.New()
@@ -138,11 +144,15 @@ func runCheck(args []string) {
 		payload, err := overlayfs.Decode(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "invalid overlay stdin: %v\n", err)
-			os.Exit(1)
+			return exitError
 		}
 		fs = overlayfs.NewFromPayload(fs, payload)
 	}
-	languages := resolveLangs(langs)
+	languages, err := resolveLangs(langs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return exitError
+	}
 	repo := &mermaid.MermaidRepository{}
 
 	discovery := service.NewCapsuleDiscovery()
@@ -167,11 +177,12 @@ func runCheck(args []string) {
 	fmt.Print(renderer.Render(result))
 
 	if len(result.Violations) > 0 || len(result.Errors) > 0 {
-		os.Exit(1)
+		return exitError
 	}
+	return exitSuccess
 }
 
-func runDump(args []string) {
+func runDump(args []string) int {
 	var root string
 	var langs []string
 	saveOpts := port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant}
@@ -181,7 +192,7 @@ func runDump(args []string) {
 		switch a {
 		case "--help", "-h":
 			printDumpUsage()
-			os.Exit(0)
+			return exitSuccess
 		default:
 			if strings.HasPrefix(a, "--lang") {
 				val := strings.TrimPrefix(a, "--lang")
@@ -191,7 +202,7 @@ func runDump(args []string) {
 						val = args[i]
 					} else {
 						fmt.Fprintf(os.Stderr, "--lang requires a value\n\nRun 'baft dump --help' for usage\n")
-						os.Exit(1)
+						return exitError
 					}
 				}
 				langs = append(langs, val)
@@ -204,17 +215,17 @@ func runDump(args []string) {
 					val = args[i]
 				} else {
 					fmt.Fprintf(os.Stderr, "--color-palette requires a value\n\nRun 'baft dump --help' for usage\n")
-					os.Exit(1)
+					return exitError
 				}
 				palette, ok := port.ParseGraphColorPalette(val)
 				if !ok {
 					fmt.Fprintf(os.Stderr, "unknown color palette: %s\n\nRun 'baft dump --help' for usage\n", val)
-					os.Exit(1)
+					return exitError
 				}
 				saveOpts.ColorPalette = palette
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft dump --help' for usage\n", a)
-				os.Exit(1)
+				return exitError
 			} else if root == "" {
 				root = a
 			}
@@ -226,7 +237,11 @@ func runDump(args []string) {
 	}
 
 	fs := realfs.New()
-	languages := resolveLangs(langs)
+	languages, err := resolveLangs(langs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return exitError
+	}
 	repo := &mermaid.MermaidRepository{}
 
 	discovery := service.NewCapsuleDiscovery()
@@ -237,10 +252,10 @@ func runDump(args []string) {
 	result, err := dump.RunWithOptions(fs, root, languages, repo, discovery, saveOpts, os.Stderr)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return exitError
 	}
 	if len(result.Contracts) == 0 && len(result.Errors) == 0 {
-		os.Exit(0)
+		return exitSuccess
 	}
 
 	for _, c := range result.Contracts {
@@ -254,24 +269,26 @@ func runDump(args []string) {
 			fmt.Printf("[%s] %s (%d files, %d nodes, %d edges)\n", status, c.ContractPath, c.FilesScanned, c.Nodes, c.Edges)
 		}
 	}
+	return exitSuccess
 }
 
-func runManual(args []string) {
+func runManual(args []string) int {
 	for _, a := range args {
 		switch a {
 		case "--help", "-h":
 			printManual()
-			os.Exit(0)
+			return exitSuccess
 		default:
 			fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft manual' for the Baft manual\n", a)
-			os.Exit(1)
+			return exitError
 		}
 	}
 
 	printManual()
+	return exitSuccess
 }
 
-func runIntegrate(args []string) {
+func runIntegrate(args []string) int {
 	var verifyCompatible bool
 	var autoSelect bool
 	var family string
@@ -284,7 +301,7 @@ func runIntegrate(args []string) {
 		switch a {
 		case "--help", "-h":
 			printIntegrateUsage()
-			os.Exit(0)
+			return exitSuccess
 		case "--verify-compatible":
 			verifyCompatible = true
 		case "--yes", "-y":
@@ -296,7 +313,7 @@ func runIntegrate(args []string) {
 			} else if a == "--integration" {
 				if i+1 >= len(args) {
 					fmt.Fprintf(os.Stderr, "--integration requires a value\n")
-					os.Exit(1)
+					return exitError
 				}
 				i++
 				family = args[i]
@@ -306,7 +323,7 @@ func runIntegrate(args []string) {
 			} else if a == "--plugin-version" {
 				if i+1 >= len(args) {
 					fmt.Fprintf(os.Stderr, "--plugin-version requires a value\n")
-					os.Exit(1)
+					return exitError
 				}
 				i++
 				pluginVersion = args[i]
@@ -315,27 +332,27 @@ func runIntegrate(args []string) {
 				parsed, err := strconv.Atoi(value)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "invalid protocol value: %s\n", value)
-					os.Exit(1)
+					return exitError
 				}
 				protocol = parsed
 			} else if a == "--protocol" {
 				if i+1 >= len(args) {
 					fmt.Fprintf(os.Stderr, "--protocol requires a value\n")
-					os.Exit(1)
+					return exitError
 				}
 				i++
 				parsed, err := strconv.Atoi(args[i])
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "invalid protocol value: %s\n", args[i])
-					os.Exit(1)
+					return exitError
 				}
 				protocol = parsed
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft integrate --help' for usage\n", a)
-				os.Exit(1)
+				return exitError
 			} else {
 				fmt.Fprintf(os.Stderr, "unknown argument: %s\n\nRun 'baft integrate --help' for usage\n", a)
-				os.Exit(1)
+				return exitError
 			}
 		}
 	}
@@ -344,19 +361,19 @@ func runIntegrate(args []string) {
 	if verifyCompatible {
 		if integrationID == "" || pluginVersion == "" || protocol == 0 {
 			fmt.Fprintln(os.Stderr, "--verify-compatible requires --integration, --plugin-version, and --protocol")
-			os.Exit(1)
+			return exitError
 		}
 		report := catalog.VerifyCompatibility(integrationID, pluginVersion, protocol)
 		encoded, err := json.Marshal(report)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "could not encode compatibility report: %v\n", err)
-			os.Exit(1)
+			return exitError
 		}
 		fmt.Println(string(encoded))
 		if !report.Compatible {
-			os.Exit(1)
+			return exitError
 		}
-		return
+		return exitSuccess
 	}
 
 	err := integrateusecase.Run(context.Background(), catalog, integrateusecase.Options{
@@ -367,11 +384,12 @@ func runIntegrate(args []string) {
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return exitError
 	}
+	return exitSuccess
 }
 
-func runRestyle(args []string) {
+func runRestyle(args []string) int {
 	var root string
 	var contractPath string
 	var stdin bool
@@ -382,7 +400,7 @@ func runRestyle(args []string) {
 		switch a {
 		case "--help", "-h":
 			printRestyleUsage()
-			os.Exit(0)
+			return exitSuccess
 		case "--stdin":
 			stdin = true
 		default:
@@ -395,12 +413,12 @@ func runRestyle(args []string) {
 					val = args[i]
 				} else {
 					fmt.Fprintf(os.Stderr, "--color-palette requires a value\n\nRun 'baft restyle --help' for usage\n")
-					os.Exit(1)
+					return exitError
 				}
 				palette, ok := port.ParseGraphColorPalette(val)
 				if !ok {
 					fmt.Fprintf(os.Stderr, "unknown color palette: %s\n\nRun 'baft restyle --help' for usage\n", val)
-					os.Exit(1)
+					return exitError
 				}
 				saveOpts.ColorPalette = palette
 			} else if a == "--path" || strings.HasPrefix(a, "--path=") {
@@ -412,12 +430,12 @@ func runRestyle(args []string) {
 					val = args[i]
 				} else {
 					fmt.Fprintf(os.Stderr, "--path requires a value\n\nRun 'baft restyle --help' for usage\n")
-					os.Exit(1)
+					return exitError
 				}
 				contractPath = val
 			} else if strings.HasPrefix(a, "--") {
 				fmt.Fprintf(os.Stderr, "unknown flag: %s\n\nRun 'baft restyle --help' for usage\n", a)
-				os.Exit(1)
+				return exitError
 			} else if root == "" {
 				root = a
 			}
@@ -431,32 +449,32 @@ func runRestyle(args []string) {
 	if stdin {
 		if contractPath == "" {
 			fmt.Fprintf(os.Stderr, "--stdin requires --path\n\nRun 'baft restyle --help' for usage\n")
-			os.Exit(1)
+			return exitError
 		}
 		if root != "." {
 			fmt.Fprintf(os.Stderr, "--stdin does not accept a root-dir\n\nRun 'baft restyle --help' for usage\n")
-			os.Exit(1)
+			return exitError
 		}
 
 		raw, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "restyle: %s: %v\n", contractPath, err)
-			os.Exit(1)
+			return exitError
 		}
 
 		repo := &mermaid.MermaidRepository{}
 		restyled, _, err := restyle.RestyleContract(string(raw), repo, saveOpts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "restyle: %s: %v\n", contractPath, err)
-			os.Exit(1)
+			return exitError
 		}
 
 		fmt.Print(restyled)
-		return
+		return exitSuccess
 	}
 	if contractPath != "" {
 		fmt.Fprintf(os.Stderr, "--path requires --stdin\n\nRun 'baft restyle --help' for usage\n")
-		os.Exit(1)
+		return exitError
 	}
 
 	fs := realfs.New()
@@ -465,7 +483,7 @@ func runRestyle(args []string) {
 	result, err := restyle.Run(fs, root, repo, saveOpts)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return exitError
 	}
 	for _, contract := range result.Contracts {
 		status := "unchanged"
@@ -478,8 +496,9 @@ func runRestyle(args []string) {
 		for _, restyleErr := range result.Errors {
 			fmt.Fprintf(os.Stderr, "restyle: %s\n", restyleErr)
 		}
-		os.Exit(1)
+		return exitError
 	}
+	return exitSuccess
 }
 
 func printUsage() {
@@ -525,9 +544,9 @@ func cliVersion() string {
 	return v
 }
 
-func resolveLangs(names []string) []port.Language {
+func resolveLangs(names []string) ([]port.Language, error) {
 	if len(names) == 0 {
-		return []port.Language{golang.Language{}, dart.Language{}, kotlin.Language{}, &typescript.Language{}, rust.Language{}}
+		return []port.Language{golang.Language{}, dart.Language{}, kotlin.Language{}, &typescript.Language{}, rust.Language{}}, nil
 	}
 	var out []port.Language
 	for _, n := range names {
@@ -543,9 +562,8 @@ func resolveLangs(names []string) []port.Language {
 		case "rust":
 			out = append(out, rust.Language{})
 		default:
-			fmt.Fprintf(os.Stderr, "unknown language: %s\n", n)
-			os.Exit(1)
+			return nil, fmt.Errorf("unknown language: %s", n)
 		}
 	}
-	return out
+	return out, nil
 }

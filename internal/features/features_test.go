@@ -27,8 +27,6 @@ import (
 	"github.com/dariushalipour/baft/pkg/treeview"
 )
 
-// ---------- shared workspace state ----------
-
 type contractReport struct {
 	contractPath string
 	nodes        int
@@ -321,7 +319,7 @@ type fileSnapshot struct {
 
 func snapshotFiles(fsys port.FileSystem, rootDir string) (map[string]fileSnapshot, error) {
 	snapshots := make(map[string]fileSnapshot)
-	err := fsys.WalkDir(rootDir, func(abs string, d fs.DirEntry) error {
+	err := fsys.WalkDir(context.Background(), rootDir, func(abs string, d fs.DirEntry) error {
 		if d.IsDir() {
 			return nil
 		}
@@ -413,8 +411,6 @@ func assertFileNotExists(fsys port.FileSystem, rootDir, path string) error {
 	}
 	return nil
 }
-
-// ---------- check feature tests ----------
 
 type checkWorld struct {
 	ws  workspace
@@ -523,8 +519,6 @@ func TestTypescriptCheckFeatures(t *testing.T) {
 		t.Fatal("non-zero status returned, failed to run typescript check feature tests")
 	}
 }
-
-// ---------- dump feature tests ----------
 
 type dumpWorld struct {
 	ws          workspace
@@ -786,7 +780,7 @@ func TestDumpFeatures(t *testing.T) {
 	}
 }
 
-// ---------- dump helpers ----------
+// dump helpers
 
 func wrapLangWithMissingFiles(base port.Language, missingFiles map[string]string) port.Language {
 	return &langWithMissingFiles{base: base, missingFiles: missingFiles}

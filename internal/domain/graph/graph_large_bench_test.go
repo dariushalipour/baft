@@ -23,13 +23,13 @@ func BenchmarkNodeForDir_LargeGraph(b *testing.B) {
 		src := "node" + string(rune('a'+i%26))
 		edges[src] = make(map[string]bool)
 	}
-	g := graph.NewGraph(nodes, edges)
+	gi := graph.NewGraphIndex(graph.NewGraph(nodes, edges, nil, nil))
 
 	testPath := "pkg/layer3/sub2/deep/nested/path"
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		_ = g.NodeForDir(testPath)
+		_ = gi.NodeForDir(testPath)
 	}
 }
 

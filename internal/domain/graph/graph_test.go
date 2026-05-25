@@ -1,6 +1,11 @@
 package graph
 
-import "testing"
+import (
+	"fmt"
+	"sync"
+	"sync/atomic"
+	"testing"
+)
 
 func TestIsEndophobic(t *testing.T) {
 	tests := []struct {
@@ -64,6 +69,7 @@ func TestNodeForDir_MostSpecificWins(t *testing.T) {
 			"migration":     "internal/migration/**",
 		},
 	}
+	gi := NewGraphIndex(g)
 	tests := map[string]string{
 		".":                                  "main",
 		"internal/adapter/inbound/httpapi":   "httpapi",
@@ -80,7 +86,7 @@ func TestNodeForDir_MostSpecificWins(t *testing.T) {
 		"internal/not_a_node":                "",
 	}
 	for dirPath, want := range tests {
-		if got := g.NodeForDir(dirPath); got != want {
+		if got := gi.NodeForDir(dirPath); got != want {
 			t.Errorf("NodeForDir(%q) = %q, want %q", dirPath, got, want)
 		}
 	}
@@ -88,7 +94,8 @@ func TestNodeForDir_MostSpecificWins(t *testing.T) {
 
 func TestNodeForDir_EmptyPathIsRoot(t *testing.T) {
 	g := &Graph{Nodes: map[string]string{"root": "."}}
-	if got := g.NodeForDir(""); got != "root" {
+	gi := NewGraphIndex(g)
+	if got := gi.NodeForDir(""); got != "root" {
 		t.Errorf("NodeForDir(\"\") = %q, want root", got)
 	}
 }
@@ -181,6 +188,7 @@ func TestNodeForPath_FileGlobBeatsDirGlob(t *testing.T) {
 			"subtree":   "lib/src/**",
 		},
 	}
+	gi := NewGraphIndex(g)
 	tests := map[string]string{
 		"lib/src/providers.dart":   "providers",
 		"lib/src/other.dart":       "subtree",
@@ -188,7 +196,7 @@ func TestNodeForPath_FileGlobBeatsDirGlob(t *testing.T) {
 		"lib/src":                  "subtree",
 	}
 	for path, want := range tests {
-		if got := g.NodeForPath(path); got != want {
+		if got := gi.NodeForPath(path); got != want {
 			t.Errorf("NodeForPath(%q) = %q, want %q", path, got, want)
 		}
 	}
@@ -201,12 +209,13 @@ func TestNodeForPath_WildcardFileGlob(t *testing.T) {
 			"subtree": "lib/src/**",
 		},
 	}
+	gi := NewGraphIndex(g)
 	tests := map[string]string{
 		"lib/src/foo.dart":        "anyDart",
 		"lib/src/nested/foo.dart": "subtree",
 	}
 	for path, want := range tests {
-		if got := g.NodeForPath(path); got != want {
+		if got := gi.NodeForPath(path); got != want {
 			t.Errorf("NodeForPath(%q) = %q, want %q", path, got, want)
 		}
 	}
@@ -214,7 +223,8 @@ func TestNodeForPath_WildcardFileGlob(t *testing.T) {
 
 func TestNodeForPath_EmptyPath(t *testing.T) {
 	g := &Graph{Nodes: map[string]string{"root": "."}}
-	if got := g.NodeForPath(""); got != "root" {
+	gi := NewGraphIndex(g)
+	if got := gi.NodeForPath(""); got != "root" {
 		t.Errorf("NodeForPath(\"\") = %q, want root", got)
 	}
 }
@@ -227,7 +237,8 @@ func TestFileGlobNodes(t *testing.T) {
 			"alpha": "lib/src/alpha.dart",
 		},
 	}
-	got := g.FileGlobNodes()
+	gi := NewGraphIndex(g)
+	got := gi.FileGlobNodes()
 	want := []string{"alpha", "zeta"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
@@ -296,35 +307,23 @@ func TestNodeKeyForFile(t *testing.T) {
 }
 
 func TestNewGraph_EdgeCount(t *testing.T) {
-	g := NewGraph(nil, map[string]map[string]bool{})
-	if got := g.EdgeCount(); got != 0 {
+	g := NewGraph(nil, map[string]map[string]bool{}, nil, nil)
+	if got := NewGraphIndex(g).EdgeCount(); got != 0 {
 		t.Errorf("EdgeCount(empty) = %d, want 0", got)
 	}
 
-	g = NewGraph(nil, map[string]map[string]bool{"a": {"b": true}})
-	if got := g.EdgeCount(); got != 1 {
+	g = NewGraph(nil, map[string]map[string]bool{"a": {"b": true}}, nil, nil)
+	if got := NewGraphIndex(g).EdgeCount(); got != 1 {
 		t.Errorf("EdgeCount(single) = %d, want 1", got)
 	}
 
 	g = NewGraph(nil, map[string]map[string]bool{
-		"a": {"b": true, "c": true},
-		"b": {"d": true},
-	})
-	if got := g.EdgeCount(); got != 3 {
-		t.Errorf("EdgeCount(multi) = %d, want 3", got)
-	}
-}
-
-func TestNewGraph_PreservesNodeMapping(t *testing.T) {
-	g := NewGraph(map[string]string{
-		"core": "internal/core/**",
-		"api":  "internal/api/**",
-	}, nil)
-	if g.Nodes["core"] != "internal/core/**" {
-		t.Errorf("core glob = %q, want \"internal/core/**\"", g.Nodes["core"])
-	}
-	if g.Nodes["api"] != "internal/api/**" {
-		t.Errorf("api glob = %q, want \"internal/api/**\"", g.Nodes["api"])
+		"a": {"b": true},
+		"b": {"c": true},
+		"c": {"a": true},
+	}, nil, nil)
+	if got := NewGraphIndex(g).EdgeCount(); got != 3 {
+		t.Errorf("EdgeCount(three) = %d, want 3", got)
 	}
 }
 
@@ -424,6 +423,145 @@ func TestMatchFileGlob(t *testing.T) {
 	for _, tc := range tests {
 		if got := MatchFileGlob(tc.pattern, tc.path); got != tc.want {
 			t.Errorf("MatchFileGlob(%q, %q) = %v, want %v", tc.pattern, tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestNodeForDir_ConcurrentNoRedundantWork(t *testing.T) {
+	nodes := make(map[string]string, 500)
+	for i := 0; i < 500; i++ {
+		nodes[fmt.Sprintf("node_%d", i)] = fmt.Sprintf("pkg/layer_%d/**", i)
+	}
+	g := &Graph{Nodes: nodes}
+	gi := NewGraphIndex(g)
+	var computeCount int64
+	gi.onCompute = func() { atomic.AddInt64(&computeCount, 1) }
+
+	const goroutines = 100
+	var barrier sync.WaitGroup
+	barrier.Add(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			barrier.Done()
+			barrier.Wait()
+			_ = gi.NodeForDir("pkg/layer_0/sub")
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&computeCount); got > 1 {
+		t.Errorf("NodeForDir: computation ran %d times, want <= 1 (double-check should prevent thundering herd)", got)
+	}
+}
+
+func TestNodeForPath_ConcurrentNoRedundantWork(t *testing.T) {
+	nodes := make(map[string]string, 500)
+	for i := 0; i < 500; i++ {
+		nodes[fmt.Sprintf("node_%d", i)] = fmt.Sprintf("pkg/layer_%d/*.go", i)
+	}
+	g := &Graph{Nodes: nodes}
+	gi := NewGraphIndex(g)
+	var computeCount int64
+	gi.onCompute = func() { atomic.AddInt64(&computeCount, 1) }
+
+	const goroutines = 100
+	var barrier sync.WaitGroup
+	barrier.Add(goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			barrier.Done()
+			barrier.Wait()
+			_ = gi.NodeForPath("pkg/layer_0/main.go")
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt64(&computeCount); got > 1 {
+		t.Errorf("NodeForPath: computation ran %d times, want <= 1 (double-check should prevent thundering herd)", got)
+	}
+}
+
+func TestNewGraphIndex_DeterministicOrder(t *testing.T) {
+	nodes := map[string]string{
+		"z_last":  "pkg/last/**",
+		"a_first": "pkg/first/**",
+		"m_mid":   "pkg/mid/**",
+	}
+	g := &Graph{
+		Nodes:     nodes,
+		NodeOrder: []string{"a_first", "m_mid", "z_last"},
+	}
+	gi := NewGraphIndex(g)
+
+	ordered := append([]string{}, gi.dirNodes...)
+	if len(ordered) != 3 {
+		t.Fatalf("expected 3 dir nodes, got %d", len(ordered))
+	}
+	if ordered[0] != "a_first" || ordered[1] != "m_mid" || ordered[2] != "z_last" {
+		t.Errorf("dirNodes order = %v, want [a_first m_mid z_last]", ordered)
+	}
+}
+
+func TestNewGraphIndex_DeterministicOrder_Fallback(t *testing.T) {
+	nodes := map[string]string{
+		"z_last":  "pkg/last/**",
+		"a_first": "pkg/first/**",
+		"m_mid":   "pkg/mid/**",
+	}
+	g := &Graph{
+		Nodes: nodes,
+		NodeLines: map[string]int{
+			"z_last":  10,
+			"a_first": 1,
+			"m_mid":   5,
+		},
+	}
+	gi := NewGraphIndex(g)
+
+	ordered := append([]string{}, gi.dirNodes...)
+	if len(ordered) != 3 {
+		t.Fatalf("expected 3 dir nodes, got %d", len(ordered))
+	}
+	if ordered[0] != "a_first" || ordered[1] != "m_mid" || ordered[2] != "z_last" {
+		t.Errorf("dirNodes order = %v, want [a_first m_mid z_last]", ordered)
+	}
+}
+
+func TestNewGraph_AlphabeticalNodeAndEdgeOrder(t *testing.T) {
+	nodes := map[string]string{
+		"z_last":  "pkg/last/**",
+		"a_first": "pkg/first/**",
+		"m_mid":   "pkg/mid/**",
+	}
+	edges := map[string]map[string]bool{
+		"z_last":  {"a_first": true},
+		"a_first": {"m_mid": true, "z_last": true},
+		"m_mid":   {"a_first": true},
+	}
+	g := NewGraph(nodes, edges, nil, nil)
+
+	if g.NodeOrder[0] != "a_first" || g.NodeOrder[1] != "m_mid" || g.NodeOrder[2] != "z_last" {
+		t.Errorf("NodeOrder = %v, want [a_first m_mid z_last]", g.NodeOrder)
+	}
+
+	wantEdges := []string{
+		"a_first\tm_mid",
+		"a_first\tz_last",
+		"m_mid\ta_first",
+		"z_last\ta_first",
+	}
+	if len(g.EdgeOrder) != len(wantEdges) {
+		t.Fatalf("EdgeOrder length: got %d, want %d", len(g.EdgeOrder), len(wantEdges))
+	}
+	for i, want := range wantEdges {
+		if g.EdgeOrder[i] != want {
+			t.Errorf("EdgeOrder[%d] = %q, want %q", i, g.EdgeOrder[i], want)
 		}
 	}
 }

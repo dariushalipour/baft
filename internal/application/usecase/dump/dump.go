@@ -1,6 +1,7 @@
 package dump
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -14,13 +15,11 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-// DumpResult holds the outcome of a dump run.
 type DumpResult struct {
 	Contracts []ContractDump
 	Errors    []DumpError
 }
 
-// DumpError records a non-fatal error encountered while dumping a capsule.
 type DumpError struct {
 	Label string
 	Err   error
@@ -30,7 +29,6 @@ func (d DumpError) Error() string {
 	return fmt.Sprintf("%s: %s", d.Label, d.Err)
 }
 
-// ContractDump holds the outcome for a single contract dump.
 type ContractDump struct {
 	FilesEncountered int
 	FilesScanned     int
@@ -41,7 +39,6 @@ type ContractDump struct {
 	AmendDiff        *AmendDiff
 }
 
-// AmendDiff reports the number of nodes and edges added during an amend run.
 type AmendDiff struct {
 	Nodes int
 	Edges int
@@ -93,7 +90,6 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 		return nil, err
 	}
 
-	// Wrap the filesystem with ignore rules before discovery.
 	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
 		RootDir:           absRootDir,
 		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
@@ -110,7 +106,7 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 		lang    port.Language
 	}
 	var all []entry
-	entries, err := discovery.Discover(wrapped, absRootDir)
+	entries, err := discovery.Discover(context.Background(), wrapped, absRootDir)
 	if err != nil {
 		return nil, err
 	}

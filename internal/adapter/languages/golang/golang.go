@@ -17,7 +17,6 @@ func (Language) IsScannableFile(rel string) bool {
 	if len(rel) < 3 {
 		return false
 	}
-	// Check .go suffix efficiently.
 	if rel[len(rel)-3:] != ".go" {
 		return false
 	}
@@ -36,7 +35,6 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	}
 	out := make([]port.ImportSpec, 0, len(file.Imports))
 	for _, imp := range file.Imports {
-		// Call fset.Position once per import, reusing the result.
 		pos := fset.Position(imp.Path.Pos())
 		endPos := fset.Position(imp.Path.End())
 		out = append(out, port.ImportSpec{
@@ -75,7 +73,6 @@ func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
 	for i := 0; i < len(data); i++ {
 		if data[i] == '\n' {
 			line := data[lineStart:i]
-			// Trim whitespace by scanning bytes.
 			trimStart := 0
 			for trimStart < len(line) && (line[trimStart] == ' ' || line[trimStart] == '\t') {
 				trimStart++
@@ -86,7 +83,6 @@ func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
 			}
 			trimmed := line[trimStart:trimEnd]
 			if len(trimmed) >= 7 && trimmed[0] == 'm' && trimmed[1] == 'o' && trimmed[2] == 'd' && trimmed[3] == 'u' && trimmed[4] == 'l' && trimmed[5] == 'e' && trimmed[6] == ' ' {
-				// Trim the module name value.
 				modStart := 7
 				for modStart < len(trimmed) && (trimmed[modStart] == ' ' || trimmed[modStart] == '\t') {
 					modStart++
@@ -96,8 +92,7 @@ func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
 					modEnd--
 				}
 				result := string(trimmed[modStart:modEnd])
-				// Strip surrounding quotes if present (Go 1.16+ allows quoted module paths).
-				if len(result) >= 2 && result[0] == '"' && result[len(result)-1] == '"' {
+				if len(result) >= 2 && result[0] == '"' && result[len(result)-1] == '"' { // Go 1.16+ allows quoted module paths
 					result = result[1 : len(result)-1]
 				}
 				return result, nil
@@ -105,7 +100,6 @@ func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
 			lineStart = i + 1
 		}
 	}
-	// Handle last line without newline.
 	if lineStart < len(data) {
 		line := data[lineStart:]
 		trimStart := 0

@@ -8,6 +8,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const protocolVersion = 3
@@ -44,9 +45,27 @@ var compatibilitySpecs = map[string]compatibilitySpec{
 	},
 }
 
-var embeddedPluginVersions = map[string]string{
-	FamilyVSCode:    mustEmbeddedVSCodeVersion(),
-	FamilyJetBrains: mustEmbeddedJetBrainsVersion(),
+var (
+	embeddedVersionsOnce   sync.Once
+	embeddedPluginVersions map[string]string
+	embeddedVersionsErr    error
+)
+
+func getEmbeddedVersions() {
+	embeddedVersionsOnce.Do(func() {
+		vscodeVer, vscodeErr := getEmbeddedVSCodeVersion()
+		jetbrainsVer, jetbrainsErr := getEmbeddedJetBrainsVersion()
+
+		if vscodeErr != nil || jetbrainsErr != nil {
+			embeddedVersionsErr = fmt.Errorf("could not load embedded plugin versions: %w", fmt.Errorf("%v; %v", vscodeErr, jetbrainsErr))
+			return
+		}
+
+		embeddedPluginVersions = map[string]string{
+			FamilyVSCode:    vscodeVer,
+			FamilyJetBrains: jetbrainsVer,
+		}
+	})
 }
 
 func VerifyCompatibility(cliVersion, integrationID, pluginVersion string, protocol int) CompatibilityReport {
@@ -73,10 +92,10 @@ func VerifyCompatibility(cliVersion, integrationID, pluginVersion string, protoc
 		CLIMin:        spec.CLIMin,
 		Message:       "compatible",
 	}
-	expectedVersion := expectedPluginVersion(family)
-	if expectedVersion == "" {
+	expectedVersion, err := expectedPluginVersion(family)
+	if err != nil {
 		report.Compatible = false
-		report.Message = "Baft CLI could not determine the expected plugin version for " + family
+		report.Message = "Baft CLI could not determine the expected plugin version for " + family + ": " + err.Error()
 		return report
 	}
 
@@ -119,8 +138,12 @@ func familyForIntegrationID(id string) string {
 	}
 }
 
-func expectedPluginVersion(family string) string {
-	return embeddedPluginVersions[family]
+func expectedPluginVersion(family string) (string, error) {
+	getEmbeddedVersions()
+	if embeddedVersionsErr != nil {
+		return "", embeddedVersionsErr
+	}
+	return embeddedPluginVersions[family], nil
 }
 
 func expectedProtocol(family string) int {
@@ -190,14 +213,14 @@ func parseSemver(value string) (semver, error) {
 	return semver{major: major, minor: minor, patch: patch}, nil
 }
 
-func mustEmbeddedVSCodeVersion() string {
+func getEmbeddedVSCodeVersion() (string, error) {
 	asset, err := embeddedAssets.ReadFile(vscodeAssetPath)
 	if err != nil {
-		panic(fmt.Errorf("read embedded VS Code extension: %w", err))
+		return "", fmt.Errorf("read embedded VS Code extension: %w", err)
 	}
 	reader, err := zip.NewReader(bytes.NewReader(asset), int64(len(asset)))
 	if err != nil {
-		panic(fmt.Errorf("open embedded VS Code extension: %w", err))
+		return "", fmt.Errorf("open embedded VS Code extension: %w", err)
 	}
 	for _, file := range reader.File {
 		if file.Name != "extension/package.json" {
@@ -205,35 +228,35 @@ func mustEmbeddedVSCodeVersion() string {
 		}
 		src, err := file.Open()
 		if err != nil {
-			panic(fmt.Errorf("open embedded VS Code package.json: %w", err))
+			return "", fmt.Errorf("open embedded VS Code package.json: %w", err)
 		}
 		content, err := io.ReadAll(src)
 		src.Close()
 		if err != nil {
-			panic(fmt.Errorf("read embedded VS Code package.json: %w", err))
+			return "", fmt.Errorf("read embedded VS Code package.json: %w", err)
 		}
 		var manifest struct {
 			Version string `json:"version"`
 		}
 		if err := json.Unmarshal(content, &manifest); err != nil {
-			panic(fmt.Errorf("parse embedded VS Code package.json: %w", err))
+			return "", fmt.Errorf("parse embedded VS Code package.json: %w", err)
 		}
 		if strings.TrimSpace(manifest.Version) == "" {
-			panic(fmt.Errorf("embedded VS Code package.json is missing a version"))
+			return "", fmt.Errorf("embedded VS Code package.json is missing a version")
 		}
-		return strings.TrimSpace(manifest.Version)
+		return strings.TrimSpace(manifest.Version), nil
 	}
-	panic(fmt.Errorf("embedded VS Code package.json not found"))
+	return "", fmt.Errorf("embedded VS Code package.json not found")
 }
 
-func mustEmbeddedJetBrainsVersion() string {
+func getEmbeddedJetBrainsVersion() (string, error) {
 	asset, err := embeddedAssets.ReadFile(jetbrainsAssetPath)
 	if err != nil {
-		panic(fmt.Errorf("read embedded JetBrains plugin: %w", err))
+		return "", fmt.Errorf("read embedded JetBrains plugin: %w", err)
 	}
 	reader, err := zip.NewReader(bytes.NewReader(asset), int64(len(asset)))
 	if err != nil {
-		panic(fmt.Errorf("open embedded JetBrains plugin: %w", err))
+		return "", fmt.Errorf("open embedded JetBrains plugin: %w", err)
 	}
 	for _, file := range reader.File {
 		if !strings.HasPrefix(file.Name, jetbrainsArchiveRoot+"/lib/") || !strings.HasSuffix(file.Name, ".jar") {
@@ -241,21 +264,21 @@ func mustEmbeddedJetBrainsVersion() string {
 		}
 		src, err := file.Open()
 		if err != nil {
-			panic(fmt.Errorf("open embedded JetBrains plugin jar: %w", err))
+			return "", fmt.Errorf("open embedded JetBrains plugin jar: %w", err)
 		}
 		content, err := io.ReadAll(src)
 		src.Close()
 		if err != nil {
-			panic(fmt.Errorf("read embedded JetBrains plugin jar: %w", err))
+			return "", fmt.Errorf("read embedded JetBrains plugin jar: %w", err)
 		}
 		jarReader, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
 		if err != nil {
-			panic(fmt.Errorf("open embedded JetBrains plugin jar: %w", err))
+			return "", fmt.Errorf("open embedded JetBrains plugin jar: %w", err)
 		}
 		descriptor, err := readJetBrainsPluginDescriptorFromZip(jarReader)
 		if err == nil && strings.TrimSpace(descriptor.Version) != "" {
-			return strings.TrimSpace(descriptor.Version)
+			return strings.TrimSpace(descriptor.Version), nil
 		}
 	}
-	panic(fmt.Errorf("embedded JetBrains plugin version not found"))
+	return "", fmt.Errorf("embedded JetBrains plugin version not found")
 }

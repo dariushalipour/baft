@@ -1,15 +1,14 @@
 package realfs
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
 )
 
-// FS is a FileSystem backed by the real operating system.
 type FS struct{}
 
-// New returns a FileSystem that wraps the real OS file system.
 func New() *FS {
 	return &FS{}
 }
@@ -30,11 +29,34 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return os.ReadDir(name)
 }
 
-func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) error {
-	return filepath.WalkDir(root, func(abs string, d fs.DirEntry, werr error) error {
-		if werr != nil {
-			return werr
+func (f *FS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
+	return walkDirCtx(ctx, root, fn)
+}
+
+func walkDirCtx(ctx context.Context, dir string, fn func(abs string, d fs.DirEntry) error) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
 		}
-		return fn(abs, d)
-	})
+		abs := filepath.Join(dir, entry.Name())
+		if entry.IsDir() {
+			if err := fn(abs, entry); err != nil {
+				return err
+			}
+			if err := walkDirCtx(ctx, abs, fn); err != nil {
+				return err
+			}
+		} else {
+			if err := fn(abs, entry); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

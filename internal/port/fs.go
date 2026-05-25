@@ -1,6 +1,7 @@
 package port
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,21 +11,15 @@ import (
 // never touches the real disk. Implementations may be backed by the
 // real OS or by an in-memory store for testing.
 type FileSystem interface {
-	// ReadFile returns the contents of the named file.
 	ReadFile(path string) ([]byte, error)
-
-	// WriteFile writes data to the named file.
 	WriteFile(path string, data []byte, perm os.FileMode) error
-
-	// Stat returns a FileInfo describing the named file.
 	Stat(path string) (os.FileInfo, error)
-
-	// ReadDir lists the contents of the named directory, excluding ignored entries.
 	ReadDir(name string) ([]fs.DirEntry, error)
 
 	// WalkDir walks the file tree rooted at root, calling fn for each
-	// file or directory. It skips ignored paths.
-	WalkDir(root string, fn func(abs string, d fs.DirEntry) error) error
+	// file or directory. It respects context cancellation at every directory
+	// boundary, allowing long walks to be aborted promptly.
+	WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error
 }
 
 // NotGitRepoError is returned when a directory is not inside a git

@@ -11,10 +11,8 @@ import (
 )
 
 var (
-	// Pre-compiled regex for node matching - compiled once at package init.
 	nodeRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\[(?:"([^"]*)"|([^\]]*))\](?::::([A-Za-z_][A-Za-z0-9_,]*))?$`)
 
-	// Pre-built replacers for node ID encoding/decoding to avoid per-call allocation.
 	nodeIdReplacer = strings.NewReplacer(
 		"/", "_slash_",
 		".", "_dot_",
@@ -71,10 +69,8 @@ var generatedStyleComment = strings.Trim(`
   %% ------------------------------------------------------------------------------------------
 `, "\n")
 
-// MermaidRepository implements port.GraphRepository using mermaid flowchart format.
 type MermaidRepository struct{}
 
-// ParseError is returned when a mermaid block cannot be parsed.
 type ParseError struct {
 	Line  int
 	Raw   string
@@ -89,7 +85,6 @@ func (e *ParseError) Error() string {
 	return fmt.Sprintf("line %d: unrecognized line in mermaid block: %q", e.Line, e.Raw)
 }
 
-// ParseErrorWithNext allows chaining via Unwrap for errors.As compatibility.
 type ParseErrorWithNext struct {
 	Msg  string
 	Line int
@@ -132,8 +127,6 @@ var paletteColors = map[port.GraphColorPalette][]string{
 	},
 }
 
-// Save produces a mermaid flowchart from the Graph.
-// Directory nodes (non-file globs) get a "/**" suffix for mermaid display.
 func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) string {
 	var sb strings.Builder
 
@@ -146,10 +139,14 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 	sb.WriteString("flowchart TD\n")
 
 	ids := make([]string, 0, len(g.Nodes))
-	for id := range g.Nodes {
-		ids = append(ids, id)
+	if len(g.NodeOrder) == len(g.Nodes) {
+		ids = append(ids, g.NodeOrder...)
+	} else {
+		for id := range g.Nodes {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
 	}
-	sort.Strings(ids)
 
 	if g.GlobSeparator != "" {
 		sb.WriteString("  %% config globSeparator ")
@@ -181,27 +178,46 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 
 	sb.WriteString("\n")
 
-	sources := make([]string, 0, len(g.Edges))
-	for src := range g.Edges {
-		sources = append(sources, src)
+	edgeCount := 0
+	for _, targets := range g.Edges {
+		edgeCount += len(targets)
 	}
-	sort.Strings(sources)
-	edges := make([]graphEdge, 0, g.EdgeCount())
+	edges := make([]graphEdge, 0, edgeCount)
 
-	for _, src := range sources {
-		targets := make([]string, 0, len(g.Edges[src]))
-		for dst := range g.Edges[src] {
-			targets = append(targets, dst)
+	var edgePairs []struct{ src, dst string }
+	if len(g.EdgeOrder) == edgeCount {
+		for _, key := range g.EdgeOrder {
+			parts := strings.Split(key, "\t")
+			if len(parts) == 2 {
+				edgePairs = append(edgePairs, struct{ src, dst string }{parts[0], parts[1]})
+			}
 		}
-		sort.Strings(targets)
-		for _, dst := range targets {
-			sb.WriteString("  ")
-			sb.WriteString(encodeNodeId(src))
-			sb.WriteString(" --> ")
-			sb.WriteString(encodeNodeId(dst))
-			sb.WriteByte('\n')
-			edges = append(edges, graphEdge{src: src, dst: dst})
+	} else {
+		sources := make([]string, 0, len(g.Edges))
+		for src := range g.Edges {
+			sources = append(sources, src)
 		}
+		sort.Strings(sources)
+		for _, src := range sources {
+			targets := make([]string, 0, len(g.Edges[src]))
+			for dst := range g.Edges[src] {
+				targets = append(targets, dst)
+			}
+			sort.Strings(targets)
+			for _, dst := range targets {
+				edgePairs = append(edgePairs, struct{ src, dst string }{src, dst})
+			}
+		}
+	}
+
+	for _, ep := range edgePairs {
+		src, dst := ep.src, ep.dst
+		sb.WriteString("  ")
+		sb.WriteString(encodeNodeId(src))
+		sb.WriteString(" --> ")
+		sb.WriteString(encodeNodeId(dst))
+		sb.WriteByte('\n')
+		edges = append(edges, graphEdge{src: src, dst: dst})
 	}
 
 	styleLines := buildStyleLines(g, ids, edges, opts)
@@ -305,7 +321,6 @@ func sortedNodeClasses(classes map[string]bool) []string {
 	return names
 }
 
-// Load extracts the mermaid block from markdown and builds a Graph.
 func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	block, blockStartLine, err := extractMermaidBlock(md)
 	if err != nil {
@@ -319,6 +334,8 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 		Classes:      map[string]map[string]bool{},
 		NodeLines:    map[string]int{},
 		EdgeLines:    map[string]int{},
+		NodeOrder:    []string{},
+		EdgeOrder:    []string{},
 	}
 
 	lines := strings.Split(block, "\n")
@@ -375,6 +392,7 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	if len(g.Nodes) == 0 {
 		return nil, &ParseError{Msg: "mermaid block declared no nodes"}
 	}
+	g.NormalizeGlobs()
 	return g, nil
 }
 
@@ -415,6 +433,9 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 		}
 	}
 	g.Nodes[id] = glob
+	if _, ok := g.NodeLines[id]; !ok {
+		g.NodeOrder = append(g.NodeOrder, id)
+	}
 	if _, ok := g.NodeDisplays[id]; !ok {
 		g.NodeDisplays[id] = glob
 	}
@@ -436,7 +457,6 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 	return nil
 }
 
-// parseConfigLine handles config directives like 'config globSeparator "."'.
 func parseConfigLine(line string, g *graph.Graph, lineNum int) error {
 	trimmed := strings.TrimSpace(line[len("config "):])
 	if !strings.HasPrefix(trimmed, `globSeparator "`) {
@@ -500,8 +520,13 @@ func parseEdgeLine(line string, g *graph.Graph, lineNum int) error {
 		if _, ok := g.Edges[src]; !ok {
 			g.Edges[src] = map[string]bool{}
 		}
+		if _, ok := g.Edges[src][dst]; !ok {
+			g.EdgeOrder = append(g.EdgeOrder, src+"\t"+dst)
+		}
 		g.Edges[src][dst] = true
-		g.EdgeLines[src+"\t"+dst] = lineNum
+		if _, ok := g.EdgeLines[src+"\t"+dst]; !ok {
+			g.EdgeLines[src+"\t"+dst] = lineNum
+		}
 	}
 	return nil
 }
@@ -545,7 +570,6 @@ func extractMermaidBlock(md string) (string, int, error) {
 			continue
 		}
 		if strings.HasPrefix(trim, "```") {
-			// Check for a second mermaid block after this one closes
 			for j := i + 1; j < len(lines); j++ {
 				if strings.HasPrefix(strings.TrimSpace(lines[j]), "```mermaid") {
 					return "", 0, &ParseError{Line: j + 1, Msg: "multiple ```mermaid blocks found"}
@@ -562,17 +586,14 @@ func extractMermaidBlock(md string) (string, int, error) {
 	return "", 0, &ParseError{Msg: "no ```mermaid block found"}
 }
 
-// encodeNodeGlob escapes special characters in glob/display text for mermaid output.
 func encodeNodeGlob(s string) string {
 	return strings.ReplaceAll(s, "*", "&ast;")
 }
 
-// decodeNodeGlob reverses encodeNodeGlob.
 func decodeNodeGlob(s string) string {
 	return globDecodeReplacer.Replace(s)
 }
 
-// encodeNodeId produces a valid mermaid identifier from a raw node ID.
 func encodeNodeId(s string) string {
 	if s == "" || s == "." {
 		return "root"
@@ -584,7 +605,6 @@ func encodeNodeId(s string) string {
 	return result
 }
 
-// decodeNodeId reverses encodeNodeId.
 func decodeNodeId(s string) string {
 	if s == "root" {
 		return "."
@@ -595,7 +615,6 @@ func decodeNodeId(s string) string {
 	return nodeIdDecodeReplacer.Replace(s)
 }
 
-// quotedEncode wraps the encoded glob in Go-style double quotes for mermaid output.
 func quotedEncode(s string) string {
 	return fmt.Sprintf("%q", encodeNodeGlob(s))
 }
@@ -604,7 +623,6 @@ func looksLikeFilePath(p string) bool {
 	if p == "." || p == "" {
 		return false
 	}
-	// Find last '/' using byte scan.
 	lastSlash := -1
 	for i := len(p) - 1; i >= 0; i-- {
 		if p[i] == '/' {
@@ -621,7 +639,6 @@ func looksLikeFilePath(p string) bool {
 	if last == "." || last == ".." {
 		return false
 	}
-	// Check for dot in last segment.
 	for i := 0; i < len(last); i++ {
 		if last[i] == '.' {
 			return true

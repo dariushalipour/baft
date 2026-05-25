@@ -77,7 +77,8 @@ func existingOwningNodeForPath(nodes map[string]string, rel string) string {
 	if len(nodes) == 0 {
 		return ""
 	}
-	return graph.NewGraph(nodes, nil).NodeForPath(rel)
+	g := graph.NewGraph(nodes, nil, nil, nil)
+	return graph.NewGraphIndex(g).NodeForPath(rel)
 }
 
 func existingNodeIDsForGlob(nodes map[string]string, glob string) []string {

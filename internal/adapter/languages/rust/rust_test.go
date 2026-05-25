@@ -1,6 +1,7 @@
 package rust
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
@@ -543,7 +544,7 @@ edition = "2021"
 
 	disco := service.NewCapsuleDiscovery()
 	Language{}.Register(disco)
-	got, err := disco.Discover(fs, "/")
+	got, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,7 @@
 package check
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -244,6 +245,12 @@ func contractOverlapErrors(fsys port.FileSystem, lang port.Language, g *graph.Gr
 		i       string
 		j       string
 	}
+	pairChan := make(chan [2]string, len(candidatePairs))
+	for _, pair := range candidatePairs {
+		pairChan <- pair
+	}
+	close(pairChan)
+
 	overlapChan := make(chan overlapResult, len(candidatePairs))
 	numWorkers := min(runtime.NumCPU(), len(candidatePairs))
 	if numWorkers < 1 {
@@ -255,7 +262,7 @@ func contractOverlapErrors(fsys port.FileSystem, lang port.Language, g *graph.Gr
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for _, pair := range candidatePairs {
+			for pair := range pairChan {
 				a, b := pair[0], pair[1]
 				if witness := findWitnessInDirs(g.Nodes[a], g.Nodes[b], dirKeys); witness != "" {
 					overlapChan <- overlapResult{witness: witness, i: a, j: b}
@@ -281,7 +288,7 @@ func contractOverlapErrors(fsys port.FileSystem, lang port.Language, g *graph.Gr
 
 func collectDirKeys(fsys port.FileSystem, lang port.Language, baseDir string) []string {
 	var keys []string
-	_ = service.WalkAllFiles(fsys, baseDir, lang, func(abs, rel string) error {
+	_ = service.WalkAllFiles(context.Background(), fsys, baseDir, lang, func(abs, rel string) error {
 		keys = append(keys, rel)
 		return nil
 	})

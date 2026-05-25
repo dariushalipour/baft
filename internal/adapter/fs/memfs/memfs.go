@@ -1,6 +1,7 @@
 package memfs
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path"
@@ -11,7 +12,6 @@ import (
 	"time"
 )
 
-// FS is an in-memory FileSystem for testing.
 type FS struct {
 	mu         sync.RWMutex
 	files      map[string]*file
@@ -27,7 +27,6 @@ type file struct {
 	modTime time.Time
 }
 
-// New creates a new in-memory file system.
 func New() *FS {
 	return &FS{
 		files:      make(map[string]*file),
@@ -78,14 +77,12 @@ func (f *FS) WriteFile(filepathArg string, data []byte, perm os.FileMode) error 
 		mode:    perm,
 		modTime: time.Now(),
 	}
-	// Ensure all parent directories are tracked.
 	for p := path.Dir(fp); p != "/" && p != "."; p = path.Dir(p) {
 		f.dirs[p] = true
 	}
 	return nil
 }
 
-// Mkdir creates a directory (and all parent directories) in the in-memory FS.
 func (f *FS) Mkdir(pathArg string, perm os.FileMode) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -97,7 +94,6 @@ func (f *FS) Mkdir(pathArg string, perm os.FileMode) error {
 	return nil
 }
 
-// MkdirAll is an alias for Mkdir that mirrors the standard library signature.
 func (f *FS) MkdirAll(pathArg string, perm os.FileMode) error {
 	return f.Mkdir(pathArg, perm)
 }
@@ -116,7 +112,6 @@ func (f *FS) Stat(filepathArg string) (os.FileInfo, error) {
 		}, nil
 	}
 
-	// O(1) directory check via tracked dirs map.
 	if f.dirs[fp] {
 		return &stat{
 			name: path.Base(fp),
@@ -124,7 +119,6 @@ func (f *FS) Stat(filepathArg string) (os.FileInfo, error) {
 		}, nil
 	}
 
-	// Fallback: scan files to detect implicit directories.
 	for p := range f.files {
 		if strings.HasPrefix(p, fp+"/") {
 			return &stat{
@@ -146,9 +140,8 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		dir = "/" + dir
 	}
 
-	// Single O(n) pass: collect direct file names and immediate subdirectory names.
-	fileEntries := make(map[string]bool) // direct file names
-	dirEntries := make(map[string]bool)  // immediate subdirectory names
+	fileEntries := make(map[string]bool)
+	dirEntries := make(map[string]bool)
 
 	for p := range f.files {
 		prefix := dir
@@ -179,18 +172,15 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		if d == dir {
 			continue
 		}
-		// Check if d is a direct child of dir.
 		dParent := path.Dir(d)
 		if dParent == dir {
 			base := path.Base(d)
-			// Only add if not already present from files.
 			if !dirEntries[base] && !fileEntries[base] {
 				dirEntries[base] = true
 			}
 		}
 	}
 
-	// Build sorted entry list.
 	var entries []fs.DirEntry
 	for name := range fileEntries {
 		entries = append(entries, &dirEntry{name: name, isDir: false})
@@ -205,7 +195,7 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return entries, nil
 }
 
-func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) error {
+func (f *FS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
 	f.mu.RLock()
 	defer f.mu.RUnlock()
 	if err, ok := f.walkErrors[root]; ok {
@@ -220,7 +210,6 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 		root = root + "/"
 	}
 
-	// Collect all file entries under root
 	var fileEntries []string
 	for p := range f.files {
 		if p == root || strings.HasPrefix(p, root) {
@@ -229,7 +218,6 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 	}
 	sort.Strings(fileEntries)
 
-	// Extract all directory paths from file entries
 	dirSet := make(map[string]bool)
 	for _, fe := range fileEntries {
 		for {
@@ -243,14 +231,12 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 		}
 	}
 
-	// Merge explicitly tracked directories (empty dirs).
 	for d := range f.dirs {
 		if d == root || strings.HasPrefix(d, root) {
 			dirSet[d] = true
 		}
 	}
 
-	// Combine files and directories, sorted
 	var allEntries []string
 	for de := range dirSet {
 		allEntries = append(allEntries, de)
@@ -259,9 +245,15 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 	sort.Strings(allEntries)
 
 	visited := make(map[string]bool)
-	var skipped []string // directories whose children must be skipped
+	var skipped []string
 
 	for _, entry := range allEntries {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		rel := strings.TrimPrefix(entry, root)
 		abs := root + rel
 
@@ -269,7 +261,6 @@ func (f *FS) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) erro
 			continue
 		}
 
-		// Skip entries under a previously skipped directory
 		underSkipped := false
 		for _, skip := range skipped {
 			if strings.HasPrefix(abs, skip+"/") {

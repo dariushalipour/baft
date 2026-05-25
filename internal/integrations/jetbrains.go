@@ -46,9 +46,8 @@ func (i *jetbrainsInstaller) Family() string {
 }
 
 func (i *jetbrainsInstaller) Detect(ctx context.Context) ([]IDEInstallation, error) {
-	_ = ctx
 	home, _ := os.UserHomeDir()
-	paths, err := findJetBrainsProductInfoFiles(home)
+	paths, err := findJetBrainsProductInfoFiles(ctx, home)
 	if err != nil {
 		return nil, err
 	}
@@ -74,9 +73,11 @@ func (i *jetbrainsInstaller) Detect(ctx context.Context) ([]IDEInstallation, err
 }
 
 func (i *jetbrainsInstaller) Install(ctx context.Context, ide IDEInstallation) error {
-	_ = ctx
 	if ide.PluginDir == "" {
 		return fmt.Errorf("could not determine JetBrains plugin directory for %s", ide.DisplayName)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	asset, err := embeddedAssets.ReadFile(jetbrainsAssetPath)
 	if err != nil {
@@ -86,14 +87,23 @@ func (i *jetbrainsInstaller) Install(ctx context.Context, ide IDEInstallation) e
 	if err != nil {
 		return fmt.Errorf("could not read embedded JetBrains plugin archive: %w", err)
 	}
-	return installJetBrainsArchive(ide, reader)
+	return installJetBrainsArchive(ctx, ide, reader)
 }
 
 func (i *jetbrainsInstaller) Verify(ctx context.Context, ide IDEInstallation) error {
-	_ = ctx
-	report := VerifyCompatibility(i.cliVersion, ide.ID, expectedPluginVersion(FamilyJetBrains), expectedProtocol(FamilyJetBrains))
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	jetbrainsVersion, err := expectedPluginVersion(FamilyJetBrains)
+	if err != nil {
+		return fmt.Errorf("could not determine embedded JetBrains plugin version: %w", err)
+	}
+	report := VerifyCompatibility(i.cliVersion, ide.ID, jetbrainsVersion, expectedProtocol(FamilyJetBrains))
 	if !report.Compatible {
 		return fmt.Errorf(report.Message)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	targetDir := filepath.Join(ide.PluginDir, jetbrainsArchiveRoot)
 	descriptor, _, err := readJetBrainsPluginDescriptor(targetDir)
@@ -103,13 +113,13 @@ func (i *jetbrainsInstaller) Verify(ctx context.Context, ide IDEInstallation) er
 	if descriptor.ID != jetbrainsPluginID {
 		return fmt.Errorf("JetBrains plugin at %s is not the Baft plugin", targetDir)
 	}
-	if descriptor.Version != expectedPluginVersion(FamilyJetBrains) {
-		return fmt.Errorf("JetBrains plugin version mismatch after installation: expected %s, found %s", expectedPluginVersion(FamilyJetBrains), descriptor.Version)
+	if descriptor.Version != jetbrainsVersion {
+		return fmt.Errorf("JetBrains plugin version mismatch after installation: expected %s, found %s", jetbrainsVersion, descriptor.Version)
 	}
 	return nil
 }
 
-func installJetBrainsArchive(ide IDEInstallation, reader *zip.Reader) error {
+func installJetBrainsArchive(ctx context.Context, ide IDEInstallation, reader *zip.Reader) error {
 	rootDir, err := zipRootDirectory(reader)
 	if err != nil {
 		return err
@@ -124,10 +134,13 @@ func installJetBrainsArchive(ide IDEInstallation, reader *zip.Reader) error {
 	}
 	defer os.RemoveAll(stageDir)
 
-	if err := extractArchive(reader, stageDir); err != nil {
+	if err := extractArchive(ctx, reader, stageDir); err != nil {
 		return jetbrainsManualInstallError(ide, filepath.Join(ide.PluginDir, rootDir), "could not extract the embedded JetBrains plugin archive", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	stagedPluginDir := filepath.Join(stageDir, rootDir)
 	stagedDescriptor, _, err := readJetBrainsPluginDescriptor(stagedPluginDir)
 	if err != nil {
@@ -179,7 +192,7 @@ func installJetBrainsArchive(ide IDEInstallation, reader *zip.Reader) error {
 	return nil
 }
 
-func findJetBrainsProductInfoFiles(home string) ([]string, error) {
+func findJetBrainsProductInfoFiles(ctx context.Context, home string) ([]string, error) {
 	var roots []string
 	switch runtime.GOOS {
 	case "darwin":
@@ -206,7 +219,7 @@ func findJetBrainsProductInfoFiles(home string) ([]string, error) {
 		if root == "" {
 			continue
 		}
-		entries, err := scanForProductInfo(root, 5)
+		entries, err := scanForProductInfo(ctx, root, 5)
 		if err != nil {
 			continue
 		}
@@ -222,7 +235,7 @@ func findJetBrainsProductInfoFiles(home string) ([]string, error) {
 	return found, nil
 }
 
-func scanForProductInfo(root string, maxDepth int) ([]string, error) {
+func scanForProductInfo(ctx context.Context, root string, maxDepth int) ([]string, error) {
 	if _, err := os.Stat(root); err != nil {
 		return nil, err
 	}
@@ -233,6 +246,9 @@ func scanForProductInfo(root string, maxDepth int) ([]string, error) {
 	stack := []item{{path: root, depth: 0}}
 	var found []string
 	for len(stack) > 0 {
+		if err := ctx.Err(); err != nil {
+			return found, err
+		}
 		current := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		entries, err := os.ReadDir(current.path)
@@ -383,9 +399,12 @@ func zipRootDirectory(reader *zip.Reader) (string, error) {
 	return root, nil
 }
 
-func extractArchive(reader *zip.Reader, dest string) error {
+func extractArchive(ctx context.Context, reader *zip.Reader, dest string) error {
 	base := filepath.Clean(dest)
 	for _, file := range reader.File {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		target := filepath.Join(dest, file.Name)
 		cleanTarget := filepath.Clean(target)
 		if cleanTarget != base && !strings.HasPrefix(cleanTarget, base+string(os.PathSeparator)) {

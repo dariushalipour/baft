@@ -29,6 +29,9 @@ func (i *vscodeInstaller) Family() string {
 }
 
 func (i *vscodeInstaller) Detect(ctx context.Context) ([]IDEInstallation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	home, _ := os.UserHomeDir()
 	var installations []IDEInstallation
 	for _, candidate := range []vscodeCandidate{
@@ -55,6 +58,9 @@ func (i *vscodeInstaller) Detect(ctx context.Context) ([]IDEInstallation, error)
 }
 
 func (i *vscodeInstaller) Install(ctx context.Context, ide IDEInstallation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	asset, err := embeddedAssets.ReadFile(vscodeAssetPath)
 	if err != nil {
 		return fmt.Errorf("could not read embedded VS Code integration package: %w", err)
@@ -73,6 +79,9 @@ func (i *vscodeInstaller) Install(ctx context.Context, ide IDEInstallation) erro
 		return fmt.Errorf("could not finalize temporary VSIX file: %w", err)
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	cmd := exec.CommandContext(ctx, ide.Executable, "--install-extension", tempFile.Name())
 	output, err := cmd.CombinedOutput()
 	if err != nil {
@@ -82,7 +91,14 @@ func (i *vscodeInstaller) Install(ctx context.Context, ide IDEInstallation) erro
 }
 
 func (i *vscodeInstaller) Verify(ctx context.Context, ide IDEInstallation) error {
-	report := VerifyCompatibility(i.cliVersion, ide.ID, expectedPluginVersion(FamilyVSCode), expectedProtocol(FamilyVSCode))
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	vscodeVersion, err := expectedPluginVersion(FamilyVSCode)
+	if err != nil {
+		return fmt.Errorf("could not determine embedded VS Code plugin version: %w", err)
+	}
+	report := VerifyCompatibility(i.cliVersion, ide.ID, vscodeVersion, expectedProtocol(FamilyVSCode))
 	if !report.Compatible {
 		return fmt.Errorf(report.Message)
 	}

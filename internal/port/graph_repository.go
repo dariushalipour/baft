@@ -25,7 +25,6 @@ func ParseGraphColorPalette(value string) (GraphColorPalette, bool) {
 	}
 }
 
-// GraphRepository persists and loads Graph objects.
 type GraphRepository interface {
 	Load(content string) (*graph.Graph, error)
 	Save(g *graph.Graph, opts GraphSaveOptions) string

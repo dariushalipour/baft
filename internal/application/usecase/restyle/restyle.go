@@ -1,6 +1,7 @@
 package restyle
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"sort"
@@ -71,7 +72,7 @@ func Run(fsys port.FileSystem, rootDir string, repo port.GraphRepository, saveOp
 
 func discoverContracts(fsys port.FileSystem, rootDir string) ([]string, error) {
 	var paths []string
-	if err := fsys.WalkDir(rootDir, func(abs string, d fs.DirEntry) error {
+	if err := fsys.WalkDir(context.Background(), rootDir, func(abs string, d fs.DirEntry) error {
 		if d.IsDir() {
 			return nil
 		}

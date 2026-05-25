@@ -1,6 +1,7 @@
 package overlayfs
 
 import (
+	"context"
 	"io/fs"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func TestOverlayFS_WalkDir_WithMemoryFiles(t *testing.T) {
 	})
 
 	var paths []string
-	err := fsys.WalkDir("/root", func(abs string, d fs.DirEntry) error {
+	err := fsys.WalkDir(context.Background(), "/root", func(abs string, d fs.DirEntry) error {
 		paths = append(paths, abs)
 		return nil
 	})
@@ -102,7 +103,7 @@ func TestOverlayFS_WalkDir_SortedOutput(t *testing.T) {
 			}
 			return nil, nil
 		},
-		walkDirFn: func(root string, fn func(string, fs.DirEntry) error) error {
+		walkDirFn: func(ctx context.Context, root string, fn func(string, fs.DirEntry) error) error {
 			if root == "/root" {
 				_ = fn("/root/a.txt", &mockEntry{name: "a.txt", isDir: false})
 				_ = fn("/root/z.txt", &mockEntry{name: "z.txt", isDir: false})
@@ -116,7 +117,7 @@ func TestOverlayFS_WalkDir_SortedOutput(t *testing.T) {
 	})
 
 	var names []string
-	err := fsys.WalkDir("/root", func(abs string, d fs.DirEntry) error {
+	err := fsys.WalkDir(context.Background(), "/root", func(abs string, d fs.DirEntry) error {
 		names = append(names, d.Name())
 		return nil
 	})
@@ -157,7 +158,7 @@ func TestOverlayFS_Stat_MemoryFile(t *testing.T) {
 type mockLower struct {
 	readFileFn func(path string) ([]byte, error)
 	readDirFn  func(path string) ([]fs.DirEntry, error)
-	walkDirFn  func(root string, fn func(string, fs.DirEntry) error) error
+	walkDirFn  func(ctx context.Context, root string, fn func(string, fs.DirEntry) error) error
 }
 
 func (m *mockLower) ReadFile(path string) ([]byte, error) {
@@ -182,9 +183,9 @@ func (m *mockLower) ReadDir(path string) ([]fs.DirEntry, error) {
 	return nil, nil
 }
 
-func (m *mockLower) WalkDir(root string, fn func(string, fs.DirEntry) error) error {
+func (m *mockLower) WalkDir(ctx context.Context, root string, fn func(string, fs.DirEntry) error) error {
 	if m.walkDirFn != nil {
-		return m.walkDirFn(root, fn)
+		return m.walkDirFn(ctx, root, fn)
 	}
 	return nil
 }

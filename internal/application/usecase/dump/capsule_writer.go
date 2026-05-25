@@ -1,6 +1,7 @@
 package dump
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -99,7 +100,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 		return nil
 	}
 
-	err := service.WalkCapsule(fsys, contractDir, lang, walkFn)
+	err := service.WalkCapsule(context.Background(), fsys, contractDir, lang, walkFn)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +117,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 		return nil, fmt.Errorf("capsule at %s has no scannable files to dump", contractDir)
 	}
 
-	g := graph.NewGraph(nodes, edges)
+	g := graph.NewGraph(nodes, edges, nil, nil)
 	if !lang.SupportsFileGlobs() {
 		g.NodeDisplays = cloneNodes(nodes)
 	}
@@ -137,7 +138,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 }
 
 func addBoundaryRelations(fsys port.FileSystem, capsule port.Capsule, lang port.Language, contractDir string, nodes map[string]string, edges map[string]map[string]bool, cfg draftConfig) error {
-	return fsys.WalkDir(contractDir, func(abs string, d os.DirEntry) error {
+	return fsys.WalkDir(context.Background(), contractDir, func(abs string, d os.DirEntry) error {
 		if d.IsDir() {
 			return nil
 		}

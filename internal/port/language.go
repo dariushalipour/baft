@@ -1,14 +1,11 @@
 package port
 
-// ContractFile is the name of the Baft contract file.
 const ContractFile = "BAFT.md"
 
-// Label returns the absolute directory path of a capsule.
 func Label(c Capsule) string {
 	return c.Dir
 }
 
-// ImportSpec describes a single import found in a source file.
 type ImportSpec struct {
 	Path   string
 	Line   int
@@ -28,13 +25,11 @@ type Language interface {
 	Register(d CapsuleDiscovery)
 }
 
-// ParsedImports caches the result of ParseImports for a given file path.
 type ParsedImports struct {
 	Imports []ImportSpec
 	Hash    string
 }
 
-// ManifestInfo describes how to find and parse a build manifest for a language.
 type ManifestInfo struct {
 	// Names are the file names to look for (e.g. ["go.mod"], ["build.gradle.kts", "build.gradle"]).
 	Names []string
@@ -50,8 +45,6 @@ type CapsuleDiscovery interface {
 	Register(name string, info ManifestInfo)
 }
 
-// Capsule is one unit of node-checking: a capsule directory and an opaque
-// capsule identifier used by Language.ResolveInternalTarget.
 type Capsule struct {
 	Dir       string
 	CapsuleID string

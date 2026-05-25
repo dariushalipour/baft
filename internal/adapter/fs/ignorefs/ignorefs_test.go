@@ -1,6 +1,7 @@
 package ignorefs
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -153,7 +154,7 @@ func TestWrap_IgnoredDirectoriesNotWalked(t *testing.T) {
 	}
 
 	var paths []string
-	err = ignored.WalkDir("/Users/jane/baft", func(abs string, d fs.DirEntry) error {
+	err = ignored.WalkDir(context.Background(), "/Users/jane/baft", func(abs string, d fs.DirEntry) error {
 		paths = append(paths, abs)
 		return nil
 	})
@@ -366,7 +367,7 @@ func TestWrap_WalkDirSkipsIgnoredDirs(t *testing.T) {
 	}
 
 	var paths []string
-	err = ignored.WalkDir("/Users/jane/baft", func(abs string, d fs.DirEntry) error {
+	err = ignored.WalkDir(context.Background(), "/Users/jane/baft", func(abs string, d fs.DirEntry) error {
 		paths = append(paths, abs)
 		return nil
 	})
@@ -422,7 +423,7 @@ func TestWrap_DiscoveryBaseIgnoreEntries(t *testing.T) {
 	}
 
 	var paths []string
-	err = ignored.WalkDir("/Users/jane/baft", func(abs string, d fs.DirEntry) error {
+	err = ignored.WalkDir(context.Background(), "/Users/jane/baft", func(abs string, d fs.DirEntry) error {
 		paths = append(paths, abs)
 		return nil
 	})

@@ -1,6 +1,7 @@
 package memfs
 
 import (
+	"context"
 	"io/fs"
 	"testing"
 )
@@ -82,7 +83,7 @@ func TestWalkDir_EmptyDirectory(t *testing.T) {
 
 	var count int
 	var paths []string
-	err = fsys.WalkDir("/empty", func(path string, d fs.DirEntry) error {
+	err = fsys.WalkDir(context.Background(), "/empty", func(path string, d fs.DirEntry) error {
 		count++
 		paths = append(paths, path)
 		return nil

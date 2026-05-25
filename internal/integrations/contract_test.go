@@ -29,7 +29,10 @@ func findTestBinary(t *testing.T) string {
 func TestContractVerifyCompatibleMatchingVersion(t *testing.T) {
 	binary := findTestBinary(t)
 	protocol := expectedProtocol(FamilyVSCode)
-	expectedVersion := expectedPluginVersion(FamilyVSCode)
+	expectedVersion, err := expectedPluginVersion(FamilyVSCode)
+	if err != nil {
+		t.Fatalf("could not get embedded VS Code version: %v", err)
+	}
 
 	cmd := exec.Command(binary, "integrate", "--verify-compatible",
 		"--integration=vscode",
@@ -95,7 +98,10 @@ func TestContractVerifyCompatibleVersionMismatch(t *testing.T) {
 
 func TestContractVerifyCompatibleProtocolMismatch(t *testing.T) {
 	binary := findTestBinary(t)
-	expectedVersion := expectedPluginVersion(FamilyVSCode)
+	expectedVersion, err := expectedPluginVersion(FamilyVSCode)
+	if err != nil {
+		t.Fatalf("could not get embedded VS Code version: %v", err)
+	}
 
 	wrongProtocol := expectedProtocol(FamilyVSCode) - 1
 	cmd := exec.Command(binary, "integrate", "--verify-compatible",

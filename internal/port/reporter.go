@@ -2,10 +2,8 @@ package port
 
 import "io"
 
-// Writer is the writer interface used by reporters.
 type Writer = io.Writer
 
-// Violation is a single architecture rule violation with full location data.
 type Violation struct {
 	Rule      string `json:"rule"`
 	Severity  string `json:"severity"`
@@ -18,12 +16,10 @@ type Violation struct {
 	LineEnd   int    `json:"lineEnd,omitempty"`
 }
 
-// CheckResultRenderer renders a RunResult to a string.
 type CheckResultRenderer interface {
 	Render(result *CheckResult) string
 }
 
-// CheckResult holds the outcome of a baft check run.
 type CheckResult struct {
 	Capsules   []CapsuleResult `json:"capsules,omitempty"`
 	Violations []string        `json:"violations,omitempty"`
@@ -31,7 +27,6 @@ type CheckResult struct {
 	Errors     []string        `json:"errors,omitempty"`
 }
 
-// CapsuleResult holds the outcome for a single capsule.
 type CapsuleResult struct {
 	Label            string
 	FilesEncountered int

@@ -3,6 +3,7 @@ package ignorefs
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -366,12 +367,12 @@ func (w *ignoreWrapper) ReadDir(name string) ([]fs.DirEntry, error) {
 	return result, nil
 }
 
-func (w *ignoreWrapper) WalkDir(root string, fn func(abs string, d fs.DirEntry) error) error {
+func (w *ignoreWrapper) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
 	if w.isIgnoredWithDir(root, dirIsDir) {
 		return nil
 	}
 
-	return w.lower.WalkDir(root, func(abs string, d fs.DirEntry) error {
+	return w.lower.WalkDir(ctx, root, func(abs string, d fs.DirEntry) error {
 		if abs == root {
 			return nil
 		}

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 
+	"github.com/dariushalipour/baft/internal/adapter/languages/internal/lineoffsets"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -22,8 +22,6 @@ func (Language) IsScannableFile(rel string) bool {
 var cargoNameRe = regexp.MustCompile(`^name\s*=\s*"([^"]+)"`)
 var cargoNameInlineRe = regexp.MustCompile(`^name\s*=\s*\{[^"]*value\s*=\s*"([^"]+)"`)
 
-// rustImportRe matches import, mod, or extern crate statements with capture groups.
-// Group 1: use spec, Group 2: mod name, Group 3: extern crate name
 var rustImportRe = regexp.MustCompile(`(?m)^\s*(?:pub\(.*?\)\s+|pub\s+)?(?:use\s+([^;]+);|mod\s+(\w+);|extern\s+crate\s+(\w+)(?:\s+as\s+\w+)?)`)
 
 func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
@@ -32,27 +30,22 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 		return nil, err
 	}
 
-	// Precompute line offsets for O(1) line/col lookup.
-	lineOffsets := makeLineOffsets(data)
+	lineOffsets := lineoffsets.MakeLineOffsets(data)
 	dataStr := string(data)
 
 	seen := make(map[string]bool)
-	// Estimate capacity from approximate line count.
 	approxLines := bytes.Count(data, []byte{'\n'}) + 1
 	imports := make([]port.ImportSpec, 0, approxLines/3)
 
-	// Single-pass matching: find all import/mod/extern crate statements at once.
 	for _, m := range rustImportRe.FindAllSubmatchIndex(data, -1) {
-		// Determine which group matched and extract the import path.
 		var spec string
 		if m[2] != -1 {
-			// use statement - group 2 is the use spec
 			spec = strings.TrimSpace(dataStr[m[2]:m[3]])
 		} else if m[4] != -1 {
-			// mod statement - group 4 is the mod name
+			// mod statement
 			spec = dataStr[m[4]:m[5]]
 		} else if m[6] != -1 {
-			// extern crate - group 6 is the crate name
+			// extern crate
 			spec = dataStr[m[6]:m[7]]
 		} else {
 			continue
@@ -60,44 +53,13 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 
 		if !seen[spec] {
 			seen[spec] = true
-			// Find the start offset of the matched text for line/col calculation.
 			matchStart := m[0]
-			line, col := offsetToLineCol(lineOffsets, data, matchStart)
+			line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, matchStart)
 			imports = append(imports, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: col + len(spec)})
 		}
 	}
 
 	return imports, nil
-}
-
-// makeLineOffsets precomputes the byte offset of each line start for O(1) line/col lookup.
-func makeLineOffsets(data []byte) []int {
-	offsets := make([]int, 0, bytes.Count(data, []byte{'\n'})+1)
-	offsets = append(offsets, 0)
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\n' {
-			offsets = append(offsets, i+1)
-		}
-	}
-	return offsets
-}
-
-// offsetToLineCol converts a byte offset to line/col using precomputed line offsets.
-func offsetToLineCol(lineOffsets []int, data []byte, offset int) (int, int) {
-	if offset > len(data) {
-		offset = len(data)
-	}
-	if offset < 0 {
-		offset = 0
-	}
-	idx := sort.Search(len(lineOffsets), func(i int) bool {
-		return lineOffsets[i] > offset
-	})
-	line := idx - 1
-	if line < 0 {
-		line = 0
-	}
-	return line + 1, offset - lineOffsets[line] + 1
 }
 
 func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {

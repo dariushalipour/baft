@@ -2,6 +2,8 @@ package dump
 
 import (
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
@@ -85,7 +87,7 @@ func applyCheckAmendments(fsys port.FileSystem, rootDir string, capsule port.Cap
 		return current, nil, nil
 	}
 
-	updated := graph.NewGraph(nodes, edges)
+	updated := graph.NewGraph(nodes, edges, nil, appendEdgeOrder(current.EdgeOrder, edges))
 	updated.NodeDisplays = displays
 	if !lang.SupportsFileGlobs() {
 		for id, glob := range updated.Nodes {
@@ -95,6 +97,7 @@ func applyCheckAmendments(fsys port.FileSystem, rootDir string, capsule port.Cap
 		}
 	}
 	updated.Classes = classes
+	updated.EdgeOrder = appendEdgeOrder(current.EdgeOrder, edges)
 
 	diff := &AmendDiff{
 		Nodes: len(nodes) - nodeCountBefore,
@@ -225,4 +228,41 @@ func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsu
 
 func startsWith(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+}
+
+func appendEdgeOrder(existing []string, edges map[string]map[string]bool) []string {
+	seen := make(map[string]bool, len(existing))
+	for _, key := range existing {
+		if src, dst, ok := splitEdgeKey(key); ok {
+			if dsts, ok := edges[src]; ok && dsts[dst] {
+				seen[key] = true
+			}
+		}
+	}
+	result := make([]string, 0, len(edges))
+	for _, key := range existing {
+		if seen[key] {
+			result = append(result, key)
+		}
+	}
+	var newEdges []string
+	for src, dsts := range edges {
+		for dst := range dsts {
+			key := src + "\t" + dst
+			if !seen[key] {
+				newEdges = append(newEdges, key)
+			}
+		}
+	}
+	sort.Strings(newEdges)
+	result = append(result, newEdges...)
+	return result
+}
+
+func splitEdgeKey(key string) (src, dst string, ok bool) {
+	idx := strings.IndexByte(key, '\t')
+	if idx < 0 {
+		return "", "", false
+	}
+	return key[:idx], key[idx+1:], true
 }

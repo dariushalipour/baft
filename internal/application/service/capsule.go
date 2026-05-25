@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,11 +13,11 @@ import (
 // nested capsules, non-scannable files, and gitignored paths. For each
 // scannable file it calls fn with the absolute path and the
 // capsule-relative path (forward-slash).
-func WalkCapsule(fsys port.FileSystem, capsuleDir string, lang port.Language, fn func(abs, rel string) error) error {
+func WalkCapsule(ctx context.Context, fsys port.FileSystem, capsuleDir string, lang port.Language, fn func(abs, rel string) error) error {
 	if _, err := fsys.Stat(capsuleDir); err != nil {
 		return err
 	}
-	return fsys.WalkDir(capsuleDir, func(abs string, d fs.DirEntry) error {
+	return fsys.WalkDir(ctx, capsuleDir, func(abs string, d fs.DirEntry) error {
 		if d.IsDir() {
 			if abs != capsuleDir {
 				_, err := fsys.Stat(filepath.Join(abs, port.ContractFile))
@@ -49,11 +50,11 @@ func isNotExist(err error) bool {
 // directories. Hidden/vendor dirs and non-scannable files are still
 // skipped. For each scannable file it calls fn with the absolute path
 // and the capsule-relative path (forward-slash).
-func WalkAllFiles(fsys port.FileSystem, capsuleDir string, lang port.Language, fn func(abs, rel string) error) error {
+func WalkAllFiles(ctx context.Context, fsys port.FileSystem, capsuleDir string, lang port.Language, fn func(abs, rel string) error) error {
 	if _, err := fsys.Stat(capsuleDir); err != nil {
 		return err
 	}
-	return fsys.WalkDir(capsuleDir, func(abs string, d fs.DirEntry) error {
+	return fsys.WalkDir(ctx, capsuleDir, func(abs string, d fs.DirEntry) error {
 		if d.IsDir() {
 			return nil
 		}

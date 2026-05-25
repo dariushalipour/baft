@@ -32,7 +32,7 @@ import (
 )
 
 type capsuleResult struct {
-	graph                 *graph.Graph
+	graphIndex            *graph.GraphIndex
 	filesEncountered      int
 	filesScanned          int
 	relations             int
@@ -52,15 +52,16 @@ func (r *capsuleResult) toPublic(label string) port.CapsuleResult {
 		Violations:       r.violations,
 		Errors:           r.errors,
 	}
-	if r.graph != nil {
-		cr.Nodes = len(r.graph.Nodes)
-		cr.Edges = r.graph.EdgeCount()
+	if r.graphIndex != nil {
+		g := r.graphIndex.Graph()
+		cr.Nodes = len(g.Nodes)
+		cr.Edges = r.graphIndex.EdgeCount()
 	}
 	return cr
 }
 
 type contractContext struct {
-	rootGraph       *graph.Graph
+	rootGraphIndex  *graph.GraphIndex
 	hasRootContract bool
 	contractPathAbs string
 	loadErr         []port.Violation
@@ -90,7 +91,7 @@ func newCapsuleChecker(
 ) *capsuleChecker {
 	contractDirAbs, _ := filepath.Abs(contractDir)
 	return &capsuleChecker{
-		res:               &capsuleResult{graph: ctx.rootGraph},
+		res:               &capsuleResult{graphIndex: ctx.rootGraphIndex},
 		fsys:              fsys,
 		capsule:           capsule,
 		lang:              lang,
@@ -128,7 +129,6 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 }
 
 func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) *port.CheckResult {
-	// Wrap the filesystem with ignore rules before discovery.
 	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
 		RootDir:           rootDir,
 		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
@@ -141,7 +141,7 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		warnings = []string{"not inside a git repository — .gitignore/.baftignore rules from parent directories will not apply"}
 	}
 
-	entries, err := discovery.Discover(wrapped, rootDir)
+	entries, err := discovery.Discover(ctx, wrapped, rootDir)
 	if err != nil {
 		return &port.CheckResult{Errors: []string{"discovery: " + err.Error()}}
 	}
@@ -155,7 +155,6 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		return port.Label(capsules[i].capsule) < port.Label(capsules[j].capsule)
 	})
 
-	// Build work items with their original indices for deterministic output ordering
 	workItems := make([]capsuleWork, 0, len(capsules))
 	for i, c := range capsules {
 		label := port.Label(c.capsule)
@@ -169,16 +168,17 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		})
 	}
 
-	// Use fan-out pattern: distribute work items via a channel to a pool of workers,
-	// collect via result channel. The book recommends worker pools for independent
-	// tasks to bound concurrency and avoid overwhelming the system.
 	numWorkers := min(runtime.NumCPU(), len(workItems))
 	workChan := make(chan capsuleWork, numWorkers*2)
 	results := make(chan capsuleResultItem, numWorkers*2)
 
 	go func() {
 		for _, w := range workItems {
-			workChan <- w
+			select {
+			case workChan <- w:
+			case <-ctx.Done():
+				return
+			}
 		}
 		close(workChan)
 	}()
@@ -190,35 +190,35 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 			defer wg.Done()
 			for work := range workChan {
 				capsuleRes, err := checkCapsule(ctx, wrapped, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
-				results <- capsuleResultItem{
+				select {
+				case results <- capsuleResultItem{
 					index:  work.index,
 					label:  work.label,
 					result: capsuleRes,
 					err:    err,
+				}:
+				case <-ctx.Done():
+					return
 				}
 			}
 		}()
 	}
 
-	// Close channel once all workers are done
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
-	// Collect all results
 	collected := make([]capsuleResultItem, 0, len(workItems))
 	for r := range results {
 		collected = append(collected, r)
 	}
 
-	// Build result in original sorted order for deterministic output
 	sort.Slice(collected, func(i, j int) bool {
 		return collected[i].index < collected[j].index
 	})
 
 	var result port.CheckResult
-	// Pre-allocate slices with estimated capacity.
 	result.Warnings = warnings
 	result.Errors = make([]string, 0, len(collected)*2)
 	result.Capsules = make([]port.CapsuleResult, 0, len(collected))
@@ -297,7 +297,7 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 	if err != nil {
 		return nil, err
 	}
-	if len(ctrCtx.loadErr) > 0 && ctrCtx.rootGraph == nil {
+	if len(ctrCtx.loadErr) > 0 && ctrCtx.rootGraphIndex == nil {
 		return &capsuleResult{errors: ctrCtx.loadErr}, nil
 	}
 	if !ctrCtx.hasRootContract && !hasScopedContract(fsys, capsule.Dir) {
@@ -330,7 +330,6 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 func makeContractLoadErrors(contractPath string, err error) []port.Violation {
 	var violations []port.Violation
 
-	// Check if it's a chain of ParseErrorWithNext (from multiple validation errors).
 	var chain *mermaid.ParseErrorWithNext
 	if errors.As(err, &chain) {
 		for cur := chain; cur != nil; {
@@ -364,7 +363,6 @@ func makeContractLoadErrors(contractPath string, err error) []port.Violation {
 		return violations
 	}
 
-	// Single ParseError.
 	var pe *mermaid.ParseError
 	if errors.As(err, &pe) {
 		v := port.Violation{
@@ -412,9 +410,11 @@ func loadCapsuleContract(fsys port.FileSystem, repo port.GraphRepository, contra
 		return ctx, nil
 	}
 	ctx.hasRootContract = true
-	ctx.rootGraph, err = repo.Load(string(raw))
-	if err != nil {
-		ctx.loadErr = makeContractLoadErrors(ctx.contractPathAbs, err)
+	g, loadErr := repo.Load(string(raw))
+	if loadErr != nil {
+		ctx.loadErr = makeContractLoadErrors(ctx.contractPathAbs, loadErr)
+	} else {
+		ctx.rootGraphIndex = graph.NewGraphIndex(g)
 	}
 	return ctx, nil
 }

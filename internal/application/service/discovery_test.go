@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -287,7 +288,7 @@ func TestCapsuleDiscovery(t *testing.T) {
 			d := NewCapsuleDiscovery()
 			tt.register(d)
 
-			entries, err := d.Discover(fsys, tt.root)
+			entries, err := d.Discover(context.Background(), fsys, tt.root)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

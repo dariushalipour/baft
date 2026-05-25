@@ -1,6 +1,7 @@
 package dump
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"sort"
@@ -203,7 +204,7 @@ func importSpecForViolation(lang port.Language, fsys port.FileSystem, absPath st
 
 func discoverScopedContracts(fsys port.FileSystem, capsuleDir string) ([]string, error) {
 	var contracts []string
-	err := fsys.WalkDir(capsuleDir, func(abs string, d fs.DirEntry) error {
+	err := fsys.WalkDir(context.Background(), capsuleDir, func(abs string, d fs.DirEntry) error {
 		if d.IsDir() {
 			return nil
 		}

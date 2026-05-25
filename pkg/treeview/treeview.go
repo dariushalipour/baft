@@ -6,20 +6,13 @@ import (
 	"strings"
 )
 
-// Entry represents a single file path extracted from a tree doc string.
 type Entry struct {
-	// BaseDir is the root directory from the first line of the tree.
 	BaseDir string
-	// RelPath is the file path relative to BaseDir.
 	RelPath string
 }
 
 // ParseTree parses a tree doc string (without a root dir line) and returns
 // all file entries with the given rootDir as the base directory.
-//
-// The doc uses tree characters (├, │, └, ─, spaces) to show directory
-// structure. Only leaf entries that do not end with "/" are returned as file
-// paths.
 //
 // The parser uses fixed 3-character slots:
 //
@@ -73,11 +66,6 @@ func ParseTree(rootDir, doc string) []Entry {
 
 // Parse parses a tree doc string and returns all file entries.
 //
-// The first line must be an absolute path (the base directory).
-// Subsequent lines use tree characters (├, │, └, ─, spaces) to show
-// directory structure. Only leaf entries that do not end with "/" are
-// returned as file paths.
-//
 // The parser uses fixed 3-character slots:
 //
 //	"│  " = continuation from parent level
@@ -111,7 +99,6 @@ func Parse(doc string) []Entry {
 	return ParseTree(baseDir, strings.Join(lines[1:], "\n"))
 }
 
-// extractBaseDir extracts the absolute path from the first line of a tree.
 func extractBaseDir(line string) string {
 	line = strings.TrimSpace(line)
 	parts := strings.Fields(line)
@@ -121,17 +108,6 @@ func extractBaseDir(line string) string {
 	return ""
 }
 
-// decodeTreeLine decodes a tree line into its depth level and name.
-//
-// It parses the line as a sequence of 3-character slots:
-//
-//	"│  " = continuation from parent level
-//	"   " = empty slot
-//	"├  " = branch (current level)
-//	"└  " = last branch (current level)
-//
-// The depth equals the number of ancestor slots (continuation or empty)
-// before the branch slot. The name is the text after the branch connector.
 func decodeTreeLine(line string) (depth int, name string) {
 	runes := []rune(line)
 	n := len(runes)

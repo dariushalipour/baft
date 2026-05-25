@@ -1,6 +1,7 @@
 package realfs
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -99,7 +100,7 @@ func TestWalkDirSkipsGitIgnored(t *testing.T) {
 	}
 
 	seen := make(map[string]bool)
-	_ = wrapped.WalkDir(dir, func(abs string, d fs.DirEntry) error {
+	_ = wrapped.WalkDir(context.Background(), dir, func(abs string, d fs.DirEntry) error {
 		seen[abs] = true
 		return nil
 	})
@@ -144,7 +145,7 @@ func TestDiscoverSkipsGitIgnoredBaft(t *testing.T) {
 	// Use Rust Discover — it should only find api/pkg, not web/pkg
 	disco := service.NewCapsuleDiscovery()
 	rust.Language{}.Register(disco)
-	entries, err := disco.Discover(wrapped, dir)
+	entries, err := disco.Discover(context.Background(), wrapped, dir)
 	if err != nil {
 		t.Fatalf("Discover error: %v", err)
 	}

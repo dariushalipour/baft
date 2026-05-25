@@ -1,6 +1,7 @@
 package kotlin
 
 import (
+	"context"
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
@@ -161,7 +162,7 @@ func TestHasBuildScript(t *testing.T) {
 	// Empty dir should not have a package
 	disco := service.NewCapsuleDiscovery()
 	Language{}.Register(disco)
-	entries, err := disco.Discover(fs, "/")
+	entries, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +172,7 @@ func TestHasBuildScript(t *testing.T) {
 
 	fs.WriteFile("/build.gradle.kts", nil, 0o644)
 	fs.WriteFile("/src/main/kotlin/com/example/Main.kt", nil, 0o644)
-	entries, err = disco.Discover(fs, "/")
+	entries, err = disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +181,7 @@ func TestHasBuildScript(t *testing.T) {
 	}
 
 	fs.WriteFile("/build.gradle", nil, 0o644)
-	entries, err = disco.Discover(fs, "/")
+	entries, err = disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -269,7 +270,7 @@ func TestDiscover(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	Language{}.Register(disco)
-	entries, err := disco.Discover(fs, "/")
+	entries, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +288,7 @@ func TestDiscover(t *testing.T) {
 	fs2.WriteFile("/src/main/kotlin/com/example/domain/Model.kt", []byte("package com.example.domain\nclass Model"), 0o644)
 	fs2.WriteFile("/src/main/kotlin/com/example/api/Controller.kt", []byte("package com.example.api\nclass Controller"), 0o644)
 	fs2.WriteFile("/build.gradle.kts", nil, 0o644)
-	entries, err = disco2.Discover(fs2, "/")
+	entries, err = disco2.Discover(context.Background(), fs2, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,7 +304,7 @@ func TestDiscover(t *testing.T) {
 	fs3.WriteFile("/src/main/kotlin/com/example/api/Controller.kt", []byte("package com.example.api\nclass Controller"), 0o644)
 	fs3.WriteFile("/build.gradle", nil, 0o644)
 	fs3.WriteFile("/BAFT.md", []byte("```mermaid\nflowchart TD\n    A[\"src/main/kotlin/com/example/domain\"]\n```\n"), 0o644)
-	entries, err = disco3.Discover(fs3, "/")
+	entries, err = disco3.Discover(context.Background(), fs3, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +324,7 @@ func TestDiscover_SkipsBuildDirs(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	Language{}.Register(disco)
-	entries, err := disco.Discover(fs, "/")
+	entries, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +344,7 @@ func TestDiscoverDraft_MultiModuleWithRoot(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	Language{}.Register(disco)
-	entries, err := disco.Discover(fs, "/")
+	entries, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +376,7 @@ func TestDiscoverDraft_RootProjectNoSource(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	Language{}.Register(disco)
-	entries, err := disco.Discover(fs, "/")
+	entries, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +398,7 @@ func TestDiscover_SkipsKotlinCache(t *testing.T) {
 
 	disco := service.NewCapsuleDiscovery()
 	Language{}.Register(disco)
-	entries, err := disco.Discover(fs, "/")
+	entries, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
