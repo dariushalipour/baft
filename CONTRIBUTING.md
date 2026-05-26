@@ -38,6 +38,7 @@ baft/
         │   ├── golang/golang.go
         │   ├── dart/dart.go
         │   ├── typescript/typescript.go
+        │   ├── java/java.go
         │   ├── kotlin/kotlin.go
         │   └── rust/rust.go
         ├── fs/                                      # Filesystem adapters

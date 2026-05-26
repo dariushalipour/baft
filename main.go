@@ -16,6 +16,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/adapter/languages/dart"
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
+	"github.com/dariushalipour/baft/internal/adapter/languages/java"
 	"github.com/dariushalipour/baft/internal/adapter/languages/kotlin"
 	"github.com/dariushalipour/baft/internal/adapter/languages/rust"
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
@@ -546,7 +547,7 @@ func cliVersion() string {
 
 func resolveLangs(names []string) ([]port.Language, error) {
 	if len(names) == 0 {
-		return []port.Language{golang.Language{}, dart.Language{}, kotlin.Language{}, &typescript.Language{}, rust.Language{}}, nil
+		return []port.Language{golang.Language{}, dart.Language{}, java.Language{}, kotlin.Language{}, &typescript.Language{}, rust.Language{}}, nil
 	}
 	var out []port.Language
 	for _, n := range names {
@@ -557,6 +558,8 @@ func resolveLangs(names []string) ([]port.Language, error) {
 			out = append(out, &typescript.Language{})
 		case "dart":
 			out = append(out, dart.Language{})
+		case "java":
+			out = append(out, java.Language{})
 		case "kotlin":
 			out = append(out, kotlin.Language{})
 		case "rust":

@@ -231,7 +231,7 @@ The `dump` command generates a contract file from observed imports:
 **Dump does not merge.** It scans all tracked files and writes a fresh contract file based on observed imports. It does not preserve existing rules, comments, or structure. It is a proposal, not an edit.
 
 **Node granularity:**
-- **Go, Kotlin, Rust:** Dumps prefer bare directory nodes such as `internal/domain`. Use `/**` only when you want one node to own a whole subtree.
+- **Go, Java, Kotlin, Rust:** Dumps prefer bare directory nodes such as `internal/domain`. Use `/**` only when you want one node to own a whole subtree.
 - **TypeScript, Dart:** Root-level dumps start with merged same-directory `/*.*` nodes and retry with file-shaped nodes only when the merged draft creates a cycle. Scoped or bounded-context dumps still keep root files as file-shaped nodes.
 
 ---
@@ -353,4 +353,5 @@ flowchart TD
 | npm/TypeScript | `package.json` directory     | All `*.ts`, `*.tsx` files in the package       |
 | Rust           | `Cargo.toml` (per crate)     | All `*.rs` files under `src/` in the crate     |
 | Dart           | `pubspec.yaml` directory     | All `*.dart` files under `lib/` in the package |
+| Java           | `build.gradle.kts`, `build.gradle`, or `pom.xml` directory | All `*.java` files in source sets |
 | Gradle/Kotlin  | `build.gradle.kts` directory | All `*.kt` files matching source set prefixes  |

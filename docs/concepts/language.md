@@ -3,7 +3,7 @@
 Each language module encapsulates everything that is specific to a programming
 language. The core (graph engine, check use case, dump use case) is
 completely language-agnostic — it knows nothing about Go, Dart, TypeScript,
-Kotlin, or Rust. It only knows about a `Language` interface and a `Graph`
+Kotlin, Rust, or Java. It only knows about a `Language` interface and a `Graph`
 domain.
 
 A language module is a self-contained capsule under
@@ -45,6 +45,7 @@ language's conventions for which files are source code worth analyzing:
 | Go         | `*.go` (all Go files)             | none                                            |
 | Dart       | `*.dart` under `lib/`             | `_test.dart`, `.g.dart`, `.freezed.dart`        |
 | TypeScript | `*.ts`, `*.tsx`                   | `.d.ts`, `.test.ts`, `.spec.ts`                 |
+| Java       | `*.java`                          | `/generated/`, `/build/`, `/target/`, `*Test.java`  |
 | Kotlin     | `*.kt` in 28+ source set prefixes | `Test.kt`, `/generated/`, `/ksp/`, `/buildSrc/` |
 | Rust       | `*.rs` under `src/`               | `src/bin/`, `src/examples/`, `build.rs`         |
 
@@ -70,6 +71,7 @@ The format and mechanism are entirely language-specific:
 | Go         | AST-based (`go/parser`, `go/token`)          | `"github.com/user/repo/path"`                     |
 | Dart       | Regex on `import`/`export`/`part` directives | `"lib/path/to/file"`                              |
 | TypeScript | Four regex patterns                          | `"./relative"`, `"@alias/path"`, `"package-name"` |
+| Java       | Regex on `import` statements                 | `"com.example.module.Class"`                      |
 | Kotlin     | Regex on `import` statements                 | `"com.example.module.Class"`                      |
 | Rust       | Regex on `use`/`mod`/`extern crate`          | `"crate::path::to::item"`                         |
 
@@ -99,6 +101,7 @@ The resolution semantics are language-specific:
 | Go         | Prefix match against `CapsuleID`                            | Strip `CapsuleID/` prefix                              |
 | Dart       | `package:` URI name matches `CapsuleID`                     | Map `package:<name>/<path>` to `lib/<path>`            |
 | TypeScript | `tsconfig.json` paths alias, `baseUrl`, package name match  | Resolve extensions (`.js` -> `.ts`), `index.ts`        |
+| Java       | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Kotlin     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Rust       | `crate::` prefix, `super::`/`self::` hops, crate name match | Resolve multi-hop `super::` paths, `crate::` from root |
 
@@ -117,7 +120,7 @@ knowledge of how that path was computed.
 
 Returns `true` if the language's contract file can use file-shaped node
 definitions (e.g. `lib/main.dart` as a node). Only Dart and TypeScript
-support this — Go, Kotlin, and Rust only support directory-level nodes.
+support this — Go, Java, Kotlin, and Rust only support directory-level nodes.
 
 Directory-level nodes have two distinct meanings:
 
@@ -142,13 +145,14 @@ receives a `CapsuleDiscovery` interface and calls `d.Register()` with a
   identifier (module name, package name, etc.)
 Each language adapter implements its own manifest parser:
 
-| Language   | Manifest file(s)   | Parser function    | Extracted value         |
-| ---------- | ------------------ | ------------------ | ----------------------- |
-| Go         | `go.mod`           | `readGoModulePath` | `module github.com/...` |
-| Dart       | `pubspec.yaml`     | `readPubspecName`  | `name: my_package`      |
-| TypeScript | `package.json`     | `readCapsuleName`  | `"name": "my-package"`  |
-| Kotlin     | `build.gradle.kts` | `readGradleName`   | `namespace = "..."`     |
-| Rust       | `Cargo.toml`       | `readCargoName`    | `[package] name = ...`  |
+| Language   | Manifest file(s)                     | Parser function    | Extracted value                    |
+| ---------- | ------------------------------------ | ------------------ | ---------------------------------- |
+| Go         | `go.mod`                             | `readGoModulePath` | `module github.com/...`            |
+| Dart       | `pubspec.yaml`                       | `readPubspecName`  | `name: my_package`                 |
+| TypeScript | `package.json`                       | `readCapsuleName`  | `"name": "my-package"`             |
+| Java       | `build.gradle.kts`, `build.gradle`, `pom.xml` | `findBaseCapsule`  | common package prefix from source  |
+| Kotlin     | `build.gradle.kts`, `build.gradle`   | `findBaseCapsule`  | common package prefix from source  |
+| Rust       | `Cargo.toml`                         | `readCargoName`    | `[package] name = ...`             |
 
 This method is called once during application startup so the discovery service
 knows which files to look for and how to parse them.

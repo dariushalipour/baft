@@ -3,7 +3,7 @@ Usage: baft check [flags] [root-dir]
 Check packages for architecture violations.
 
 Flags:
-  --lang <name>       Language filter (can be repeated): go, typescript, dart, kotlin, rust
+  --lang <name>       Language filter (can be repeated): go, typescript, dart, java, kotlin, rust
   --reporter=<name>   Output reporter format. Options:
                         text    Human-readable, colorized terminal output (default)
                         json    Pretty-printed JSON of the full check result (capsules, violations, warnings, errors)

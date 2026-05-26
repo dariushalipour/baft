@@ -1,4 +1,4 @@
-package kotlin
+package java
 
 import (
 	"context"
@@ -15,10 +15,10 @@ import (
 
 type Language struct{}
 
-func (Language) Name() string { return "kotlin" }
+func (Language) Name() string { return "java" }
 
 func (Language) IsScannableFile(rel string) bool {
-	return strings.HasSuffix(rel, ".kt")
+	return strings.HasSuffix(rel, ".java")
 }
 
 var importRe = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(?:\.\*)?`)
@@ -64,7 +64,7 @@ func resolveSourcePrefix(fileRel string) string {
 	if len(parts) >= 3 && parts[0] == "src" {
 		return strings.Join(parts[:3], "/")
 	}
-	return "src/main/kotlin"
+	return "src/main/java"
 }
 
 func isInternalCapsule(spec, basePkg string) bool {
@@ -83,38 +83,21 @@ func isInternalCapsule(spec, basePkg string) bool {
 
 func (Language) SupportsFileGlobs() bool { return false }
 func (Language) Register(d port.CapsuleDiscovery) {
-	d.Register("kotlin", port.ManifestInfo{
-		Names: []string{"build.gradle.kts", "build.gradle"},
+	d.Register("java", port.ManifestInfo{
+		Names: []string{"build.gradle.kts", "build.gradle", "pom.xml"},
 		ParseFunc: func(fsys port.FileSystem, path string) (string, error) {
 			dir := filepath.Dir(path)
 			return findBaseCapsule(fsys, dir)
 		},
-		BaseIgnoreEntries: []string{"build", ".gradle", ".kotlin", "gradle", "generated", "kapt", "ksp", "buildSrc", "scripts", "*Test.kt", "*_test.kt"},
+		BaseIgnoreEntries: []string{"build", "target", ".gradle", ".m2", "generated", "*Test.java", "*Tests.java", "*TestCase.java"},
 	})
 }
 
 func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 	srcDirs := []string{
-		filepath.Join(projectRoot, "src/main/kotlin"),
 		filepath.Join(projectRoot, "src/main/java"),
-		filepath.Join(projectRoot, "src/jvmMain/kotlin"),
 		filepath.Join(projectRoot, "src/jvmMain/java"),
-		filepath.Join(projectRoot, "src/commonMain/kotlin"),
-		filepath.Join(projectRoot, "src/androidMain/kotlin"),
-		filepath.Join(projectRoot, "src/androidUnitTest/kotlin"),
-		filepath.Join(projectRoot, "src/iosMain/kotlin"),
-		filepath.Join(projectRoot, "src/iosArm64Main/kotlin"),
-		filepath.Join(projectRoot, "src/iosSimulatorArm64Main/kotlin"),
-		filepath.Join(projectRoot, "src/macosMain/kotlin"),
-		filepath.Join(projectRoot, "src/macosX64Main/kotlin"),
-		filepath.Join(projectRoot, "src/macosArm64Main/kotlin"),
-		filepath.Join(projectRoot, "src/linuxMain/kotlin"),
-		filepath.Join(projectRoot, "src/linuxX64Main/kotlin"),
-		filepath.Join(projectRoot, "src/darwinMain/kotlin"),
-		filepath.Join(projectRoot, "src/nativeMain/kotlin"),
-		filepath.Join(projectRoot, "src/jsMain/kotlin"),
-		filepath.Join(projectRoot, "src/mingwMain/kotlin"),
-		filepath.Join(projectRoot, "src/mingwX64Main/kotlin"),
+		filepath.Join(projectRoot, "src/androidMain/java"),
 	}
 	var chosenSrc string
 	for _, sd := range srcDirs {
@@ -132,7 +115,7 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasSuffix(abs, ".kt") {
+		if !strings.HasSuffix(abs, ".java") {
 			return nil
 		}
 		rel, _ := filepath.Rel(chosenSrc, abs)
@@ -148,7 +131,7 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 	}
 
 	if len(relPaths) == 0 {
-		return "", fmt.Errorf("no .kt files in subdirectories of %s", chosenSrc)
+		return "", fmt.Errorf("no .java files in subdirectories of %s", chosenSrc)
 	}
 
 	sort.Strings(relPaths)

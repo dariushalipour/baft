@@ -301,4 +301,5 @@ language.
 | npm/TypeScript | `package.json`           | npm package         | TypeScript modules (files), namespaces     |
 | Rust           | `Cargo.toml` (per crate) | Cargo crate/package | Rust modules (`mod`, `crate::`)            |
 | Dart           | `pubspec.yaml`           | Dart package        | Dart libraries (`lib/`)                    |
+| Java           | `build.gradle.kts`, `build.gradle`, `pom.xml` | Gradle module / Maven project | Java packages (dot-separated namespaces) |
 | Gradle/Kotlin  | `build.gradle.kts`       | Gradle module       | Kotlin packages (dot-separated namespaces) |

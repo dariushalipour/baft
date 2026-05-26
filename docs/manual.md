@@ -74,7 +74,7 @@ flowchart TD
 - **Custom separator:** `%% config globSeparator "."` lets you write globs with dots instead of slashes (useful for Kotlin/Java). The `%%` wrapper prevents Mermaid preview errors.
 - **Language Support:**
   - **TypeScript, Dart:** Support both file-shaped and directory-shaped nodes.
-  - **Go, Kotlin, Rust:** Support directory-shaped nodes only. Using a file-shaped node (e.g., `handler["path/handler.go"]`) in these languages produces a validation error: `file-shaped nodes require a language that supports file globs`.
+  - **Go, Java, Kotlin, Rust:** Support directory-shaped nodes only. Using a file-shaped node (e.g., `handler["path/handler.go"]`) in these languages produces a validation error: `file-shaped nodes require a language that supports file globs`.
 
 ### Ignoring Files with `.baftignore`
 

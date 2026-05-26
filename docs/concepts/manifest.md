@@ -205,4 +205,5 @@ but those terms mean different things in different ecosystems.
 | npm/TypeScript | `package.json` (`name` field)                  | npm package         |
 | Rust           | `Cargo.toml` (`[package]` → `name`)            | Cargo crate/package |
 | Dart           | `pubspec.yaml` (`name:` line)                  | Dart package        |
+| Java           | `build.gradle.kts`, `build.gradle`, `pom.xml` (source path common prefix) | Gradle module / Maven project |
 | Gradle/Kotlin  | `build.gradle.kts` (source path common prefix) | Gradle module       |

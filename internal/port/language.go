@@ -35,7 +35,8 @@ type ManifestInfo struct {
 	Names []string
 	// ParseFunc reads a manifest file and extracts the capsule identifier.
 	ParseFunc func(fsys FileSystem, path string) (string, error)
-	// BaseIgnoreEntries are directories to skip during discovery (e.g. ["vendor"], ["node_modules"]).
+	// BaseIgnoreEntries are directory names and file glob patterns to skip during
+	// discovery (e.g. ["vendor"], ["node_modules"], ["*_test.go"]).
 	BaseIgnoreEntries []string
 }
 
