@@ -40,6 +40,7 @@ baft/
         │   ├── typescript/typescript.go
         │   ├── java/java.go
         │   ├── kotlin/kotlin.go
+        │   ├── python/python.go
         │   └── rust/rust.go
         ├── fs/                                      # Filesystem adapters
         │   ├── realfs/                              # OS-backed filesystem

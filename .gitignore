@@ -9,3 +9,5 @@
 *.swo
 .DS_Store
 /baft
+/.opencode/*
+!/.opencode/AGENTS.md

@@ -3,7 +3,7 @@
 Each language module encapsulates everything that is specific to a programming
 language. The core (graph engine, check use case, dump use case) is
 completely language-agnostic — it knows nothing about Go, Dart, TypeScript,
-Kotlin, Rust, or Java. It only knows about a `Language` interface and a `Graph`
+Kotlin, Python, Rust, or Java. It only knows about a `Language` interface and a `Graph`
 domain.
 
 A language module is a self-contained capsule under
@@ -47,6 +47,7 @@ language's conventions for which files are source code worth analyzing:
 | TypeScript | `*.ts`, `*.tsx`                   | `.d.ts`, `.test.ts`, `.spec.ts`                 |
 | Java       | `*.java`                          | `/generated/`, `/build/`, `/target/`, `*Test.java`  |
 | Kotlin     | `*.kt` in 28+ source set prefixes | `Test.kt`, `/generated/`, `/ksp/`, `/buildSrc/` |
+| Python     | `*.py`                            | `__pycache__/`, `*.pyc`, `*.egg-info`, `*_test.py`  |
 | Rust       | `*.rs` under `src/`               | `src/bin/`, `src/examples/`, `build.rs`         |
 
 The core uses this filter during file walking (`service.WalkCapsule`,
@@ -73,6 +74,7 @@ The format and mechanism are entirely language-specific:
 | TypeScript | Four regex patterns                          | `"./relative"`, `"@alias/path"`, `"package-name"` |
 | Java       | Regex on `import` statements                 | `"com.example.module.Class"`                      |
 | Kotlin     | Regex on `import` statements                 | `"com.example.module.Class"`                      |
+| Python     | Regex on `import`/`from X import` statements | `"package.module.submodule"`                      |
 | Rust       | Regex on `use`/`mod`/`extern crate`          | `"crate::path::to::item"`                         |
 
 Go uses the official parser for correctness. The others use carefully
@@ -103,6 +105,7 @@ The resolution semantics are language-specific:
 | TypeScript | `tsconfig.json` paths alias, `baseUrl`, package name match  | Resolve extensions (`.js` -> `.ts`), `index.ts`        |
 | Java       | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Kotlin     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
+| Python     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Rust       | `crate::` prefix, `super::`/`self::` hops, crate name match | Resolve multi-hop `super::` paths, `crate::` from root |
 
 Each language also handles its own special cases:
@@ -120,7 +123,7 @@ knowledge of how that path was computed.
 
 Returns `true` if the language's contract file can use file-shaped node
 definitions (e.g. `lib/main.dart` as a node). Only Dart and TypeScript
-support this — Go, Java, Kotlin, and Rust only support directory-level nodes.
+support this — Go, Java, Kotlin, Python, and Rust only support directory-level nodes.
 
 Directory-level nodes have two distinct meanings:
 
@@ -152,6 +155,7 @@ Each language adapter implements its own manifest parser:
 | TypeScript | `package.json`                       | `readCapsuleName`  | `"name": "my-package"`             |
 | Java       | `build.gradle.kts`, `build.gradle`, `pom.xml` | `findBaseCapsule`  | common package prefix from source  |
 | Kotlin     | `build.gradle.kts`, `build.gradle`   | `findBaseCapsule`  | common package prefix from source  |
+| Python     | `pyproject.toml`, `setup.py`         | `findBaseCapsule`  | common package prefix from source  |
 | Rust       | `Cargo.toml`                         | `readCargoName`    | `[package] name = ...`             |
 
 This method is called once during application startup so the discovery service

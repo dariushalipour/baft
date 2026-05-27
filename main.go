@@ -18,6 +18,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
 	"github.com/dariushalipour/baft/internal/adapter/languages/java"
 	"github.com/dariushalipour/baft/internal/adapter/languages/kotlin"
+	"github.com/dariushalipour/baft/internal/adapter/languages/python"
 	"github.com/dariushalipour/baft/internal/adapter/languages/rust"
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
 	"github.com/dariushalipour/baft/internal/adapter/reporters/intellijreporter"
@@ -547,7 +548,7 @@ func cliVersion() string {
 
 func resolveLangs(names []string) ([]port.Language, error) {
 	if len(names) == 0 {
-		return []port.Language{golang.Language{}, dart.Language{}, java.Language{}, kotlin.Language{}, &typescript.Language{}, rust.Language{}}, nil
+		return []port.Language{golang.Language{}, dart.Language{}, java.Language{}, kotlin.Language{}, python.Language{}, &typescript.Language{}, rust.Language{}}, nil
 	}
 	var out []port.Language
 	for _, n := range names {
@@ -564,6 +565,8 @@ func resolveLangs(names []string) ([]port.Language, error) {
 			out = append(out, kotlin.Language{})
 		case "rust":
 			out = append(out, rust.Language{})
+		case "python":
+			out = append(out, python.Language{})
 		default:
 			return nil, fmt.Errorf("unknown language: %s", n)
 		}
