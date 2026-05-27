@@ -14,7 +14,7 @@ Without a way to exclude them, Baft would either:
 - Report their imports as real dependencies (producing false violations).
 - Force developers to work around them in the contract file (polluting the architecture contract with implementation details).
 
-Different ecosystems have different conventions for what to skip. Go uses `vendor/`. TypeScript uses `node_modules/`. Rust uses `target/`. But these are only the broadest categories. Each project has its own granular needs.
+Different ecosystems have different conventions for what to skip. Go uses `vendor/`. TypeScript uses `node_modules/`. Python uses `__pycache__/`. Rust uses `target/`. But these are only the broadest categories. Each project has its own granular needs.
 
 ---
 
@@ -136,7 +136,7 @@ A file that is NOT `.baftignore`d but also does not match any node in the contra
 
 ## Interaction with capsule discovery
 
-Capsule discovery walks the filesystem looking for manifest files (`go.mod`, `package.json`, `Cargo.toml`, etc.). The walk respects `.baftignore` (and `.gitignore`). If a directory contains only ignored files, it is never entered.
+Capsule discovery walks the filesystem looking for manifest files (`go.mod`, `package.json`, `pyproject.toml`, `Cargo.toml`, etc.). The walk respects `.baftignore` (and `.gitignore`). If a directory contains only ignored files, it is never entered.
 
 This means a manifest inside an ignored directory is never discovered. A `go.mod` inside `vendor/` is skipped because `vendor` is a base ignore entry. A `package.json` inside a `.baftignore`d `third-party/` directory is also skipped.
 

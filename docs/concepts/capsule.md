@@ -23,6 +23,7 @@ Every major ecosystem has a term for its primary code boundary:
 | Rust                        | crate / package / workspace |
 | Dart                        | package                     |
 | Kotlin/Java (Gradle)        | module / project            |
+| Python                      | package / module            |
 
 These terms are not interchangeable. They carry language-specific baggage:
 
@@ -54,7 +55,7 @@ code boundary defined by:
 
 1. **A manifest** — a file that declares identity, version, and dependencies
    (e.g. `go.mod`, `package.json`, `Cargo.toml`, `pubspec.yaml`,
-   `build.gradle.kts`).
+   `build.gradle.kts`, `pyproject.toml`).
 2. **A dependency graph** — the set of internal imports and external
    dependencies that the manifest and source files collectively define.
 3. **Architecture rules** — a contract file defines nodes, edges, and constraints that track internal imports, along with other declarations that shape how the code boundary is interpreted.
@@ -116,7 +117,7 @@ But in JavaScript, "module" means a single file. Using "module" for a
 Capsule would require constant clarification: "this module is not that
 module."
 
-**Package** is used by npm and Dart. But in Java, "package" is a
+**Package** is used by npm, Dart, and Python. But in Java, "package" is a
 namespace, not a dependency unit. In Rust, "package" and "crate" overlap
 confusingly.
 
@@ -135,7 +136,7 @@ DDD connotations that are misleading here.
 - Conveys the idea of a self-contained boundary without implying filesystem
   layout, compilation model, or language semantics.
 - Does not collide with any existing term in Go, JavaScript, Rust, Dart,
-  or Kotlin.
+   Kotlin, or Python.
 - Works as a noun in commands, APIs, and documentation without requiring
   qualification ("Capsule module," "Capsule package" — neither is needed).
 
@@ -257,8 +258,9 @@ go-service/
       client.go
 ```
 
-Go packages, Java packages, Dart libraries, TypeScript modules, and Rust
-modules are all internal organizational units _within_ a Capsule. They do not
+Go packages, Java packages, Dart libraries, TypeScript modules, Python
+packages, and Rust modules are all internal organizational units _within_ a
+Capsule. They do not
 become Capsules unless they carry their own manifest.
 
 ---
@@ -303,3 +305,4 @@ language.
 | Dart           | `pubspec.yaml`           | Dart package        | Dart libraries (`lib/`)                    |
 | Java           | `build.gradle.kts`, `build.gradle`, `pom.xml` | Gradle module / Maven project | Java packages (dot-separated namespaces) |
 | Gradle/Kotlin  | `build.gradle.kts`       | Gradle module       | Kotlin packages (dot-separated namespaces) |
+| Python         | `pyproject.toml`, `setup.py` | Python package / module | Python packages (dot-separated namespaces) |

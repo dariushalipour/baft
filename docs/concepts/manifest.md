@@ -2,7 +2,7 @@
 
 A **Manifest** is the build-system file that a Capsule owns. It is the file
 that declares identity, version, and dependencies — `go.mod`, `package.json`,
-`Cargo.toml`, `pubspec.yaml`, `build.gradle.kts`.
+`pyproject.toml`, `Cargo.toml`, `pubspec.yaml`, `build.gradle.kts`.
 
 A Manifest is both an ecosystem concept and a Baft concept. In each
 ecosystem, it has its own semantics, format, and tooling. Baft reads
@@ -27,6 +27,7 @@ Every major ecosystem has a term for its build manifest:
 | Rust                        | manifest         |
 | Dart                        | pubspec          |
 | Kotlin/Java (Gradle)        | build script     |
+| Python                      | pyproject        |
 
 These terms are not interchangeable. They carry language-specific baggage:
 
@@ -181,7 +182,7 @@ different file format entirely (`.deps.json`, `.runtimeconfig.json`).
 
 **Module descriptor** carries Java/JPMS connotations that are misleading.
 
-**Package manifest** overlaps with "package" in npm and Dart,
+**Package manifest** overlaps with "package" in npm, Dart, and Python,
 but those terms mean different things in different ecosystems.
 
 **Manifest** was chosen because:
@@ -203,6 +204,7 @@ but those terms mean different things in different ecosystems.
 | -------------- | ---------------------------------------------- | ------------------- |
 | Go             | `go.mod` (`module` line)                       | Go module           |
 | npm/TypeScript | `package.json` (`name` field)                  | npm package         |
+| Python         | `pyproject.toml`, `setup.py` (source path common prefix) | Python package / module |
 | Rust           | `Cargo.toml` (`[package]` → `name`)            | Cargo crate/package |
 | Dart           | `pubspec.yaml` (`name:` line)                  | Dart package        |
 | Java           | `build.gradle.kts`, `build.gradle`, `pom.xml` (source path common prefix) | Gradle module / Maven project |

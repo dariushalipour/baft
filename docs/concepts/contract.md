@@ -117,7 +117,7 @@ flowchart TD
   domain["src/main/kotlin/com/example/domain/**"]
 ```
 
-Some ecosystems — notably Kotlin and Java — use dots (`.`) to separate package segments. The `globSeparator` config directive lets you write globs with any separator character instead of slashes:
+Some ecosystems — notably Kotlin, Java, and Python — use dots (`.`) to separate package segments. The `globSeparator` config directive lets you write globs with any separator character instead of slashes:
 
 ```mermaid
 flowchart TD

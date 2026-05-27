@@ -103,7 +103,7 @@ In this contract:
 - `usecase` may import `domain` and `infra`
 - `infra` may import `domain`
 - `usecase` is `endophobic`, so files in that node may not import other files in the same node
-- For Kotlin/Java, use `%% config globSeparator "."` to write globs with dots instead of slashes
+- For Kotlin/Java/Python, use `%% config globSeparator "."` to write globs with dots instead of slashes
 
 ### Run the check
 
@@ -140,7 +140,7 @@ That dump is intentionally too literal. It is a starting point, not the final ar
 
 ## How It Works
 
-1. Baft discovers capsules from standard manifests such as `go.mod`, `package.json`, `pubspec.yaml`, `build.gradle.kts`, and `Cargo.toml`.
+1. Baft discovers capsules from standard manifests such as `go.mod`, `package.json`, `pubspec.yaml`, `build.gradle.kts`, `pyproject.toml`, and `Cargo.toml`.
 2. For each capsule with a contract file, it parses the Mermaid flowchart.
 3. Node globs claim tracked files.
 4. Arrows become the allow-list for cross-node imports.
@@ -167,6 +167,7 @@ TypeScript and Dart support file-shaped nodes. Go, Java, Kotlin, Python, and Rus
 - Dart
 - Java
 - Kotlin, including common multiplatform layouts
+- Python
 - Rust
 
 Baft can scan a multilingual repository in one run as long as each capsule has a supported manifest and a contract file.

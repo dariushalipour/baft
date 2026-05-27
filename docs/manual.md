@@ -71,7 +71,7 @@ flowchart TD
 - **Specificity:** The most specific match wins. File-shaped globs take precedence over directory-shaped globs.
 - **Coverage:** Every tracked file must match at least one node. Unmatched files are reported as violations.
 - **Directory semantics:** `path/to/dir` claims files directly in that directory. `path/to/dir/**` claims the whole subtree rooted there.
-- **Custom separator:** `%% config globSeparator "."` lets you write globs with dots instead of slashes (useful for Kotlin/Java). The `%%` wrapper prevents Mermaid preview errors.
+- **Custom separator:** `%% config globSeparator "."` lets you write globs with dots instead of slashes (useful for Kotlin/Java/Python). The `%%` wrapper prevents Mermaid preview errors.
 - **Language Support:**
   - **TypeScript, Dart:** Support both file-shaped and directory-shaped nodes.
   - **Go, Java, Kotlin, Python, Rust:** Support directory-shaped nodes only. Using a file-shaped node (e.g., `handler["path/handler.go"]`) in these languages produces a validation error: `file-shaped nodes require a language that supports file globs`.
