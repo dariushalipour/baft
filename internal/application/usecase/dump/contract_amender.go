@@ -1,6 +1,7 @@
 package dump
 
 import (
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -89,6 +90,8 @@ func applyCheckAmendments(fsys port.FileSystem, rootDir string, capsule port.Cap
 
 	updated := graph.NewGraph(nodes, edges, nil, appendEdgeOrder(current.EdgeOrder, edges))
 	updated.NodeDisplays = displays
+	updated.NamespaceMode = current.NamespaceMode
+	updated.GlobSeparator = current.GlobSeparator
 	if !lang.SupportsFileGlobs() {
 		for id, glob := range updated.Nodes {
 			if _, ok := updated.NodeDisplays[id]; !ok {
@@ -136,7 +139,7 @@ func runCheckForCapsule(fsys port.FileSystem, rootDir string, capsule port.Capsu
 }
 
 func ensureEdgeForImport(nodes map[string]string, edges map[string]map[string]bool, fsys port.FileSystem, capsule port.Capsule, contractPath string, lang port.Language, violation port.Violation, cfg draftConfig) (bool, error) {
-	srcID, srcChanged, err := ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, violation.File)
+	srcID, srcChanged, err := ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, violation.File, cfg)
 	if err != nil {
 		return false, err
 	}
@@ -163,14 +166,12 @@ func applyNoNodeViolation(nodes map[string]string, fsys port.FileSystem, capsule
 		return false, nil
 	}
 	if _, err := lang.ParseImports(fsys, violation.File); err != nil {
-		if fsys != nil {
-			// Use os.IsNotExist since we can't call the interface's Stat directly here
-			// but we know the error came from ParseImports which wraps os.IsNotExist
+		if os.IsNotExist(err) {
 			return false, nil
 		}
 		return false, err
 	}
-	_, changed, err := ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, violation.File)
+	_, changed, err := ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, violation.File, cfg)
 	return changed, err
 }
 
@@ -198,10 +199,16 @@ func ensureNodeForImportTarget(nodes map[string]string, fsys port.FileSystem, ca
 			return ensureDirNode(nodes, contractDir, scopeDir)
 		}
 	}
-	return ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, targetAbs)
+
+	// Try namespace-based node for import target when namespace mode is enabled
+	if cfg.namespaceMode && spec.Namespace != "" {
+		return ensureExactNode(nodes, spec.Namespace, spec.Namespace)
+	}
+
+	return ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, targetAbs, cfg)
 }
 
-func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsule port.Capsule, contractPath string, lang port.Language, absPath string) (string, bool, error) {
+func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsule port.Capsule, contractPath string, lang port.Language, absPath string, cfg draftConfig) (string, bool, error) {
 	contractDir := filepath.Dir(contractPath)
 	scopeDir := service.TrackingScope(fsys, absPath, capsule.Dir)
 	if scopeDir != contractDir {
@@ -213,6 +220,15 @@ func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsu
 		return "", false, err
 	}
 	rel = filepath.ToSlash(rel)
+
+	// Try namespace-based node first when namespace mode is enabled
+	if cfg.namespaceMode {
+		ns, nsErr := lang.GetFileNamespace(fsys, absPath)
+		if nsErr == nil && ns != "" {
+			return ensureExactNode(nodes, ns, ns)
+		}
+	}
+
 	if existingID := existingOwningNodeForPath(nodes, rel); existingID != "" {
 		return existingID, false, nil
 	}
@@ -223,6 +239,7 @@ func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsu
 		}
 		return ensureDirNode(nodes, contractDir, dirPath)
 	}
+
 	return ensureExactNode(nodes, rel, rel)
 }
 

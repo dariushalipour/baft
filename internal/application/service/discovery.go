@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/dariushalipour/baft/internal/port"
 )
@@ -48,24 +49,47 @@ func (d *CapsuleDiscovery) checkManifest(fsys port.FileSystem, dir string) (Caps
 	for _, langName := range langs {
 		info := d.manifests[langName]
 		for _, manifestName := range info.Names {
-			manifestPath := filepath.Join(dir, manifestName)
-			if _, err := fsys.Stat(manifestPath); err != nil {
-				continue
+			var candidates []string
+			if isGlob(manifestName) {
+				entries, err := fsys.ReadDir(dir)
+				if err != nil {
+					continue
+				}
+				for _, entry := range entries {
+					if entry.IsDir() {
+						continue
+					}
+					if matched, err := filepath.Match(manifestName, entry.Name()); err == nil && matched {
+						candidates = append(candidates, filepath.Join(dir, entry.Name()))
+					}
+				}
+				sort.Strings(candidates)
+			} else {
+				manifestPath := filepath.Join(dir, manifestName)
+				if _, err := fsys.Stat(manifestPath); err == nil {
+					candidates = append(candidates, manifestPath)
+				}
 			}
-			capsuleID, parseErr := info.ParseFunc(fsys, manifestPath)
-			if capsuleID != "" {
-				parseErr = nil
+			for _, candidate := range candidates {
+				capsuleID, parseErr := info.ParseFunc(fsys, candidate)
+				if capsuleID != "" {
+					parseErr = nil
+				}
+				if parseErr != nil || capsuleID == "" {
+					continue
+				}
+				return CapsuleEntry{
+					Capsule:  port.Capsule{Dir: dir, CapsuleID: capsuleID},
+					LangName: langName,
+				}, true
 			}
-			if parseErr != nil || capsuleID == "" {
-				continue
-			}
-			return CapsuleEntry{
-				Capsule:  port.Capsule{Dir: dir, CapsuleID: capsuleID},
-				LangName: langName,
-			}, true
 		}
 	}
 	return CapsuleEntry{}, false
+}
+
+func isGlob(pattern string) bool {
+	return strings.ContainsAny(pattern, "*?[]")
 }
 
 func (d *CapsuleDiscovery) Discover(ctx context.Context, fsys port.FileSystem, rootDir string) ([]CapsuleEntry, error) {

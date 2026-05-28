@@ -7,10 +7,11 @@ func Label(c Capsule) string {
 }
 
 type ImportSpec struct {
-	Path   string
-	Line   int
-	Col    int
-	ColEnd int
+	Path      string
+	Namespace string // raw namespace from import statement (e.g., "MyApp.Domain.Entities")
+	Line      int
+	Col       int
+	ColEnd    int
 }
 
 // Language abstracts per-language import parsing so the
@@ -20,6 +21,7 @@ type Language interface {
 	Name() string
 	IsScannableFile(rel string) bool
 	ParseImports(fileSystem FileSystem, absPath string) ([]ImportSpec, error)
+	GetFileNamespace(fileSystem FileSystem, absPath string) (string, error)
 	ResolveInternalTarget(fileSystem FileSystem, spec ImportSpec, c Capsule, fileRel string) (targetDir string, internal bool)
 	SupportsFileGlobs() bool
 	Register(d CapsuleDiscovery)

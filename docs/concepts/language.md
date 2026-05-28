@@ -3,7 +3,7 @@
 Each language module encapsulates everything that is specific to a programming
 language. The core (graph engine, check use case, dump use case) is
 completely language-agnostic — it knows nothing about Go, Dart, TypeScript,
-Kotlin, Python, Rust, or Java. It only knows about a `Language` interface and a `Graph`
+Kotlin, Python, Rust, Java, or C#. It only knows about a `Language` interface and a `Graph`
 domain.
 
 A language module is a self-contained capsule under
@@ -20,6 +20,7 @@ type Language interface {
     ResolveInternalTarget(fileSystem FileSystem, spec ImportSpec, c Capsule, fileRel string) (targetDir string, internal bool)
     SupportsFileGlobs() bool
     Register(d CapsuleDiscovery)
+    GetFileNamespace(fileSystem FileSystem, absPath string) (string, error)
 }
 ```
 
@@ -49,6 +50,7 @@ language's conventions for which files are source code worth analyzing:
 | Kotlin     | `*.kt` in 28+ source set prefixes | `Test.kt`, `/generated/`, `/ksp/`, `/buildSrc/` |
 | Python     | `*.py`                            | `__pycache__/`, `*.pyc`, `*.egg-info`, `*_test.py`  |
 | Rust       | `*.rs` under `src/`               | `src/bin/`, `src/examples/`, `build.rs`         |
+| C#         | `*.cs`                            | `bin/`, `obj/`, `*.Designer.cs`, `*.generated.cs` |
 
 The core uses this filter during file walking (`service.WalkCapsule`,
 `service.WalkAllFiles`) to skip files that should not be checked.
@@ -64,6 +66,7 @@ Extracts import information from a source file and returns a slice of
 - **Line** — 1-indexed line number in the source file
 - **Col** — 1-indexed column where the import path starts
 - **ColEnd** — 1-indexed column where the import path ends
+- **Namespace** — the raw namespace string from the import (e.g., `MyApp.Domain` for C# `using`, `com.example.api` for Java/Kotlin). Empty for languages that don't declare namespaces.
 
 The format and mechanism are entirely language-specific:
 
@@ -76,6 +79,7 @@ The format and mechanism are entirely language-specific:
 | Kotlin     | Regex on `import` statements                 | `"com.example.module.Class"`                      |
 | Python     | Regex on `import`/`from X import` statements | `"package.module.submodule"`                      |
 | Rust       | Regex on `use`/`mod`/`extern crate`          | `"crate::path::to::item"`                         |
+| C#         | Regex on `using` directives                  | `"MyApp.Domain.Entities"` (namespace), populates `Namespace` field |
 
 Go uses the official parser for correctness. The others use carefully
 constructed regex patterns. The output is always a slice of `ImportSpec`
@@ -107,6 +111,7 @@ The resolution semantics are language-specific:
 | Kotlin     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Python     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Rust       | `crate::` prefix, `super::`/`self::` hops, crate name match | Resolve multi-hop `super::` paths, `crate::` from root |
+| C#         | Prefix match against assembly/capsule name (dot-separated) | Convert dots to slashes, resolve from source root |
 
 Each language also handles its own special cases:
 
@@ -123,7 +128,7 @@ knowledge of how that path was computed.
 
 Returns `true` if the language's contract file can use file-shaped node
 definitions (e.g. `lib/main.dart` as a node). Only Dart and TypeScript
-support this — Go, Java, Kotlin, Python, and Rust only support directory-level nodes.
+support this — Go, Java, Kotlin, Python, Rust, and C# only support directory-level nodes.
 
 Directory-level nodes have two distinct meanings:
 
@@ -157,6 +162,7 @@ Each language adapter implements its own manifest parser:
 | Kotlin     | `build.gradle.kts`, `build.gradle`   | `findBaseCapsule`  | common package prefix from source  |
 | Python     | `pyproject.toml`, `setup.py`         | `findBaseCapsule`  | common package prefix from source  |
 | Rust       | `Cargo.toml`                         | `readCargoName`    | `[package] name = ...`             |
+| C#         | `*.csproj`                           | `readCsharpProject` | `<RootNamespace>` or `<AssemblyName>` |
 
 This method is called once during application startup so the discovery service
 knows which files to look for and how to parse them.
@@ -190,7 +196,26 @@ no language adapter should duplicate.
 
 ---
 
-## What language modules do NOT do
+## 7. `GetFileNamespace(fsys FileSystem, absPath string) (string, error)`
+
+Returns the namespace declaration from a source file's header, or `("", nil)` if none exists.
+
+| Language   | Implementation                                    |
+| ---------- | ------------------------------------------------- |
+| C#         | Regex on `namespace MyApp.Api` declaration        |
+| Java       | Regex on `package com.example.api` declaration    |
+| Kotlin     | Regex on `package com.example.api` declaration    |
+| Go         | `("", nil)` — no namespace concept                |
+| TypeScript | `("", nil)` — no namespace concept                |
+| Dart       | `("", nil)` — no namespace concept                |
+| Python     | `("", nil)` — no namespace concept                |
+| Rust       | `("", nil)` — no namespace concept                |
+
+### Namespace Mode
+
+C# contracts can opt into namespace mode via `%% config namespaceMode "true"`. In namespace mode, import targets are resolved by namespace string instead of filesystem path. The two-phase check builds a namespace index (file path → declared namespace), then matches `using` directives against that index.
+
+Namespace mode is opt-in per contract. Java and Kotlin can also use namespace mode with the same infrastructure.
 
 Language modules do not:
 
@@ -209,5 +234,5 @@ Language modules do not:
   final output.
 
 The language module's job is strictly: **identify scannable files, extract
-imports from those files, resolve import targets to capsule-relative paths**.
-Everything else is the core's responsibility.
+imports from those files, resolve import targets to capsule-relative paths,
+and report the file's namespace (if any)**. Everything else is the core's responsibility.

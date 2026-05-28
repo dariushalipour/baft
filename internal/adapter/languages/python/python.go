@@ -458,7 +458,8 @@ func isInternalCapsule(spec, pkg string) bool {
 	return next == '.' && len(spec) > len(pkg)+1 && spec[len(spec)-1] != '.'
 }
 
-func (Language) SupportsFileGlobs() bool { return false }
+func (Language) GetFileNamespace(_ port.FileSystem, _ string) (string, error) { return "", nil }
+func (Language) SupportsFileGlobs() bool                                      { return false }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("python", port.ManifestInfo{
 		Names: []string{"pyproject.toml", "setup.py"},

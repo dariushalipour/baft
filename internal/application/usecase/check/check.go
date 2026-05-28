@@ -77,6 +77,8 @@ type capsuleChecker struct {
 	scopeCache        *scopeCache
 	parseCache        *parseCache
 	nestedCapsuleDirs []string
+	strategyFactory   *StrategyFactory
+	strategy          ResolutionStrategy
 	contractContext
 }
 
@@ -97,6 +99,8 @@ func newCapsuleChecker(
 		lang:              lang,
 		contractDir:       contractDir,
 		contractDirAbs:    contractDirAbs,
+		strategyFactory:   NewStrategyFactory(fsys, lang),
+		strategy:          &pathResolutionStrategy{},
 		scopeCache:        newScopeCache(fsys, repo),
 		parseCache:        newParseCache(),
 		nestedCapsuleDirs: nestedCapsuleDirs,
@@ -241,6 +245,9 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		for _, e := range r.result.errors {
 			result.Errors = append(result.Errors, r.label+": "+e.Message)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return &port.CheckResult{Errors: []string{err.Error()}}
 	}
 	return &result
 }

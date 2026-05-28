@@ -22,6 +22,7 @@ func (Language) IsScannableFile(rel string) bool {
 }
 
 var importRe = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(?:\.\*)?`)
+var packageRe = regexp.MustCompile(`(?m)^\s*package\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)`)
 
 func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
 	data, err := fsys.ReadFile(absPath)
@@ -35,9 +36,21 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	for _, m := range indices {
 		importPath := strings.TrimSuffix(string(data[m[2]:m[3]]), ".*")
 		line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, m[2])
-		out = append(out, port.ImportSpec{Path: importPath, Line: line, Col: col, ColEnd: col + len(importPath)})
+		out = append(out, port.ImportSpec{Path: importPath, Namespace: importPath, Line: line, Col: col, ColEnd: col + len(importPath)})
 	}
 	return out, nil
+}
+
+func (Language) GetFileNamespace(fsys port.FileSystem, absPath string) (string, error) {
+	data, err := fsys.ReadFile(absPath)
+	if err != nil {
+		return "", err
+	}
+	m := packageRe.FindSubmatch(data)
+	if m == nil {
+		return "", nil
+	}
+	return string(m[1]), nil
 }
 
 func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {

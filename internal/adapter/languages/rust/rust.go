@@ -144,7 +144,8 @@ func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec
 	}
 }
 
-func (Language) SupportsFileGlobs() bool { return false }
+func (Language) GetFileNamespace(_ port.FileSystem, _ string) (string, error) { return "", nil }
+func (Language) SupportsFileGlobs() bool                                      { return false }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("rust", port.ManifestInfo{
 		Names:             []string{"Cargo.toml"},

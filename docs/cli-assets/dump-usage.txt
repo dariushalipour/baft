@@ -3,6 +3,6 @@ Usage: baft dump [flags] [root-dir]
 Dump contract from current dependency reality.
 
 Flags:
-  --lang <name>             Language filter (can be repeated): go, typescript, dart, java, kotlin, python, rust
+  --lang <name>             Language filter (can be repeated): go, typescript, dart, java, kotlin, python, rust, csharp
   --color-palette <name>    Styling palette: vibrant, muted, mono, none
   --help, -h                Show this help

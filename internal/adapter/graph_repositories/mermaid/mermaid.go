@@ -151,7 +151,13 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 	if g.GlobSeparator != "" {
 		sb.WriteString("  %% config globSeparator ")
 		sb.WriteString(fmt.Sprintf("%q", g.GlobSeparator))
-		sb.WriteString("\n\n")
+		sb.WriteString("\n")
+	}
+	if g.NamespaceMode {
+		sb.WriteString("  %% config namespaceMode \"true\"\n")
+	}
+	if g.GlobSeparator != "" || g.NamespaceMode {
+		sb.WriteString("\n")
 	}
 
 	for _, id := range ids {
@@ -459,28 +465,40 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 
 func parseConfigLine(line string, g *graph.Graph, lineNum int) error {
 	trimmed := strings.TrimSpace(line[len("config "):])
-	if !strings.HasPrefix(trimmed, `globSeparator "`) {
-		return &ParseError{
-			Line: lineNum,
-			Msg:  fmt.Sprintf("unrecognized config directive: %q", line),
+	if strings.HasPrefix(trimmed, `globSeparator "`) {
+		val := trimmed[len(`globSeparator "`):]
+		if !strings.HasSuffix(val, `"`) {
+			return &ParseError{
+				Line: lineNum,
+				Msg:  fmt.Sprintf("invalid config directive: %q", line),
+			}
 		}
-	}
-	val := trimmed[len(`globSeparator "`):]
-	if !strings.HasSuffix(val, `"`) {
-		return &ParseError{
-			Line: lineNum,
-			Msg:  fmt.Sprintf("invalid config directive: %q", line),
+		val = val[:len(val)-1]
+		if val == "" {
+			return &ParseError{
+				Line: lineNum,
+				Msg:  "globSeparator must not be empty",
+			}
 		}
+		g.GlobSeparator = val
+		return nil
 	}
-	val = val[:len(val)-1]
-	if val == "" {
-		return &ParseError{
-			Line: lineNum,
-			Msg:  "globSeparator must not be empty",
+	if strings.HasPrefix(trimmed, `namespaceMode "`) {
+		val := trimmed[len(`namespaceMode "`):]
+		if !strings.HasSuffix(val, `"`) {
+			return &ParseError{
+				Line: lineNum,
+				Msg:  fmt.Sprintf("invalid config directive: %q", line),
+			}
 		}
+		val = val[:len(val)-1]
+		g.NamespaceMode = val == "true"
+		return nil
 	}
-	g.GlobSeparator = val
-	return nil
+	return &ParseError{
+		Line: lineNum,
+		Msg:  fmt.Sprintf("unrecognized config directive: %q", line),
+	}
 }
 
 func parseEdgeLine(line string, g *graph.Graph, lineNum int) error {

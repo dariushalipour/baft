@@ -21,6 +21,314 @@ type fileWork struct {
 	scopeDir string
 }
 
+// targetInfo holds information about a resolved import target.
+type targetInfo struct {
+	abs        string
+	key        string
+	inScopeKey string
+	targetRel  string
+}
+
+// CrossScopeContext encapsulates the parameters required for cross-scope resolution,
+// preventing bloated method signatures in the ResolutionStrategy interface.
+type CrossScopeContext struct {
+	SrcAbs          string
+	FileRel         string
+	Spec            port.ImportSpec
+	Src             string
+	TargetAbs       string
+	TargetRel       string
+	CfgPath         string
+	ScopeGraph      *graph.GraphIndex
+	ScopeDir        string
+	Fsys            port.FileSystem
+	Capsule         *port.Capsule
+	Lang            port.Language
+	HasRootContract bool
+	RootGraphIndex  *graph.GraphIndex
+	ScopeCache      *scopeCache
+	ContractPathAbs string
+}
+
+// ResolutionStrategy abstracts node resolution between namespace mode and
+// non-namespace mode, eliminating branching logic from the capsule checker.
+type ResolutionStrategy interface {
+	// ResolveSourceNode resolves the source node ID for a given file.
+	ResolveSourceNode(abs, scopeDir string, scopeGraph *graph.GraphIndex) (nodeID string)
+	// ResolveImport resolves the list of target files and their metadata for an import spec.
+	ResolveImport(spec port.ImportSpec, fileRel string, scopeDir string, fsys port.FileSystem, capsule *port.Capsule, lang port.Language) ([]targetInfo, error)
+	// ResolveNode resolves a node ID from a file absolute path and its
+	// associated namespace/key within a specific graph.
+	ResolveNode(fileAbs, targetKey string, scopeGraph *graph.GraphIndex) string
+	// ResolveAncestorNode resolves source and target node IDs for ancestor
+	// scope checking. srcFallback is used when source is not found.
+	ResolveAncestorNode(srcNS, targetNS string, graph *graph.GraphIndex, srcFallback string) (srcNode, dstNode string)
+	// ResolveCrossScope handles cross-scope violation checks.
+	ResolveCrossScope(ctx *CrossScopeContext) []port.Violation
+	// IsFileGlob reports whether the pattern is a file-shaped glob in the
+	// current resolution mode.
+	IsFileGlob(pattern string) bool
+	// ShouldReportNoNodeViolation returns true if a missing node for a file
+	// should be reported as a violation. In namespace mode, files without a
+	// namespace are silently skipped. In path mode, all files must match a node.
+	ShouldReportNoNodeViolation(abs string) bool
+	// ShouldFailOnInvalidGlob returns true if a file-shaped node pattern
+	// should immediately fail the check. In namespace mode, file-shaped nodes
+	// are fundamentally incompatible with resolution, so the check fails.
+	// In path mode, the error is reported alongside any violations.
+	ShouldFailOnInvalidGlob() bool
+}
+
+// StrategyFactory produces the appropriate ResolutionStrategy for a given set of
+// files and a root graph. It encapsulates the namespace indexing logic, so the
+// capsuleChecker remains completely agnostic of resolution mode.
+type StrategyFactory struct {
+	fsys port.FileSystem
+	lang port.Language
+}
+
+func NewStrategyFactory(fsys port.FileSystem, lang port.Language) *StrategyFactory {
+	return &StrategyFactory{fsys: fsys, lang: lang}
+}
+
+// BuildStrategyFromGraph returns a ResolutionStrategy based solely on the graph's
+// NamespaceMode flag, without building file indexes. It is intended for validation
+// passes that only need IsFileGlob and ShouldFailOnInvalidGlob.
+func (sf *StrategyFactory) BuildStrategyFromGraph(g *graph.Graph) ResolutionStrategy {
+	if g != nil && g.NamespaceMode {
+		return &namespaceResolutionStrategy{
+			fileNSMap: make(map[string]string),
+			nsMap:     make(map[string][]string),
+		}
+	}
+	return &pathResolutionStrategy{}
+}
+
+// BuildStrategy returns a ResolutionStrategy for the given files and root graph.
+// If namespace mode is enabled, it will build the necessary namespace indexes.
+func (sf *StrategyFactory) BuildStrategy(files []fileWork, rootGraph *graph.Graph) ResolutionStrategy {
+	if rootGraph == nil || !rootGraph.NamespaceMode || len(files) == 0 {
+		return &pathResolutionStrategy{}
+	}
+
+	fileNSMap := make(map[string]string, len(files))
+	nsMap := make(map[string][]string)
+	for _, fw := range files {
+		ns, err := sf.lang.GetFileNamespace(sf.fsys, fw.abs)
+		if err != nil || ns == "" {
+			continue
+		}
+		fileNSMap[fw.abs] = ns
+		if ns != "" {
+			nsMap[ns] = append(nsMap[ns], fw.abs)
+		}
+	}
+
+	if len(nsMap) == 0 {
+		return &pathResolutionStrategy{}
+	}
+
+	return &namespaceResolutionStrategy{
+		fileNSMap: fileNSMap,
+		nsMap:     nsMap,
+	}
+}
+
+type pathResolutionStrategy struct{}
+
+func (s *pathResolutionStrategy) ResolveSourceNode(abs, scopeDir string, scopeGraph *graph.GraphIndex) string {
+	scopeRel := relToSlash(scopeDir, abs)
+	return scopeGraph.NodeForPath(scopeRel)
+}
+
+func (s *pathResolutionStrategy) ResolveImport(spec port.ImportSpec, fileRel string, scopeDir string, fsys port.FileSystem, capsule *port.Capsule, lang port.Language) ([]targetInfo, error) {
+	targetPath, internal := lang.ResolveInternalTarget(fsys, spec, *capsule, fileRel)
+	if !internal {
+		return nil, nil
+	}
+	targetAbs := absPath(capsule.Dir, targetPath)
+	return []targetInfo{{
+		abs:        targetAbs,
+		key:        targetPath,
+		inScopeKey: relToSlash(scopeDir, targetAbs),
+		targetRel:  relToSlash(capsule.Dir, targetAbs),
+	}}, nil
+}
+
+func (s *pathResolutionStrategy) ResolveNode(fileAbs, targetKey string, scopeGraph *graph.GraphIndex) string {
+	return scopeGraph.NodeForPath(targetKey)
+}
+
+func (s *pathResolutionStrategy) ResolveAncestorNode(srcNS, targetNS string, graph *graph.GraphIndex, srcFallback string) (srcNode, dstNode string) {
+	srcA := graph.NodeForPath(srcNS)
+	dstA := graph.NodeForPath(targetNS)
+	if srcA == "" {
+		srcA = srcFallback
+	}
+	return srcA, dstA
+}
+
+func (s *pathResolutionStrategy) ResolveCrossScope(ctx *CrossScopeContext) []port.Violation {
+	if !escapesScope(relToSlash(ctx.ScopeDir, ctx.TargetAbs)) {
+		dst := ctx.ScopeGraph.NodeForPath(relToSlash(ctx.ScopeDir, ctx.TargetAbs))
+		if dst != "" {
+			if !ctx.ScopeGraph.Graph().Allows(ctx.Src, dst) {
+				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, ctx.Src, ctx.TargetRel, dst, ctx.CfgPath)}
+			}
+			return nil
+		}
+	}
+
+	for _, anc := range ancestorContracts(ctx.Fsys, ctx.ScopeDir, ctx.Capsule.Dir, ctx.ScopeCache) {
+		srcRel := relToSlash(anc.dir, ctx.SrcAbs)
+		dstRel := relToSlash(anc.dir, ctx.TargetAbs)
+		srcA := anc.graphIndex.NodeForPath(srcRel)
+		dstA := anc.graphIndex.NodeForPath(dstRel)
+		if srcA != "" && dstA != "" {
+			if !anc.graphIndex.Graph().Allows(srcA, dstA) {
+				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcA, ctx.TargetRel, dstA, anc.contractPath)}
+			}
+			return nil
+		}
+	}
+
+	if ctx.HasRootContract && ctx.RootGraphIndex != nil {
+		srcParent := ctx.RootGraphIndex.NodeForPath(relToSlash(ctx.Capsule.Dir, ctx.SrcAbs))
+		dstParent := ctx.RootGraphIndex.NodeForPath(relToSlash(ctx.Capsule.Dir, ctx.TargetAbs))
+		if srcParent != "" && dstParent != "" {
+			if !ctx.RootGraphIndex.Graph().Allows(srcParent, dstParent) {
+				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcParent, ctx.TargetRel, dstParent, ctx.ContractPathAbs)}
+			}
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (s *pathResolutionStrategy) IsFileGlob(p string) bool { return graph.IsFileGlob(p) }
+
+func (s *pathResolutionStrategy) ShouldReportNoNodeViolation(abs string) bool {
+	return true
+}
+
+func (s *pathResolutionStrategy) ShouldFailOnInvalidGlob() bool { return false }
+
+type namespaceResolutionStrategy struct {
+	fileNSMap map[string]string
+	nsMap     map[string][]string
+}
+
+func (s *namespaceResolutionStrategy) ResolveSourceNode(abs, scopeDir string, scopeGraph *graph.GraphIndex) string {
+	fileNS, ok := s.fileNSMap[abs]
+	if !ok || fileNS == "" {
+		return ""
+	}
+	return scopeGraph.NodeForNamespace(fileNS)
+}
+
+func (s *namespaceResolutionStrategy) ResolveImport(spec port.ImportSpec, fileRel string, scopeDir string, fsys port.FileSystem, capsule *port.Capsule, lang port.Language) ([]targetInfo, error) {
+	targetAbsList, ok := s.nsMap[spec.Namespace]
+	if !ok {
+		return nil, nil
+	}
+	infos := make([]targetInfo, 0, len(targetAbsList))
+	for _, abs := range targetAbsList {
+		inScopeKey := spec.Namespace
+		if ns, ok := s.fileNSMap[abs]; ok && ns != "" {
+			inScopeKey = ns
+		}
+		infos = append(infos, targetInfo{
+			abs:        abs,
+			key:        spec.Namespace,
+			inScopeKey: inScopeKey,
+			targetRel:  spec.Namespace,
+		})
+	}
+	return infos, nil
+}
+
+func (s *namespaceResolutionStrategy) ResolveNode(fileAbs, targetKey string, scopeGraph *graph.GraphIndex) string {
+	return scopeGraph.NodeForNamespace(targetKey)
+}
+
+func (s *namespaceResolutionStrategy) ResolveAncestorNode(srcNS, targetNS string, graph *graph.GraphIndex, srcFallback string) (srcNode, dstNode string) {
+	srcA := graph.NodeForNamespace(srcNS)
+	dstA := graph.NodeForNamespace(targetNS)
+	if srcA == "" {
+		srcA = srcFallback
+	}
+	return srcA, dstA
+}
+
+func (s *namespaceResolutionStrategy) ResolveCrossScope(ctx *CrossScopeContext) []port.Violation {
+	srcNS, ok := s.fileNSMap[ctx.SrcAbs]
+	if !ok || srcNS == "" {
+		srcNS = ctx.Src
+	}
+	targetNS, ok := s.fileNSMap[ctx.TargetAbs]
+	if !ok || targetNS == "" {
+		targetNS = ctx.Spec.Namespace
+	}
+
+	// Check current scope first
+	dst := ctx.ScopeGraph.NodeForNamespace(targetNS)
+	if dst != "" {
+		srcCheck := ctx.ScopeGraph.NodeForNamespace(srcNS)
+		if srcCheck == "" {
+			srcCheck = ctx.Src
+		}
+		if !ctx.ScopeGraph.Graph().Allows(srcCheck, dst) {
+			return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcCheck, targetNS, dst, ctx.CfgPath)}
+		}
+		return nil
+	}
+
+	// Walk ancestors — only if ancestor contract is also in namespace mode.
+	for _, anc := range ancestorContracts(ctx.Fsys, ctx.ScopeDir, ctx.Capsule.Dir, ctx.ScopeCache) {
+		if !anc.graphIndex.Graph().NamespaceMode {
+			continue
+		}
+		srcA := anc.graphIndex.NodeForNamespace(srcNS)
+		dstA := anc.graphIndex.NodeForNamespace(targetNS)
+		if srcA != "" && dstA != "" {
+			if !anc.graphIndex.Graph().Allows(srcA, dstA) {
+				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcA, targetNS, dstA, anc.contractPath)}
+			}
+			return nil
+		}
+	}
+
+	// Fallback to root contract — only if root contract is in namespace mode.
+	if ctx.HasRootContract && ctx.RootGraphIndex.Graph().NamespaceMode {
+		srcParent := ctx.RootGraphIndex.NodeForNamespace(srcNS)
+		dstParent := ctx.RootGraphIndex.NodeForNamespace(targetNS)
+		if srcParent != "" && dstParent != "" {
+			if !ctx.RootGraphIndex.Graph().Allows(srcParent, dstParent) {
+				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcParent, targetNS, dstParent, ctx.ContractPathAbs)}
+			}
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (s *namespaceResolutionStrategy) IsFileGlob(pattern string) bool {
+	for i := 0; i < len(pattern); i++ {
+		if pattern[i] == '/' || pattern[i] == '*' {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *namespaceResolutionStrategy) ShouldReportNoNodeViolation(abs string) bool {
+	return s.fileNSMap[abs] != ""
+}
+
+func (s *namespaceResolutionStrategy) ShouldFailOnInvalidGlob() bool { return true }
+
 func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsuleDir string) error {
 	contractDirSep := ch.contractDirAbs + string(filepath.Separator)
 	var nestedSep []string
@@ -36,8 +344,12 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 		}
 		for _, nsep := range nestedSep {
 			if strings.HasPrefix(abs, nsep) {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				return nil
 			}
+
 		}
 		scopeDir := service.TrackingScope(fsys, abs, ch.capsule.Dir)
 		filesToCheck = append(filesToCheck, fileWork{abs: abs, rel: rel, scopeDir: scopeDir})
@@ -50,6 +362,14 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 	if len(filesToCheck) == 0 {
 		return nil
 	}
+
+	// Build resolution strategy via factory, which handles namespace indexing
+	// internally when appropriate.
+	var rootGraph *graph.Graph
+	if ch.rootGraphIndex != nil {
+		rootGraph = ch.rootGraphIndex.Graph()
+	}
+	ch.strategy = ch.strategyFactory.BuildStrategy(filesToCheck, rootGraph)
 
 	numWorkers := min(runtime.NumCPU(), len(filesToCheck))
 	workChan := make(chan fileWork, numWorkers*2)
@@ -122,16 +442,14 @@ func (ch *capsuleChecker) checkFileResult(fsys port.FileSystem, abs, fileRel str
 		return fileCheckResult{}
 	}
 
-	scopeRel := relToSlash(scopeDir, abs)
 	filesEncountered := 1
 
-	src := scopeGraph.NodeForPath(scopeRel)
+	src := ch.strategy.ResolveSourceNode(abs, scopeDir, scopeGraph)
 	if src == "" {
-		violations := ch.handleNoNodeResult(fsys, abs, fileRel, scopeRel, cfgPath)
-		return fileCheckResult{
-			filesEncountered: filesEncountered,
-			violations:       violations,
+		if !ch.strategy.ShouldReportNoNodeViolation(abs) {
+			return fileCheckResult{filesEncountered: filesEncountered}
 		}
+		return fileCheckResult{filesEncountered: filesEncountered, violations: ch.handleNoNodeResult(fsys, abs, fileRel, scopeDir, cfgPath)}
 	}
 
 	imports, err := ch.parseCache.loadOrParse(ch, abs)
@@ -139,27 +457,25 @@ func (ch *capsuleChecker) checkFileResult(fsys port.FileSystem, abs, fileRel str
 		if !os.IsNotExist(err) {
 			return fileCheckResult{err: err}
 		}
-	} else {
-		filesScanned := 1
-		var relations int
-		violations := make([]port.Violation, 0, len(imports))
-		for _, spec := range imports {
-			r, v := ch.checkImportResult(spec, abs, fileRel, scopeRel, cfgPath, scopeGraph, src, scopeDir)
-			relations += r
-			if len(v) > 0 {
-				violations = append(violations, v...)
-			}
-		}
-		return fileCheckResult{
-			filesEncountered: filesEncountered,
-			filesScanned:     filesScanned,
-			relations:        relations,
-			violations:       violations,
-		}
+		return fileCheckResult{filesEncountered: filesEncountered}
 	}
 
+	filesScanned := 1
+	var relations int
+	violations := make([]port.Violation, 0, len(imports))
+	for _, spec := range imports {
+		scopeRel := relToSlash(scopeDir, abs)
+		r, v := ch.checkImportResult(spec, abs, fileRel, scopeRel, cfgPath, scopeGraph, src, scopeDir)
+		relations += r
+		if len(v) > 0 {
+			violations = append(violations, v...)
+		}
+	}
 	return fileCheckResult{
 		filesEncountered: filesEncountered,
+		filesScanned:     filesScanned,
+		relations:        relations,
+		violations:       violations,
 	}
 }
 
@@ -170,7 +486,8 @@ func (ch *capsuleChecker) mergeFileResult(res fileCheckResult) {
 	ch.res.violations = append(ch.res.violations, res.violations...)
 }
 
-func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel, scopeRel, cfgPath string) []port.Violation {
+func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel, scopeDir, cfgPath string) []port.Violation {
+	scopeRel := ch.scopeRel(scopeDir, abs)
 	noNode := makeNoNodeViolation(abs, scopeRel, cfgPath)
 	imports, err := ch.parseCache.loadOrParse(ch, abs)
 	if err != nil {
@@ -196,91 +513,79 @@ func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel,
 }
 
 func (ch *capsuleChecker) checkImportResult(spec port.ImportSpec, abs, fileRel, scopeRel, cfgPath string, scopeGraph *graph.GraphIndex, src, scopeDir string) (int, []port.Violation) {
-	targetPath, internal := ch.lang.ResolveInternalTarget(ch.fsys, spec, ch.capsule, fileRel)
-	if !internal {
+	targets, err := ch.strategy.ResolveImport(spec, fileRel, scopeDir, ch.fsys, &ch.capsule, ch.lang)
+	if err != nil {
+		return 0, []port.Violation{{Message: err.Error(), Rule: "Internal Error"}}
+	}
+	if len(targets) == 0 {
 		return 0, nil
 	}
 
-	targetAbs := absPath(ch.capsule.Dir, targetPath)
+	var violations []port.Violation
+	relations := 0
+	seenInScope := false
+	seenCrossScope := false
 
-	if !port.IsTargetVisible(ch.fsys, targetAbs) {
-		return 0, nil
+	for _, t := range targets {
+		if !port.IsTargetVisible(ch.fsys, t.abs) {
+			continue
+		}
+		relations++
+		targetScope := service.TrackingScope(ch.fsys, t.abs, ch.capsule.Dir)
+		if scopeDir == targetScope {
+			if seenInScope {
+				continue
+			}
+			seenInScope = true
+			dst := ch.strategy.ResolveNode(t.abs, t.inScopeKey, scopeGraph)
+			if dst == "" {
+				violations = append(violations, makeImportNoNodeViolation(abs, scopeRel, spec, cfgPath))
+			} else {
+				g := scopeGraph.Graph()
+				if dst == src {
+					if g.IsEndophobic(src) {
+						violations = append(violations, makeEndophobicViolation(abs, scopeRel, spec, t.inScopeKey, src, cfgPath))
+					}
+				} else {
+					if !g.Allows(src, dst) {
+						violations = append(violations, makeRelationViolation(abs, scopeRel, spec, src, t.inScopeKey, dst, cfgPath))
+					}
+				}
+			}
+		} else {
+			if seenCrossScope {
+				continue
+			}
+			seenCrossScope = true
+			v := ch.strategy.ResolveCrossScope(&CrossScopeContext{
+				SrcAbs:          abs,
+				FileRel:         fileRel,
+				Spec:            spec,
+				Src:             src,
+				TargetAbs:       t.abs,
+				TargetRel:       t.targetRel,
+				CfgPath:         cfgPath,
+				ScopeGraph:      scopeGraph,
+				ScopeDir:        scopeDir,
+				Fsys:            ch.fsys,
+				Capsule:         &ch.capsule,
+				Lang:            ch.lang,
+				HasRootContract: ch.hasRootContract,
+				RootGraphIndex:  ch.rootGraphIndex,
+				ScopeCache:      ch.scopeCache,
+				ContractPathAbs: ch.contractPathAbs,
+			})
+			if len(v) > 0 {
+				violations = append(violations, v...)
+			}
+		}
 	}
 
-	targetScope := service.TrackingScope(ch.fsys, targetAbs, ch.capsule.Dir)
-
-	if scopeDir == targetScope {
-		return 1, ch.checkInScopeResult(abs, scopeRel, cfgPath, scopeDir, scopeGraph, spec, src, targetAbs)
-	} else {
-		return 1, ch.checkCrossScope(abs, fileRel, spec, src, targetPath, cfgPath, scopeGraph, scopeDir)
-	}
+	return relations, violations
 }
 
-func (ch *capsuleChecker) checkInScopeResult(abs, scopeRel, cfgPath, scopeDir string, scopeIndex *graph.GraphIndex, spec port.ImportSpec, src string, targetAbs string) []port.Violation {
-	g := scopeIndex.Graph()
-	scopeTargetRel := relToSlash(scopeDir, targetAbs)
-	dst := scopeIndex.NodeForPath(scopeTargetRel)
-	if dst == "" {
-		v := makeImportNoNodeViolation(abs, scopeRel, spec, cfgPath)
-		return []port.Violation{v}
-	}
-	if dst == src {
-		if g.IsEndophobic(src) {
-			v := makeEndophobicViolation(abs, scopeRel, spec, scopeTargetRel, src, cfgPath)
-			return []port.Violation{v}
-		}
-		return nil
-	}
-	if !g.Allows(src, dst) {
-		v := makeRelationViolation(abs, scopeRel, spec, src, scopeTargetRel, dst, cfgPath)
-		return []port.Violation{v}
-	}
-	return nil
-}
-
-func (ch *capsuleChecker) checkCrossScope(srcAbs, fileRel string, spec port.ImportSpec, src, targetPath, cfgPath string, scopeIndex *graph.GraphIndex, scopeDir string) []port.Violation {
-	targetAbs := absPath(ch.capsule.Dir, targetPath)
-
-	targetRel := relToSlash(scopeDir, targetAbs)
-	if !escapesScope(targetRel) {
-		dst := scopeIndex.NodeForPath(targetRel)
-		if dst != "" {
-			if !scopeIndex.Graph().Allows(src, dst) {
-				v := makeRelationViolation(srcAbs, fileRel, spec, src, targetRel, dst, cfgPath)
-				return []port.Violation{v}
-			}
-			return nil
-		}
-	}
-
-	for _, anc := range ancestorContracts(ch.fsys, scopeDir, ch.capsule.Dir, ch.scopeCache) {
-		srcRel := relToSlash(anc.dir, srcAbs)
-		dstRel := relToSlash(anc.dir, targetAbs)
-		srcA := anc.graphIndex.NodeForPath(srcRel)
-		dstA := anc.graphIndex.NodeForPath(dstRel)
-		if srcA != "" && dstA != "" {
-			if !anc.graphIndex.Graph().Allows(srcA, dstA) {
-				v := makeRelationViolation(srcAbs, fileRel, spec, srcA, targetPath, dstA, anc.contractPath)
-				return []port.Violation{v}
-			}
-			return nil
-		}
-	}
-
-	if ch.hasRootContract {
-		srcParent := ch.rootGraphIndex.NodeForPath(relToSlash(ch.capsule.Dir, srcAbs))
-		dstParent := ch.rootGraphIndex.NodeForPath(relToSlash(ch.capsule.Dir, targetAbs))
-		if srcParent != "" && dstParent != "" {
-			if !ch.rootGraphIndex.Graph().Allows(srcParent, dstParent) {
-				parentTargetRel := relToSlash(ch.capsule.Dir, targetAbs)
-				v := makeRelationViolation(srcAbs, fileRel, spec, srcParent, parentTargetRel, dstParent, ch.contractPathAbs)
-				return []port.Violation{v}
-			}
-			return nil
-		}
-	}
-
-	return nil
+func (ch *capsuleChecker) scopeRel(scopeDir, abs string) string {
+	return relToSlash(scopeDir, abs)
 }
 
 func escapesScope(rel string) bool {
@@ -334,9 +639,13 @@ func (ch *capsuleChecker) applyContractValidation(result ContractValidationResul
 
 func (ch *capsuleChecker) validateLanguageGraph(g *graph.Graph, cfgPath string) {
 	if !ch.lang.SupportsFileGlobs() {
+		strat := ch.strategyFactory.BuildStrategyFromGraph(g)
 		for id, glob := range g.Nodes {
-			if graph.IsFileGlob(glob) {
+			if strat.IsFileGlob(glob) {
 				ch.res.errors = append(ch.res.errors, makeFileGlobUnsupportedError(id, cfgPath, g.NodeLines[id], glob))
+				if strat.ShouldFailOnInvalidGlob() {
+					ch.res.hasInvalidGlobError = true
+				}
 			}
 		}
 	}

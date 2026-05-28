@@ -17,6 +17,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/realfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
+	"github.com/dariushalipour/baft/internal/adapter/languages/csharp"
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
 	"github.com/dariushalipour/baft/internal/adapter/languages/kotlin"
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
@@ -243,6 +244,8 @@ func addLanguage(w *workspace, langName string) error {
 		w.Langs = append(w.Langs, &typescript.Language{})
 	case "kotlin":
 		w.Langs = append(w.Langs, kotlin.Language{})
+	case "csharp":
+		w.Langs = append(w.Langs, &csharp.Language{})
 	}
 	return nil
 }
@@ -520,6 +523,21 @@ func TestTypescriptCheckFeatures(t *testing.T) {
 	}
 }
 
+func TestCsharpCheckFeatures(t *testing.T) {
+	suite := godog.TestSuite{
+		ScenarioInitializer: initializeCheckScenario,
+		Options: &godog.Options{
+			Strict:   true,
+			Format:   "pretty",
+			Paths:    []string{"../adapter/languages/csharp/csharp.feature"},
+			TestingT: t,
+		},
+	}
+	if suite.Run() != 0 {
+		t.Fatal("non-zero status returned, failed to run csharp check feature tests")
+	}
+}
+
 type dumpWorld struct {
 	ws          workspace
 	beforeFiles map[string]fileSnapshot
@@ -565,6 +583,8 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 				lang = &typescript.Language{}
 			case "kotlin":
 				lang = kotlin.Language{}
+			case "csharp":
+				lang = &csharp.Language{}
 			}
 			if lang != nil {
 				w.ws.Langs = append(w.ws.Langs, lang)
@@ -805,6 +825,9 @@ func (l *langWithMissingFiles) ParseImports(fsys port.FileSystem, absPath string
 }
 func (l *langWithMissingFiles) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, rel string) (string, bool) {
 	return l.base.ResolveInternalTarget(fsys, spec, c, rel)
+}
+func (l *langWithMissingFiles) GetFileNamespace(fsys port.FileSystem, absPath string) (string, error) {
+	return l.base.GetFileNamespace(fsys, absPath)
 }
 func (l *langWithMissingFiles) SupportsFileGlobs() bool { return l.base.SupportsFileGlobs() }
 func (l *langWithMissingFiles) Register(d port.CapsuleDiscovery) {

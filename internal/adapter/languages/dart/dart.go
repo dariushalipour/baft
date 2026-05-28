@@ -66,7 +66,8 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 	return full, true
 }
 
-func (Language) SupportsFileGlobs() bool { return true }
+func (Language) GetFileNamespace(_ port.FileSystem, _ string) (string, error) { return "", nil }
+func (Language) SupportsFileGlobs() bool                                      { return true }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("dart", port.ManifestInfo{
 		Names:             []string{"pubspec.yaml"},

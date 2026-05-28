@@ -55,7 +55,8 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 	return strings.TrimPrefix(spec.Path, prefix), true
 }
 
-func (Language) SupportsFileGlobs() bool { return false }
+func (Language) GetFileNamespace(_ port.FileSystem, _ string) (string, error) { return "", nil }
+func (Language) SupportsFileGlobs() bool                                      { return false }
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("go", port.ManifestInfo{
 		Names:             []string{"go.mod"},

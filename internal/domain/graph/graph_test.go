@@ -275,6 +275,118 @@ func TestAllows(t *testing.T) {
 	}
 }
 
+// Regression: findMostSpecificNamespace was using path-split segments for
+// node patterns but dot-split segments for namespaces, so "MyApp.Api"
+// (1 path segment) never matched namespace "MyApp.Api" (2 dot segments).
+func TestNodeForNamespace_ExactMatch(t *testing.T) {
+	g := &Graph{
+		Nodes: map[string]string{
+			"api":    "MyApp.Api",
+			"domain": "MyApp.Domain",
+			"infra":  "MyApp.Infra",
+		},
+		Edges: map[string]map[string]bool{
+			"api": {"domain": true},
+		},
+	}
+	idx := NewGraphIndex(g)
+
+	tests := []struct {
+		ns   string
+		want string
+	}{
+		{"MyApp.Api", "api"},
+		{"MyApp.Domain", "domain"},
+		{"MyApp.Infra", "infra"},
+		{"MyApp.Api.Controllers", "api"},
+		{"Unknown.Namespace", ""},
+	}
+
+	for _, tc := range tests {
+		if got := idx.NodeForNamespace(tc.ns); got != tc.want {
+			t.Errorf("NodeForNamespace(%q) = %q, want %q", tc.ns, got, tc.want)
+		}
+	}
+}
+
+// Regression: wildcard namespace patterns must match child namespaces
+// and specificity must prefer more specific (longer) patterns.
+func TestNodeForNamespace_WildcardAndSpecificity(t *testing.T) {
+	g := &Graph{
+		Nodes: map[string]string{
+			"root":        "MyApp",
+			"api":         "MyApp.Api",
+			"controllers": "MyApp.Api.*",
+			"domain":      "MyApp.Domain",
+		},
+		Edges: map[string]map[string]bool{},
+	}
+	idx := NewGraphIndex(g)
+
+	tests := []struct {
+		ns   string
+		want string
+	}{
+		// Exact match preferred over prefix
+		{"MyApp.Api", "api"},
+		// Wildcard match: MyApp.Api.* matches MyApp.Api.Handlers
+		{"MyApp.Api.Handlers", "controllers"},
+		// Prefix match: MyApp matches MyApp.Shared.Utils (no exact/wildcard match)
+		{"MyApp.Shared.Utils", "root"},
+		// Exact domain match
+		{"MyApp.Domain", "domain"},
+		// Child of domain — prefix match to domain
+		{"MyApp.Domain.Entities", "domain"},
+		// Unknown prefix — no match
+		{"Other.Api", ""},
+	}
+
+	for _, tc := range tests {
+		if got := idx.NodeForNamespace(tc.ns); got != tc.want {
+			t.Errorf("NodeForNamespace(%q) = %q, want %q", tc.ns, got, tc.want)
+		}
+	}
+}
+
+// Regression: namespace cache must be thread-safe under concurrent access.
+func TestNodeForNamespace_Concurrent(t *testing.T) {
+	g := &Graph{
+		Nodes: map[string]string{
+			"api":    "MyApp.Api",
+			"domain": "MyApp.Domain",
+		},
+		Edges: map[string]map[string]bool{},
+	}
+	idx := NewGraphIndex(g)
+
+	var computed int64
+	idx.onCompute = func() {
+		// onCompute is only called by the winning goroutine after double-check,
+		// so it should only fire for unique cache misses.
+		computed++
+	}
+
+	nses := []string{"MyApp.Api", "MyApp.Domain", "MyApp.Api.Controllers", "Unknown"}
+	done := make(chan bool, len(nses)*4)
+	for _, ns := range nses {
+		for i := 0; i < 4; i++ {
+			go func(n string) {
+				idx.NodeForNamespace(n)
+				done <- true
+			}(ns)
+		}
+	}
+	for i := 0; i < cap(done); i++ {
+		<-done
+	}
+	// Each unique namespace should compute exactly once due to double-check locking.
+	// All 4 namespaces ("MyApp.Api", "MyApp.Domain", "MyApp.Api.Controllers", "Unknown")
+	// go through the full computation path and cache their results (including "" for "Unknown").
+	if computed != int64(len(nses)) {
+		t.Errorf("onCompute called %d times, want %d (one per unique namespace)", computed, len(nses))
+	}
+}
+
 func TestNodeKeyForDir(t *testing.T) {
 	tests := []struct {
 		path, want string
@@ -563,5 +675,107 @@ func TestNewGraph_AlphabeticalNodeAndEdgeOrder(t *testing.T) {
 		if g.EdgeOrder[i] != want {
 			t.Errorf("EdgeOrder[%d] = %q, want %q", i, g.EdgeOrder[i], want)
 		}
+	}
+}
+
+// Regression: allNodes must be precomputed in NewGraphIndex so that
+// findMostSpecificNamespace doesn't allocate a new slice on every call.
+func TestGraphIndex_AllNodesPrecomputed(t *testing.T) {
+	g := &Graph{
+		Nodes: map[string]string{
+			"api":    "MyApp.Api",
+			"domain": "MyApp.Domain",
+			"file1":  "MyApp/*.cs",
+		},
+		Edges: map[string]map[string]bool{
+			"api": {"domain": true},
+		},
+	}
+	idx := NewGraphIndex(g)
+
+	// allNodes should contain all node IDs
+	if len(idx.allNodes) != 3 {
+		t.Fatalf("allNodes length = %d, want 3", len(idx.allNodes))
+	}
+
+	// Verify all node IDs are present
+	seen := make(map[string]bool, len(idx.allNodes))
+	for _, id := range idx.allNodes {
+		seen[id] = true
+	}
+	for id := range g.Nodes {
+		if !seen[id] {
+			t.Errorf("allNodes missing node ID %q", id)
+		}
+	}
+}
+
+// Regression: splitBySeparator was only checking sep[0], so multi-character
+// separators like "::" would incorrectly split on every ":" character.
+// e.g., "a::b::c" with sep "::" produced ["a:", "b:", "c"] instead of ["a", "b", "c"].
+func TestSplitBySeparator_MultiChar(t *testing.T) {
+	tests := []struct {
+		s    string
+		sep  string
+		want []string
+	}{
+		{"a::b::c", "::", []string{"a", "b", "c"}},
+		{"std::collections::HashMap", "::", []string{"std", "collections", "HashMap"}},
+		{"a.b.c", ".", []string{"a", "b", "c"}},
+		{"x", "::", []string{"x"}},
+		{"::a::b", "::", []string{"", "a", "b"}},
+		{"a::b::", "::", []string{"a", "b", ""}},
+		{"", "::", []string{""}},
+		{"no_separator_here", "::", []string{"no_separator_here"}},
+	}
+	for _, tc := range tests {
+		got := splitBySeparator(tc.s, tc.sep)
+		if len(got) != len(tc.want) {
+			t.Errorf("splitBySeparator(%q, %q) = %v (len %d), want %v (len %d)",
+				tc.s, tc.sep, got, len(got), tc.want, len(tc.want))
+			continue
+		}
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Errorf("splitBySeparator(%q, %q)[%d] = %q, want %q",
+					tc.s, tc.sep, i, got[i], tc.want[i])
+			}
+		}
+	}
+}
+
+// Regression: findMostSpecificNamespace tie-breaker must cache segment counts
+// instead of re-splitting the best pattern's segments on each iteration.
+func TestNodeForNamespace_TieBreaker_MoreSegmentsWins(t *testing.T) {
+	g := &Graph{
+		Nodes: map[string]string{
+			"broad":    "MyApp.*",
+			"specific": "MyApp.Api.*",
+		},
+		Edges: map[string]map[string]bool{},
+	}
+	idx := NewGraphIndex(g)
+
+	got := idx.NodeForNamespace("MyApp.Api.Controllers")
+	if got != "specific" {
+		t.Errorf("NodeForNamespace(MyApp.Api.Controllers) = %q, want %q", got, "specific")
+	}
+}
+
+// Regression: when three+ patterns tie, the cached bestSegs must update correctly.
+func TestNodeForNamespace_TieBreaker_ThreeWay(t *testing.T) {
+	g := &Graph{
+		Nodes: map[string]string{
+			"level1": "MyApp.*",
+			"level2": "MyApp.X.*",
+			"level3": "MyApp.X.Y.*",
+		},
+		Edges: map[string]map[string]bool{},
+	}
+	idx := NewGraphIndex(g)
+
+	got := idx.NodeForNamespace("MyApp.X.Y.Z")
+	if got != "level3" {
+		t.Errorf("NodeForNamespace(MyApp.X.Y.Z) = %q, want %q", got, "level3")
 	}
 }

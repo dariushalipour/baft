@@ -1855,7 +1855,7 @@ Feature: Dump BAFT.md from actual imports
         return domain.User{}
       }
       """
-    Given the dump uses the "go" language adapter
+   Given the dump uses the "go" language adapter
     When the dump runs from "/Users/jane/baft"
     And Contract at "BAFT.md" has 2 nodes and 1 edges
     And Contract at "BAFT.md" is new
@@ -1865,12 +1865,61 @@ Feature: Dump BAFT.md from actual imports
       <!-- If Baft is new to you, run `baft manual`. -->
       <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
       <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
-      
+
       ```mermaid
       flowchart TD
         internal_slash_domain["internal/domain"]
         internal_slash_usecase["internal/usecase"]
-      
+
         internal_slash_usecase --> internal_slash_domain
+      ```
+      """
+
+  Scenario: Dump generates contract for C# project with cross-namespace imports
+    Given a fresh workspace at "/Users/jane/myapp" with this layout:
+      """tree
+      ├─ MyApp.csproj
+      ├─ Api/
+      │  └─ Controller.cs
+      └─ Domain/
+         └─ Entity.cs
+      """
+    Given file "MyApp.csproj" has content "<Project><PropertyGroup><RootNamespace>MyApp</RootNamespace></PropertyGroup></Project>"
+    Given file "Api/Controller.cs" has content:
+      """csharp
+      using System;
+      using MyApp.Domain;
+
+      namespace MyApp.Api
+      {
+          public class Controller { }
+      }
+      """
+    Given file "Domain/Entity.cs" has content:
+      """csharp
+      using System;
+
+      namespace MyApp.Domain
+      {
+          public class Entity { }
+      }
+      """
+    Given the dump uses the "csharp" language adapter
+    When the dump runs from "/Users/jane/myapp"
+    Then Contract at "BAFT.md" has 2 nodes and 1 edges
+    And Contract at "BAFT.md" is new
+    And file "BAFT.md" should be:
+      """config
+      <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If Baft is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+
+      ```mermaid
+      flowchart TD
+        Api["Api"]
+        Domain["Domain"]
+
+        Api --> Domain
       ```
       """

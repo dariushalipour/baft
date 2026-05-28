@@ -185,3 +185,47 @@ func TestContractOverlapErrors_NoDuplicates(t *testing.T) {
 		t.Fatalf("expected 2 overlap errors, got %d: %v", overlapCount, result.Errors)
 	}
 }
+
+// Regression: ResolutionStrategy.IsFileGlob must NOT flag dotted namespace patterns
+// (e.g., "MyApp.Api") as file globs when using namespaceResolutionStrategy.
+// In path mode, "MyApp.Api" would be considered file-shaped because the last
+// segment contains a dot. In namespace mode, dots are valid namespace separators.
+func TestIsFileGlob_Strategy(t *testing.T) {
+	tests := []struct {
+		pattern       string
+		namespaceMode bool
+		wantFileGlob  bool
+	}{
+		// Path mode: standard file glob detection
+		{"src/api/handler.go", false, true}, // has dot in last segment
+		{"src/api/**", false, false},        // dir glob
+		{"src/api/*.*", false, true},        // file glob with wildcard
+		{"MyApp.Api", false, true},          // dot in last segment → file-shaped
+		{".", false, false},                 // root
+
+		// Namespace mode: dots are namespace separators, not file extensions
+		{"MyApp.Api", true, false},             // valid namespace, NOT file glob
+		{"MyApp.Domain.Entities", true, false}, // valid namespace, NOT file glob
+		{"MyApp", true, false},                 // single-segment namespace
+		{"src/api/**", true, true},             // has "/" → file path glob
+		{"Api/*.*", true, true},                // has "/" and "*" → file glob
+		{"MyApp.Api.*", true, true},            // has "*" → glob pattern
+		{".", true, false},                     // root
+	}
+
+	pathStrat := &pathResolutionStrategy{}
+	nsStrat := &namespaceResolutionStrategy{}
+
+	for _, tc := range tests {
+		var got bool
+		if tc.namespaceMode {
+			got = nsStrat.IsFileGlob(tc.pattern)
+		} else {
+			got = pathStrat.IsFileGlob(tc.pattern)
+		}
+		if got != tc.wantFileGlob {
+			t.Errorf("IsFileGlob(%q, namespaceMode=%v) = %v, want %v",
+				tc.pattern, tc.namespaceMode, got, tc.wantFileGlob)
+		}
+	}
+}

@@ -44,6 +44,11 @@ type Graph struct {
 	// in node glob patterns (e.g. "." for Kotlin/Java style). Patterns are normalized
 	// to slash-based internally, but the original form is preserved in NodeDisplays.
 	GlobSeparator string
+
+	// NamespaceMode, when true, indicates that node globs match against namespace
+	// strings (e.g. "MyApp.Domain") rather than filesystem paths. Imports with a
+	// populated Namespace field are matched directly against node patterns.
+	NamespaceMode bool
 }
 
 // GraphIndex provides fast cached lookups over a Graph. It holds all mutable
@@ -54,8 +59,10 @@ type GraphIndex struct {
 	nodeInfos map[string]*nodeInfo
 	dirNodes  []string
 	fileNodes []string
+	allNodes  []string // all node IDs (dirNodes + fileNodes, precomputed)
 	dirCache  map[string]string
 	fileCache map[string]string
+	nsCache   map[string]string // namespace → node ID (used when NamespaceMode)
 	cacheMu   sync.RWMutex
 
 	// onCompute is nil in production. Tests set it to verify the double-check
@@ -111,6 +118,10 @@ func NewGraphIndex(g *Graph) *GraphIndex {
 	sort.Slice(gi.fileNodes, func(i, j int) bool {
 		return nodeOrderIdx(g, gi.fileNodes[i]) < nodeOrderIdx(g, gi.fileNodes[j])
 	})
+
+	gi.allNodes = make([]string, 0, len(gi.dirNodes)+len(gi.fileNodes))
+	gi.allNodes = append(gi.allNodes, gi.dirNodes...)
+	gi.allNodes = append(gi.allNodes, gi.fileNodes...)
 
 	return gi
 }
@@ -235,6 +246,122 @@ func (gi *GraphIndex) NodeForPath(filePath string) string {
 	gi.fileCache[filePath] = result
 	gi.cacheMu.Unlock()
 	return result
+}
+
+// NodeForNamespace returns the node ID that best matches the given namespace string.
+// In namespace mode, node patterns are matched against namespace segments (split on the
+// configured separator or "."). Uses existing segment-matching logic for specificity.
+func (gi *GraphIndex) NodeForNamespace(ns string) string {
+	if ns == "" {
+		return ""
+	}
+	gi.cacheMu.RLock()
+	if gi.nsCache != nil {
+		if cached, ok := gi.nsCache[ns]; ok {
+			gi.cacheMu.RUnlock()
+			return cached
+		}
+	}
+	gi.cacheMu.RUnlock()
+	result := gi.findMostSpecificNamespace(ns)
+	gi.cacheMu.Lock()
+	if gi.nsCache == nil {
+		gi.nsCache = make(map[string]string, len(gi.graph.Nodes))
+	}
+	if cached, ok := gi.nsCache[ns]; ok {
+		gi.cacheMu.Unlock()
+		return cached
+	}
+	if gi.onCompute != nil {
+		gi.onCompute()
+	}
+	gi.nsCache[ns] = result
+	gi.cacheMu.Unlock()
+	return result
+}
+
+func (gi *GraphIndex) findMostSpecificNamespace(ns string) string {
+	bestID := ""
+	bestScore := -1
+	var bestSegs []string
+	sep := "."
+	if gi.graph.GlobSeparator != "" {
+		sep = gi.graph.GlobSeparator
+	}
+	nsSegs := splitBySeparator(ns, sep)
+	for _, id := range gi.allNodes {
+		ni := gi.nodeInfos[id]
+		patternSegs := splitBySeparator(ni.pattern, sep)
+		if !matchNamespaceSegments(patternSegs, ni.hasWildcard, nsSegs) {
+			continue
+		}
+		score := namespaceMatchSpecificity(patternSegs, nsSegs, ni.hasWildcard)
+		if score > bestScore {
+			bestID = id
+			bestScore = score
+			bestSegs = patternSegs
+		} else if score == bestScore && score > 0 && len(patternSegs) > len(bestSegs) {
+			bestID = id
+			bestSegs = patternSegs
+		}
+	}
+	return bestID
+}
+
+// namespaceMatchSpecificity returns a score for how specifically a pattern
+// matches a namespace. Higher is more specific.
+func namespaceMatchSpecificity(patternSegs, nsSegs []string, hasWildcard bool) int {
+	if len(patternSegs) == len(nsSegs) {
+		// Exact segment-count match (exact or wildcard).
+		if hasWildcard {
+			// Wildcard at exact depth: base per-literal + 1 per wildcard.
+			score := 0
+			for _, s := range patternSegs {
+				if s == "*" || s == "**" {
+					score += 1
+				} else {
+					score += 10
+				}
+			}
+			return score
+		}
+		// Exact literal match: maximum specificity.
+		return len(patternSegs) * 20
+	}
+	// Prefix match (pattern is shorter than namespace).
+	// Score lower so wildcard patterns at the child depth win.
+	return len(patternSegs) * 5
+}
+
+// matchNamespaceSegments matches a namespace pattern against namespace segments.
+// Unlike path-based matching, a non-wildcard namespace pattern like "MyApp.Api"
+// also matches child namespaces like "MyApp.Api.Controllers" (prefix match).
+func matchNamespaceSegments(patternSegs []string, patternHasWildcard bool, nsSegs []string) bool {
+	// Try exact/wildcard match first
+	if matchDirGlobSegments(patternSegs, patternHasWildcard, nsSegs) {
+		return true
+	}
+	// Also match if pattern is a prefix of the namespace (e.g., "MyApp.Api"
+	// matches "MyApp.Api.Controllers"). Only applies to non-wildcard patterns.
+	if !patternHasWildcard && len(nsSegs) > len(patternSegs) {
+		for i, ps := range patternSegs {
+			if nsSegs[i] != ps {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// splitBySeparator splits a string by the given separator string.
+// Supports both single-character (e.g., ".", "/") and multi-character
+// separators (e.g., "::").
+func splitBySeparator(s, sep string) []string {
+	if sep == "" || sep == "/" {
+		return splitPath(s)
+	}
+	return strings.Split(s, sep)
 }
 
 func (gi *GraphIndex) EdgeCount() int {

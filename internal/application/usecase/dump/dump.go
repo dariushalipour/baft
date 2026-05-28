@@ -12,6 +12,7 @@ import (
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/application/service"
+	"github.com/dariushalipour/baft/internal/domain/graph"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -52,9 +53,10 @@ const (
 )
 
 type draftConfig struct {
-	mode         draftMode
-	expandedDirs map[string]bool
-	saveOpts     port.GraphSaveOptions
+	mode          draftMode
+	expandedDirs  map[string]bool
+	saveOpts      port.GraphSaveOptions
+	namespaceMode bool
 }
 
 type fileRecord struct {
@@ -162,7 +164,8 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 		}
 
 		for _, contractPath := range scopedPaths {
-			diff, err := amendContract(wrapped, absRootDir, e.capsule, e.lang, repo, contractPath, defaultDraftConfig(e.capsule, e.lang, filepath.Dir(contractPath), saveOpts))
+			existingGraph := loadExistingGraphForDump(wrapped, repo, contractPath)
+			diff, err := amendContract(wrapped, absRootDir, e.capsule, e.lang, repo, contractPath, defaultDraftConfig(e.capsule, e.lang, filepath.Dir(contractPath), saveOpts, existingGraph))
 			if err != nil {
 				de := DumpError{Label: label, Err: err}
 				result.Errors = append(result.Errors, de)
@@ -179,7 +182,8 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 		}
 
 		if rootExists {
-			diff, err := amendContract(wrapped, absRootDir, e.capsule, e.lang, repo, rootContractPath, defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts))
+			existingGraph := loadExistingGraphForDump(wrapped, repo, rootContractPath)
+			diff, err := amendContract(wrapped, absRootDir, e.capsule, e.lang, repo, rootContractPath, defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts, existingGraph))
 			if err != nil {
 				de := makeDumpError(label, err)
 				result.Errors = append(result.Errors, de)
@@ -195,7 +199,7 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 			}
 			continue
 		}
-		cfg := defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts)
+		cfg := defaultDraftConfig(e.capsule, e.lang, contractDir, saveOpts, nil)
 		capsuleRes, err := dumpCapsule(wrapped, e.capsule, e.lang, repo, absRootDir, contractDir, cfg)
 		if err != nil {
 			de := DumpError{Label: label, Err: err}
@@ -240,4 +244,16 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 	}
 
 	return result, nil
+}
+
+func loadExistingGraphForDump(fsys port.FileSystem, repo port.GraphRepository, contractPath string) *graph.Graph {
+	raw, err := fsys.ReadFile(contractPath)
+	if err != nil {
+		return nil
+	}
+	g, err := repo.Load(string(raw))
+	if err != nil {
+		return nil
+	}
+	return g
 }

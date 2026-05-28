@@ -189,7 +189,8 @@ func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string 
 	return resolved
 }
 
-func (l *Language) SupportsFileGlobs() bool { return true }
+func (l *Language) GetFileNamespace(_ port.FileSystem, _ string) (string, error) { return "", nil }
+func (l *Language) SupportsFileGlobs() bool                                      { return true }
 func (l *Language) Register(d port.CapsuleDiscovery) {
 	d.Register("typescript", port.ManifestInfo{
 		Names:             []string{"package.json"},

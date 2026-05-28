@@ -141,18 +141,22 @@ func mergedDirGlob(rel string) string {
 	return rel + "/*.*"
 }
 
-func defaultDraftConfig(capsule port.Capsule, lang port.Language, contractDir string, saveOpts port.GraphSaveOptions) draftConfig {
-	if contractDir == capsule.Dir && lang.SupportsFileGlobs() {
-		return draftConfig{mode: draftModeMergedDirs, saveOpts: saveOpts}
+func defaultDraftConfig(capsule port.Capsule, lang port.Language, contractDir string, saveOpts port.GraphSaveOptions, existingGraph *graph.Graph) draftConfig {
+	nsMode := false
+	if existingGraph != nil {
+		nsMode = existingGraph.NamespaceMode
 	}
-	return draftConfig{mode: draftModeExactFiles, saveOpts: saveOpts}
+	if contractDir == capsule.Dir && lang.SupportsFileGlobs() {
+		return draftConfig{mode: draftModeMergedDirs, saveOpts: saveOpts, namespaceMode: nsMode}
+	}
+	return draftConfig{mode: draftModeExactFiles, saveOpts: saveOpts, namespaceMode: nsMode}
 }
 
 func (cfg draftConfig) withExpandedDirs(dirs ...string) draftConfig {
 	if len(dirs) == 0 {
 		return cfg
 	}
-	next := draftConfig{mode: cfg.mode, saveOpts: cfg.saveOpts}
+	next := draftConfig{mode: cfg.mode, saveOpts: cfg.saveOpts, namespaceMode: cfg.namespaceMode}
 	if len(cfg.expandedDirs) > 0 {
 		next.expandedDirs = make(map[string]bool, len(cfg.expandedDirs)+len(dirs))
 		for dir := range cfg.expandedDirs {

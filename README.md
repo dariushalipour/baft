@@ -19,7 +19,7 @@ Baft fixes this by making the diagram the actual enforcement mechanism.
 ## What Baft Is
 
 - **Executable Architecture:** A standalone CLI that ensures your code matches your design.
-- **Multilingual:** Native support for Go, TypeScript, Dart, Java, Kotlin, Python, and Rust.
+- **Multilingual:** Native support for Go, TypeScript, Dart, Java, Kotlin, Python, Rust, and C#.
 - **Deterministic:** No heuristics or inference—just strict glob matching and import analysis.
 - **Zero-Config:** Automatically discovers capsules from standard project manifests.
 
@@ -35,7 +35,7 @@ Tools like ArchUnit, Dependency-Cruiser, and language-specific linters are good 
 
 | Feature | Traditional architecture tools | Baft |
 | --- | --- | --- |
-| **Language support** | Usually one language or ecosystem at a time | **Polyglot** across Go, TypeScript, Dart, Java, Kotlin, Python, and Rust |
+| **Language support** | Usually one language or ecosystem at a time | **Polyglot** across Go, TypeScript, Dart, Java, Kotlin, Python, Rust, and C# |
 | **Source of truth** | Rules in code or YAML | **Mermaid diagram** in contract file |
 | **Enforcement model** | Often blacklist-oriented: define forbidden dependencies | **Default deny**: only declared edges are allowed |
 | **Exceptions** | Commonly scattered across inline suppressions or tool-specific config | **Centralized and explicit** in contract files and `.baftignore` |
@@ -160,6 +160,8 @@ Nested capsules are supported. A child directory with its own contract file is t
 
 TypeScript and Dart support file-shaped nodes. Go, Java, Kotlin, Python, and Rust require directory-shaped nodes. In all languages, a bare directory glob means the exact directory, not an implicit `/**`.
 
+**Namespace Mode:** C# contracts can use `%% config namespaceMode "true"` to match `using` directives against namespace strings instead of file paths. Java and Kotlin can also opt into namespace mode.
+
 ## Supported Languages
 
 - Go
@@ -169,6 +171,7 @@ TypeScript and Dart support file-shaped nodes. Go, Java, Kotlin, Python, and Rus
 - Kotlin, including common multiplatform layouts
 - Python
 - Rust
+- C#, with namespace-aware mode for `using` directives
 
 Baft can scan a multilingual repository in one run as long as each capsule has a supported manifest and a contract file.
 

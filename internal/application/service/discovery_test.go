@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/adapter/languages/csharp"
 	"github.com/dariushalipour/baft/internal/port"
 	"github.com/dariushalipour/baft/pkg/treeview"
 )
@@ -317,6 +318,203 @@ func TestCapsuleDiscovery(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestCapsuleDiscovery_GlobPattern verifies that manifest names can be glob
+// patterns (e.g., *.csproj for C#) and that the first matching file is used.
+// Regression: checkManifest only did a literal Stat, so *.csproj never matched.
+func TestCapsuleDiscovery_GlobPattern(t *testing.T) {
+	fsys := memfs.New()
+	files := map[string]string{
+		"/root/Api.csproj": `<Project>
+  <PropertyGroup>
+    <RootNamespace>MyApp.Api</RootNamespace>
+  </PropertyGroup>
+</Project>`,
+		"/root/Domain.csproj": `<Project>
+  <PropertyGroup>
+    <RootNamespace>MyApp.Domain</RootNamespace>
+  </PropertyGroup>
+</Project>`,
+	}
+	for path, content := range files {
+		if err := fsys.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	d := NewCapsuleDiscovery()
+	d.Register("csharp", port.ManifestInfo{
+		Names:     []string{"*.csproj"},
+		ParseFunc: csharp.ReadCsprojName,
+	})
+
+	entries, err := d.Discover(context.Background(), fsys, "/root")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 capsule (first matching csproj), got %d", len(entries))
+	}
+
+	got := entries[0]
+	if got.Capsule.CapsuleID != "MyApp.Api" {
+		t.Errorf("expected capsule ID %q (Api.csproj sorted first), got %q", "MyApp.Api", got.Capsule.CapsuleID)
+	}
+	if got.Capsule.Dir != "/root" {
+		t.Errorf("expected dir %q, got %q", "/root", got.Capsule.Dir)
+	}
+	if got.LangName != "csharp" {
+		t.Errorf("expected language %q, got %q", "csharp", got.LangName)
+	}
+}
+
+// TestCapsuleDiscovery_GlobNoMatch verifies that a glob pattern that doesn't
+// match any file in the directory is skipped gracefully.
+func TestCapsuleDiscovery_GlobNoMatch(t *testing.T) {
+	fsys := memfs.New()
+	files := map[string]string{
+		"/root/go.mod": "module example.com/root",
+	}
+	for path, content := range files {
+		if err := fsys.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	d := NewCapsuleDiscovery()
+	d.Register("go", port.ManifestInfo{
+		Names:     []string{"go.mod"},
+		ParseFunc: goModParser(),
+	})
+	d.Register("csharp", port.ManifestInfo{
+		Names:     []string{"*.csproj"},
+		ParseFunc: csharp.ReadCsprojName,
+	})
+
+	entries, err := d.Discover(context.Background(), fsys, "/root")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 capsule (go), got %d", len(entries))
+	}
+	if entries[0].LangName != "go" {
+		t.Errorf("expected language %q, got %q", "go", entries[0].LangName)
+	}
+}
+
+// TestCapsuleDiscovery_GlobMultipleMatches returns the first matching file
+// in sorted order.
+func TestCapsuleDiscovery_GlobMultipleMatchesSortedFirst(t *testing.T) {
+	fsys := memfs.New()
+	files := map[string]string{
+		"/root/Z.csproj": `<Project><PropertyGroup><RootNamespace>Z</RootNamespace></PropertyGroup></Project>`,
+		"/root/A.csproj": `<Project><PropertyGroup><RootNamespace>A</RootNamespace></PropertyGroup></Project>`,
+	}
+	for path, content := range files {
+		if err := fsys.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	d := NewCapsuleDiscovery()
+	d.Register("csharp", port.ManifestInfo{
+		Names:     []string{"*.csproj"},
+		ParseFunc: csharp.ReadCsprojName,
+	})
+
+	entries, err := d.Discover(context.Background(), fsys, "/root")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 capsule (first sorted match), got %d", len(entries))
+	}
+
+	// A.csproj comes first alphabetically
+	if entries[0].Capsule.CapsuleID != "A" {
+		t.Errorf("expected capsule ID %q (A.csproj sorted first), got %q", "A", entries[0].Capsule.CapsuleID)
+	}
+}
+
+// Regression: when a glob matches multiple candidates and the first fails
+// to parse (returns empty capsule ID), discovery falls through to the next.
+func TestCapsuleDiscovery_GlobParseFailureFallback(t *testing.T) {
+	fsys := memfs.New()
+	files := map[string]string{
+		// A.csproj sorts first but has no valid namespace — parser falls back to "A"
+		"/root/A.csproj": `<Project><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>`,
+		// B.csproj has a proper namespace
+		"/root/B.csproj": `<Project><PropertyGroup><RootNamespace>MyApp</RootNamespace></PropertyGroup></Project>`,
+	}
+	for path, content := range files {
+		if err := fsys.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	d := NewCapsuleDiscovery()
+	d.Register("csharp", port.ManifestInfo{
+		Names:     []string{"*.csproj"},
+		ParseFunc: csharp.ReadCsprojName,
+	})
+
+	entries, err := d.Discover(context.Background(), fsys, "/root")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// A.csproj sorts first and returns "A" (filename fallback), so it's picked.
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 capsule, got %d", len(entries))
+	}
+	if entries[0].Capsule.CapsuleID != "A" {
+		t.Errorf("expected capsule ID %q (A.csproj fallback), got %q", "A", entries[0].Capsule.CapsuleID)
+	}
+}
+
+// Regression: verify that a parse function returning an error (not empty string)
+// causes the candidate to be skipped, allowing the next candidate to be tried.
+func TestCapsuleDiscovery_GlobParseErrorSkipsCandidate(t *testing.T) {
+	fsys := memfs.New()
+	files := map[string]string{
+		"/root/A.config": "invalid",
+		"/root/B.config": "valid",
+	}
+	for path, content := range files {
+		if err := fsys.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	failThenPass := func(fsys port.FileSystem, path string) (string, error) {
+		if filepath.Base(path) == "A.config" {
+			return "", fmt.Errorf("parse error")
+		}
+		return "valid-id", nil
+	}
+
+	d := NewCapsuleDiscovery()
+	d.Register("testlang", port.ManifestInfo{
+		Names:     []string{"*.config"},
+		ParseFunc: failThenPass,
+	})
+
+	entries, err := d.Discover(context.Background(), fsys, "/root")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 capsule (B.config, since A.config errors), got %d", len(entries))
+	}
+	if entries[0].Capsule.CapsuleID != "valid-id" {
+		t.Errorf("expected capsule ID %q, got %q", "valid-id", entries[0].Capsule.CapsuleID)
 	}
 }
 

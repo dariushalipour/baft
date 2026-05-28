@@ -12,6 +12,12 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
+type fileImport struct {
+	abs     string
+	rel     string
+	imports []port.ImportSpec
+}
+
 func resolveTargetNodeKey(fsys port.FileSystem, absPath string, rel string, lang port.Language) string {
 	if lang.SupportsFileGlobs() {
 		return nodeKey(rel, true)
@@ -35,6 +41,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 	filesEncountered := 0
 	filesScanned := 0
 	var fileRecords []fileRecord
+	var allFiles []fileImport
 
 	walkFn := func(abs, rel string) error {
 		imports, err := lang.ParseImports(fsys, abs)
@@ -46,57 +53,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 		}
 		filesEncountered++
 		filesScanned++
-
-		fileRel := rel
-		if !filepath.IsAbs(rel) {
-			fileRel, _ = filepath.Rel(p.Dir, filepath.Join(contractDir, rel))
-		}
-		fileRel = filepath.ToSlash(fileRel)
-
-		if shouldMergeContractDir(contractDir, p, lang, cfg) {
-			fileRecords = append(fileRecords, fileRecord{rel: fileRel, imports: imports})
-			return nil
-		}
-
-		srcID := nodeKey(rel, lang.SupportsFileGlobs())
-		nodes[srcID] = srcID
-
-		for _, spec := range imports {
-			targetPath, internal := lang.ResolveInternalTarget(fsys, spec, p, fileRel)
-			if !internal {
-				continue
-			}
-
-			targetAbs := targetPath
-			if !filepath.IsAbs(targetAbs) {
-				targetAbs = filepath.Join(p.Dir, targetAbs)
-			}
-			targetAbs = filepath.Clean(targetAbs)
-
-			// Skip ignored/baftignored targets.
-			if !port.IsTargetVisible(fsys, targetAbs) {
-				continue
-			}
-
-			contractDirClean := filepath.Clean(contractDir)
-			if targetAbs != contractDirClean && !strings.HasPrefix(targetAbs, contractDirClean+string(filepath.Separator)) {
-				continue
-			}
-
-			dstRel, _ := filepath.Rel(contractDirClean, targetAbs)
-			dstID := resolveTargetNodeKey(fsys, targetAbs, dstRel, lang)
-			nodes[dstID] = dstID
-
-			if srcID == dstID {
-				continue
-			}
-
-			if edges[srcID] == nil {
-				edges[srcID] = map[string]bool{}
-			}
-			edges[srcID][dstID] = true
-		}
-
+		allFiles = append(allFiles, fileImport{abs: abs, rel: rel, imports: imports})
 		return nil
 	}
 
@@ -104,11 +61,93 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 	if err != nil {
 		return nil, err
 	}
+
+	if len(allFiles) == 0 {
+		return nil, fmt.Errorf("capsule at %s has no scannable files to dump", contractDir)
+	}
+
+	isNamespaceMode := cfg.namespaceMode
+	var namespaceMap map[string]string
+	if isNamespaceMode {
+		namespaceMap = buildNamespaceMap(fsys, allFiles, lang)
+	}
+
+	for _, fi := range allFiles {
+		fileRel := fi.rel
+		if !filepath.IsAbs(fileRel) {
+			fileRel, _ = filepath.Rel(p.Dir, filepath.Join(contractDir, fileRel))
+		}
+		fileRel = filepath.ToSlash(fileRel)
+
+		if shouldMergeContractDir(contractDir, p, lang, cfg) {
+			fileRecords = append(fileRecords, fileRecord{rel: fileRel, imports: fi.imports})
+			continue
+		}
+
+		var srcID string
+		if isNamespaceMode {
+			if ns, ok := namespaceMap[fi.abs]; ok {
+				srcID = ns
+			} else {
+				continue
+			}
+		} else {
+			srcID = nodeKey(fi.rel, lang.SupportsFileGlobs())
+		}
+		nodes[srcID] = srcID
+
+		for _, spec := range fi.imports {
+			var dstID string
+			if isNamespaceMode {
+				if spec.Namespace == "" {
+					continue
+				}
+				targetAbs, ok := resolveTargetByNamespace(fsys, spec, p, fileRel, lang)
+				if !ok {
+					continue
+				}
+				if !port.IsTargetVisible(fsys, targetAbs) {
+					continue
+				}
+				dstID = spec.Namespace
+			} else {
+				targetPath, internal := lang.ResolveInternalTarget(fsys, spec, p, fileRel)
+				if !internal {
+					continue
+				}
+				targetAbs := targetPath
+				if !filepath.IsAbs(targetAbs) {
+					targetAbs = filepath.Join(p.Dir, targetAbs)
+				}
+				targetAbs = filepath.Clean(targetAbs)
+				if !port.IsTargetVisible(fsys, targetAbs) {
+					continue
+				}
+				contractDirClean := filepath.Clean(contractDir)
+				if targetAbs != contractDirClean && !strings.HasPrefix(targetAbs, contractDirClean+string(filepath.Separator)) {
+					continue
+				}
+				dstRel, _ := filepath.Rel(contractDirClean, targetAbs)
+				dstID = resolveTargetNodeKey(fsys, targetAbs, dstRel, lang)
+			}
+
+			if srcID == dstID {
+				continue
+			}
+
+			nodes[dstID] = dstID
+			if edges[srcID] == nil {
+				edges[srcID] = map[string]bool{}
+			}
+			edges[srcID][dstID] = true
+		}
+	}
+
 	if len(fileRecords) > 0 {
 		nodes, edges = mergeDirectoryNodes(fsys, fileRecords, p, lang, cfg)
 	}
 	if contractDir == p.Dir {
-		if err := addBoundaryRelations(fsys, p, lang, contractDir, nodes, edges, cfg); err != nil {
+		if err := addBoundaryRelations(fsys, p, lang, contractDir, nodes, edges, cfg, namespaceMap); err != nil {
 			return nil, err
 		}
 	}
@@ -118,8 +157,18 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 	}
 
 	g := graph.NewGraph(nodes, edges, nil, nil)
+	g.NamespaceMode = isNamespaceMode
 	if !lang.SupportsFileGlobs() {
-		g.NodeDisplays = cloneNodes(nodes)
+		if isNamespaceMode {
+			displays := make(map[string]string, len(nodes))
+			for ns := range nodes {
+				parts := strings.Split(ns, ".")
+				displays[ns] = parts[len(parts)-1]
+			}
+			g.NodeDisplays = displays
+		} else {
+			g.NodeDisplays = cloneNodes(nodes)
+		}
 	}
 
 	contractPath := filepath.Join(contractDir, port.ContractFile)
@@ -137,7 +186,30 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 	}, nil
 }
 
-func addBoundaryRelations(fsys port.FileSystem, capsule port.Capsule, lang port.Language, contractDir string, nodes map[string]string, edges map[string]map[string]bool, cfg draftConfig) error {
+func buildNamespaceMap(fsys port.FileSystem, files []fileImport, lang port.Language) map[string]string {
+	m := make(map[string]string)
+	for _, fi := range files {
+		ns, err := lang.GetFileNamespace(fsys, fi.abs)
+		if err == nil && ns != "" {
+			m[fi.abs] = ns
+		}
+	}
+	return m
+}
+
+func resolveTargetByNamespace(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string, lang port.Language) (string, bool) {
+	targetPath, internal := lang.ResolveInternalTarget(fsys, spec, c, fileRel)
+	if !internal {
+		return "", false
+	}
+	targetAbs := targetPath
+	if !filepath.IsAbs(targetAbs) {
+		targetAbs = filepath.Join(c.Dir, targetAbs)
+	}
+	return filepath.Clean(targetAbs), true
+}
+
+func addBoundaryRelations(fsys port.FileSystem, capsule port.Capsule, lang port.Language, contractDir string, nodes map[string]string, edges map[string]map[string]bool, cfg draftConfig, namespaceMap map[string]string) error {
 	return fsys.WalkDir(context.Background(), contractDir, func(abs string, d os.DirEntry) error {
 		if d.IsDir() {
 			return nil
@@ -160,6 +232,16 @@ func addBoundaryRelations(fsys port.FileSystem, capsule port.Capsule, lang port.
 		}
 
 		srcScope := service.TrackingScope(fsys, abs, capsule.Dir)
+
+		// Get source namespace for namespace mode (from pre-built map to avoid re-reading files)
+		var srcNS string
+		if cfg.namespaceMode {
+			srcNS = namespaceMap[abs]
+			if srcNS == "" {
+				return nil
+			}
+		}
+
 		for _, spec := range imports {
 			targetPath, internal := lang.ResolveInternalTarget(fsys, spec, capsule, fileRel)
 			if !internal {
@@ -179,17 +261,35 @@ func addBoundaryRelations(fsys port.FileSystem, capsule port.Capsule, lang port.
 				continue
 			}
 
-			srcID, _, err := boundaryNodeForDraft(nodes, fsys, capsule, contractDir, lang, abs, cfg)
-			if err != nil {
-				return err
-			}
-			dstID, _, err := boundaryNodeForDraft(nodes, fsys, capsule, contractDir, lang, targetAbs, cfg)
-			if err != nil {
-				return err
+			var srcID, dstID string
+			if cfg.namespaceMode {
+				if spec.Namespace == "" {
+					continue
+				}
+				srcID = srcNS
+				// Use the resolved target file's actual namespace, not the raw import string.
+				// This correctly handles cases where the import's namespace differs from the
+				// target file's declared namespace (e.g., alias imports).
+				if targetNS, ok := namespaceMap[targetAbs]; ok {
+					dstID = targetNS
+				} else {
+					continue
+				}
+			} else {
+				srcID, _, err = boundaryNodeForDraft(nodes, fsys, capsule, contractDir, lang, abs, cfg)
+				if err != nil {
+					return err
+				}
+				dstID, _, err = boundaryNodeForDraft(nodes, fsys, capsule, contractDir, lang, targetAbs, cfg)
+				if err != nil {
+					return err
+				}
 			}
 			if srcID == "" || dstID == "" || srcID == dstID {
 				continue
 			}
+			nodes[srcID] = srcID
+			nodes[dstID] = dstID
 			if edges[srcID] == nil {
 				edges[srcID] = map[string]bool{}
 			}
