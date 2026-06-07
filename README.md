@@ -196,15 +196,6 @@ Baft can scan a multilingual repository in one run as long as each capsule has a
 - [Manifest discovery](docs/concepts/manifest.md)
 - [Language notes](docs/concepts/language.md)
 
-## Examples
-
-- [Go](examples/go)
-- [TypeScript](examples/typescript)
-- [Dart](examples/dart)
-- [Kotlin](examples/kotlin)
-- [Rust](examples/rust)
-
 ## Development
 
 - [Contributing](CONTRIBUTING.md)
-- `go test ./...`
