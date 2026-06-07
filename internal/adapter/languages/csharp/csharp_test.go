@@ -30,8 +30,8 @@ func TestIsScannableFile(t *testing.T) {
 		"build.gradle":                 false,
 		"README.md":                    false,
 		"appsettings.json":             false,
-		"Views/MyView.Designer.cs":     false,
-		"Generated/Model.generated.cs": false,
+		"Views/MyView.Designer.cs":     true,
+		"Generated/Model.generated.cs": true,
 	}
 	for rel, want := range cases {
 		if got := l.IsScannableFile(rel); got != want {

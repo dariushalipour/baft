@@ -150,7 +150,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("rust", port.ManifestInfo{
 		Names:             []string{"Cargo.toml"},
 		ParseFunc:         readCargoToml,
-		BaseIgnoreEntries: []string{"target"},
+		BaseIgnoreEntries: []string{},
 	})
 }
 

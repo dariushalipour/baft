@@ -467,7 +467,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 			dir := filepath.Dir(path)
 			return findBaseCapsule(fsys, dir)
 		},
-		BaseIgnoreEntries: []string{"__pycache__", ".pytest_cache", "build", "dist", "*.pyc", "*.egg-info", ".egg-info", "venv", ".venv", ".tox", "*test.py", "*_test.py", "test_*.py", "*conftest.py"},
+		BaseIgnoreEntries: []string{"*test.py", "*_test.py", "test_*.py", "*conftest.py"},
 	})
 }
 

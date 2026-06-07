@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
+	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
 	"github.com/dariushalipour/baft/internal/adapter/languages/rust"
 	"github.com/dariushalipour/baft/internal/application/service"
 )
@@ -110,6 +111,65 @@ func TestWalkDirSkipsGitIgnored(t *testing.T) {
 	}
 	if !seen[filepath.Join(dir, "visible.txt")] {
 		t.Error("WalkDir should have visited visible file")
+	}
+}
+
+func TestWalkDirDoesNotPropagateSkipDirAsError(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create an ignored directory (triggers fs.SkipDir during walk)
+	_ = os.MkdirAll(filepath.Join(dir, "ignored_dir"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir, "ignored_dir", "file.txt"), []byte("ignored"), 0o644)
+
+	// Create a Go capsule in a visible sibling directory — must still be discovered
+	capsuleDir := filepath.Join(dir, "visible_capsule")
+	_ = os.MkdirAll(capsuleDir, 0o755)
+	_ = os.WriteFile(filepath.Join(capsuleDir, "go.mod"), []byte("module example.com/visible\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(capsuleDir, "BAFT.md"), []byte("```mermaid\nflowchart TD\nmain[\".\"]\n```\n"), 0o644)
+
+	// .gitignore that ignores the first directory
+	_ = os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("ignored_dir/\n"), 0o644)
+
+	fsys := New()
+
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           dir,
+		BaseIgnoreEntries: map[string]bool{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Discover must NOT error and must find the visible capsule
+	disco := service.NewCapsuleDiscovery()
+	golang.Language{}.Register(disco)
+	entries, discoverErr := disco.Discover(context.Background(), wrapped, dir)
+	if discoverErr != nil {
+		t.Fatalf("Discover must not propagate fs.SkipDir as error, got: %v", discoverErr)
+	}
+
+	// Must find the visible capsule
+	if len(entries) != 1 {
+		t.Fatalf("Discover must find 1 capsule, got %d", len(entries))
+	}
+	if entries[0].Capsule.Dir != capsuleDir {
+		t.Errorf("Discover found wrong capsule: got %s, want %s", entries[0].Capsule.Dir, capsuleDir)
+	}
+
+	// The ignored directory must NOT have been visited
+	seen := make(map[string]bool)
+	walkErr := wrapped.WalkDir(context.Background(), dir, func(abs string, d fs.DirEntry) error {
+		seen[abs] = true
+		return nil
+	})
+	if walkErr != nil {
+		t.Fatalf("WalkDir must not propagate fs.SkipDir as error, got: %v", walkErr)
+	}
+	if seen[filepath.Join(dir, "ignored_dir")] {
+		t.Error("WalkDir must not visit ignored directory")
+	}
+	if !seen[capsuleDir] {
+		t.Error("WalkDir must visit visible capsule directory")
 	}
 }
 

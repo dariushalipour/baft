@@ -102,7 +102,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 			dir := filepath.Dir(path)
 			return findBaseCapsule(fsys, dir)
 		},
-		BaseIgnoreEntries: []string{"build", ".gradle", ".kotlin", "gradle", "generated", "kapt", "ksp", "buildSrc", "scripts", "*Test.kt", "*_test.kt"},
+		BaseIgnoreEntries: []string{"*Test.kt", "*_test.kt"},
 	})
 }
 

@@ -36,7 +36,7 @@ When a file is ignored:
 A .baftignore is not:
 
 - **A contract file rule.** It does not define nodes, edges, or allowed imports. It removes files from consideration entirely. A file that is `.baftignore`d does not need a node glob and cannot have a violation.
-- **A language-specific skip list.** Language adapters provide built-in exclusions (`vendor/`, `node_modules/`, `target/`, etc.) via registration. `.baftignore` is for project-specific exclusions beyond those.
+- **A language-specific skip list.** Language adapters provide built-in exclusions for test files (`*_test.go`, `*.test.ts`, etc.) and `vendor/` via registration. `.baftignore` is for project-specific exclusions beyond those.
 - **A contract file exclusion mechanism.** You do not need to create an "ignored" node in the contract file and leave it with no edges. `.baftignore` removes the file before the graph is built.
 - **A per-command flag.** `.baftignore` applies to all Baft operations — `check`, `dump`, `discover`. There is no way to run Baft while bypassing `.baftignore`.
 
@@ -73,7 +73,7 @@ A pattern prefixed with `!` negates (re-includes) a previously ignored path. A t
 
 The precedence hierarchy follows gitignore semantics. Later matches override earlier ones:
 
-1. **Base ignore entries** (lowest priority). Hardcoded directories (`.git`, `.hg`, `.svn`, `.idea`, `.vscode`, `.vs`, `coverage/`, `coverage.lcov`) plus language-specific entries (`vendor/`, `node_modules/`, `target/`, `.dart_tool/`, `.pub/`, `build/`) registered during language setup.
+1. **Base ignore entries** (lowest priority). Hardcoded directories (`.git`, `.hg`, `.svn`, `.idea`, `.vscode`, `.vs`, `coverage/`, `coverage.lcov`) plus language-specific test file patterns (`*_test.go`, `*.test.ts`, etc.) and `vendor/` registered during language setup.
 2. **Ancestor patterns**. `.gitignore` and `.baftignore` from every directory between the repo root and the capsule root, processed bottom-up.
 3. **Local patterns** (highest priority). `.gitignore` and `.baftignore` from the capsule root and all subdirectories, processed recursively.
 4. **`.baftignore` over `.gitignore`**. At the same directory level, `.baftignore` is parsed after `.gitignore`, so its patterns take precedence.

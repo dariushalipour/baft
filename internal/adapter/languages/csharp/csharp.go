@@ -14,17 +14,7 @@ type Language struct{}
 func (Language) Name() string { return "csharp" }
 
 func (Language) IsScannableFile(rel string) bool {
-	if !strings.HasSuffix(rel, ".cs") {
-		return false
-	}
-	base := filepath.Base(rel)
-	if strings.HasSuffix(base, ".Designer.cs") {
-		return false
-	}
-	if strings.HasSuffix(base, ".generated.cs") {
-		return false
-	}
-	return true
+	return strings.HasSuffix(rel, ".cs")
 }
 
 var importRe = regexp.MustCompile(`(?m)^\s*(?:global\s+)?using\s+(static\s+)?([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*)(?:\s*=\s*([A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)*))?`)
@@ -120,7 +110,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("csharp", port.ManifestInfo{
 		Names:             []string{"*.csproj"},
 		ParseFunc:         ReadCsprojName,
-		BaseIgnoreEntries: []string{"bin", "obj", "packages", ".vs", ".vscode"},
+		BaseIgnoreEntries: []string{"*Test.cs", "*Tests.cs", "*.Test.cs", "*.Tests.cs", "*.Designer.cs", "*.generated.cs"},
 	})
 }
 

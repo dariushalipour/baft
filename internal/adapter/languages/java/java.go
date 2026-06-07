@@ -102,7 +102,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 			dir := filepath.Dir(path)
 			return findBaseCapsule(fsys, dir)
 		},
-		BaseIgnoreEntries: []string{"build", "target", ".gradle", ".m2", "generated", "*Test.java", "*Tests.java", "*TestCase.java"},
+		BaseIgnoreEntries: []string{"*Test.java", "*Tests.java", "*TestCase.java"},
 	})
 }
 

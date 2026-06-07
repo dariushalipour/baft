@@ -2,6 +2,7 @@ package realfs
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -47,9 +48,15 @@ func walkDirCtx(ctx context.Context, dir string, fn func(abs string, d fs.DirEnt
 		abs := filepath.Join(dir, entry.Name())
 		if entry.IsDir() {
 			if err := fn(abs, entry); err != nil {
+				if errors.Is(err, fs.SkipDir) {
+					continue
+				}
 				return err
 			}
 			if err := walkDirCtx(ctx, abs, fn); err != nil {
+				if errors.Is(err, fs.SkipDir) {
+					continue
+				}
 				return err
 			}
 		} else {

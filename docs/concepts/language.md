@@ -38,19 +38,9 @@ Returns a short identifier used in diagnostics and CLI flags (e.g. `"go"`,
 
 ## 2. `IsScannableFile(rel string) bool`
 
-Returns `true` if a file should be scanned for imports. This encodes the
-language's conventions for which files are source code worth analyzing:
-
-| Language   | Scannable files                     | Excluded                                        |
-| ---------- | --------------------------------- | ----------------------------------------------- |
-| Go         | `*.go` (all Go files)             | none                                            |
-| Dart       | `*.dart` under `lib/`             | `_test.dart`, `.g.dart`, `.freezed.dart`        |
-| TypeScript | `*.ts`, `*.tsx`                   | `.d.ts`, `.test.ts`, `.spec.ts`                 |
-| Java       | `*.java`                          | `/generated/`, `/build/`, `/target/`, `*Test.java`  |
-| Kotlin     | `*.kt` in 28+ source set prefixes | `Test.kt`, `/generated/`, `/ksp/`, `/buildSrc/` |
-| Python     | `*.py`                            | `__pycache__/`, `*.pyc`, `*.egg-info`, `*_test.py`  |
-| Rust       | `*.rs` under `src/`               | `src/bin/`, `src/examples/`, `build.rs`         |
-| C#         | `*.cs`                            | `bin/`, `obj/`, `*.Designer.cs`, `*.generated.cs` |
+Returns `true` if the file can be scanned for imports. The core uses this
+filter during file walking to skip files it has no parser for. Each language
+simply checks for its source file extension (e.g. `*.go`, `*.py`, `*.ts`).
 
 The core uses this filter during file walking (`service.WalkCapsule`,
 `service.WalkAllFiles`) to skip files that should not be checked.

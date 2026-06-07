@@ -72,7 +72,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register("dart", port.ManifestInfo{
 		Names:             []string{"pubspec.yaml"},
 		ParseFunc:         readPubspecName,
-		BaseIgnoreEntries: []string{".dart_tool", ".pub", "*.g.dart", "*.freezed.dart", "*_test.dart"},
+		BaseIgnoreEntries: []string{"*_test.dart"},
 	})
 }
 
