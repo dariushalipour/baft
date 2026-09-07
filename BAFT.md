@@ -3,6 +3,10 @@
 <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
 <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
 
+`cli` is the composition root: the only node allowed to import adapters. `treeview` and `features`
+are test support — claimed so new files land somewhere, edgeless because only `_test.go` files use
+them. Globs are capsule-relative: the two editor plugins share this contract.
+
 ```mermaid
 flowchart TD
   root["."]
@@ -13,6 +17,7 @@ flowchart TD
   port["internal/port/&ast;&ast;"]
   domain["internal/domain/&ast;&ast;"]
   treeview["internal/treeview/&ast;&ast;"]
+  features["internal/features/&ast;&ast;"]
   vscode_extension["src"]
   intellij_plugin["src/main/kotlin/com/baft/intellij"]
 

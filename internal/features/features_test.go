@@ -14,7 +14,6 @@ import (
 
 	"github.com/cucumber/godog"
 	"github.com/dariushalipour/baft/internal/adapter/fs/dryrunfs"
-	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/realfs"
@@ -26,22 +25,10 @@ import (
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
 	"github.com/dariushalipour/baft/internal/application/usecase/dump"
+	"github.com/dariushalipour/baft/internal/cli"
 	"github.com/dariushalipour/baft/internal/port"
 	"github.com/dariushalipour/baft/internal/treeview"
 )
-
-// ignoreAwareFS mirrors the CLI's composition root: use cases only ever see a
-// filesystem that already obeys .gitignore/.baftignore.
-func ignoreAwareFS(fsys port.FileSystem, rootDir string, discovery *service.CapsuleDiscovery) (port.FileSystem, error) {
-	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
-		RootDir:           rootDir,
-		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
-	})
-	if err != nil && !errors.Is(err, ignorefs.ErrRepoRootUnreachable) {
-		return nil, err
-	}
-	return wrapped, nil
-}
 
 type contractReport struct {
 	contractPath string
@@ -468,7 +455,7 @@ func initializeCheckScenario(sc *godog.ScenarioContext) {
 				lang.Register(discovery)
 			}
 
-			scoped, wrapErr := ignoreAwareFS(w.ws.FSys, rootDir, discovery)
+			scoped, _, wrapErr := cli.IgnoreAware(w.ws.FSys, rootDir, discovery)
 			if wrapErr != nil {
 				w.err = wrapErr
 				return wrapErr
@@ -781,7 +768,7 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 				lang.Register(discovery)
 			}
 
-			scoped, wrapErr := ignoreAwareFS(w.ws.FSys, rootDir, discovery)
+			scoped, _, wrapErr := cli.IgnoreAware(w.ws.FSys, rootDir, discovery)
 			if wrapErr != nil {
 				return wrapErr
 			}

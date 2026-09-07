@@ -34,11 +34,11 @@ go test -race ./...
 
 ## Architecture
 
-Hexagonal, one direction: `main.go` → `application/usecase/*` → `domain/graph`. Ports live in `internal/port/`, and everything that touches the outside world (filesystems, Mermaid, languages, reporters) is an adapter under `internal/adapter/`. The domain knows nothing about any language.
+Hexagonal, one direction: `main.go` → `internal/cli/` → `application/usecase/*` → `internal/port/` → `domain/graph`. Everything that touches the outside world (filesystems, Mermaid, languages, reporters) is an adapter under `internal/adapter/`. The domain knows nothing about any language.
 
 The concepts each layer implements are documented in [docs/concepts/](docs/concepts/): [capsule](docs/concepts/capsule.md), [manifest](docs/concepts/manifest.md), [contract](docs/concepts/contract.md), [language](docs/concepts/language.md), [validation](docs/concepts/validation.md), [.baftignore](docs/concepts/baftignore.md).
 
-This layering is not a convention — it is enforced by Baft itself. The root `BAFT.md` is Baft's own contract, and `scripts/ci.sh` runs `baft check .` against it. Adapters are wired only in `internal/cli/`, the composition root; the application layer talks to them through `port/`.
+This layering is not a convention — it is enforced by Baft itself. The root `BAFT.md` is Baft's own contract, and both `go test ./...` and `scripts/ci.sh` run `baft check .` against it. Adapters are wired only in `internal/cli/`, the composition root; the application layer talks to them through `port/`.
 
 ## Adding a language adapter
 

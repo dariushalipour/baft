@@ -83,9 +83,10 @@ func newRenderer(name string, color bool) port.CheckResultRenderer {
 	return nil
 }
 
-// ignoreAware wraps fsys so use cases only ever see a filesystem that already
-// obeys .gitignore/.baftignore. Adapters are wired here, not in the use cases.
-func ignoreAware(fsys port.FileSystem, root string, discovery *service.CapsuleDiscovery) (port.FileSystem, []string, error) {
+// IgnoreAware wraps fsys so use cases only ever see a filesystem that already
+// obeys .gitignore/.baftignore. Adapters are wired here, not in the use cases;
+// the end-to-end harness composes through this same function.
+func IgnoreAware(fsys port.FileSystem, root string, discovery *service.CapsuleDiscovery) (port.FileSystem, []string, error) {
 	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
 		RootDir:           root,
 		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),

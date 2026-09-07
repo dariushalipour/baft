@@ -55,7 +55,7 @@ func (a *app) check(args []string) int {
 
 	discovery := newDiscovery(languages)
 	var result *port.CheckResult
-	if scoped, warnings, wrapErr := ignoreAware(fsys, root, discovery); wrapErr != nil {
+	if scoped, warnings, wrapErr := IgnoreAware(fsys, root, discovery); wrapErr != nil {
 		result = &port.CheckResult{Errors: []string{wrapErr.Error()}}
 	} else {
 		result = check.Run(scoped, root, languages, &mermaid.MermaidRepository{}, discovery)
@@ -97,7 +97,7 @@ func (a *app) dump(args []string) int {
 	}
 
 	discovery := newDiscovery(languages)
-	fsys, warnings, err := ignoreAware(realfs.New(), root, discovery)
+	fsys, warnings, err := IgnoreAware(realfs.New(), root, discovery)
 	if err != nil {
 		return a.fail("error: %v", err)
 	}

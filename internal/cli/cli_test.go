@@ -342,3 +342,31 @@ func TestDumpDryRunHonoursIgnoreRules(t *testing.T) {
 		t.Fatalf("dump --dry-run reported %q, dump reported %q", dry, wet)
 	}
 }
+
+// check sees the tree only through the ignore rules the composition root wires
+// in: an ignored file is untracked, so it cannot violate the contract.
+func TestCheckHonoursIgnoreRules(t *testing.T) {
+	files := map[string]string{
+		"go.mod":   "module example.com/x\n",
+		"BAFT.md":  "```mermaid\nflowchart TD\n    a[\"a\"]\n```\n",
+		"a/a.go":   "package a\n",
+		"gen/g.go": "package gen\n",
+	}
+	if got := exec(t, "", "check", "--lang=go", writeFiles(t, t.TempDir(), files)); got.code != exitFail {
+		t.Fatalf("unignored gen/: want exit %d, got %+v", exitFail, got)
+	}
+	for _, ignoreFile := range []string{".gitignore", ".baftignore"} {
+		files[ignoreFile] = "gen/\n"
+		if got := exec(t, "", "check", "--lang=go", writeFiles(t, t.TempDir(), files)); got.code != exitOK {
+			t.Fatalf("%s: want exit %d, got %+v", ignoreFile, exitOK, got)
+		}
+		delete(files, ignoreFile)
+	}
+}
+
+// Baft's own contract is enforced by `go test`, not only by scripts/ci.sh.
+func TestRepoHonoursItsOwnContract(t *testing.T) {
+	if got := exec(t, "", "check", "../.."); got.code != exitOK {
+		t.Fatalf("baft check on this repo: %+v", got)
+	}
+}
