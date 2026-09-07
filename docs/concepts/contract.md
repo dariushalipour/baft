@@ -278,7 +278,7 @@ The `dump` command generates a contract file from observed imports:
 
 **Where no contract file exists, dump writes one from scratch.** That draft is a proposal, not an edit: it is as literal as the code it read, and you are expected to prune it.
 
-**Where a contract file already exists, dump amends it — it widens it.** Dump runs `check` against the existing contract and adds whatever the code needs to pass: a node for every tracked file that has none, and an allowed edge for every import the contract currently forbids. Existing nodes, edges, comments, node order, and modifiers such as `:::endophobic` are preserved; nothing is ever removed.
+**Where a contract file already exists, dump amends it — it widens it.** Dump runs `check` against the existing contract and adds whatever the code needs to pass: a node for every tracked file that has none, and an allowed edge for every import the contract currently forbids. Existing nodes, edges, node order, `config` directives, and modifiers such as `:::endophobic` are preserved; nothing is ever removed. Unlike `restyle`, amendment rewrites the file from the graph, so prose, headings, the `flowchart` direction and other `%%` comments do not survive it.
 
 That means **`baft dump` on a tracked repo legalizes the imports you have.** An import the contract deliberately forbids becomes an allowed edge, and `check` goes green. Dump names every node and edge it adds so the change is reviewable:
 

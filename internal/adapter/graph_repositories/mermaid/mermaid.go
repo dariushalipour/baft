@@ -148,7 +148,7 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 		sb.WriteByte('\n')
 	}
 
-	for _, line := range styleBlock(g, opts) {
+	for _, line := range styleBlock(g, orderedEdges(g), opts) {
 		sb.WriteString(line)
 		sb.WriteByte('\n')
 	}
@@ -173,37 +173,91 @@ func (r *MermaidRepository) Restyle(md string, opts port.GraphSaveOptions) (stri
 	first := blockStartLine - 1
 	last := first + strings.Count(block, "\n")
 
+	spliced, err := spliceStyleTail(lines[first:last], g, opts, trailingCR(md))
+	if err != nil {
+		return "", err
+	}
 	out := make([]string, 0, len(lines))
 	out = append(out, lines[:first]...)
-	out = append(out, spliceStyleTail(lines[first:last], g, opts)...)
+	out = append(out, spliced...)
 	out = append(out, lines[last:]...)
 	return strings.Join(out, "\n"), nil
 }
 
-func spliceStyleTail(blockLines []string, g *graph.Graph, opts port.GraphSaveOptions) []string {
+func spliceStyleTail(blockLines []string, g *graph.Graph, opts port.GraphSaveOptions, cr string) ([]string, error) {
 	body := make([]string, 0, len(blockLines))
 	for _, line := range blockLines {
 		if !isGeneratedStyleLine(line) {
 			body = append(body, line)
 		}
 	}
-	tail := styleBlock(g, opts)
+	links, err := literalLinks(body, g)
+	if err != nil {
+		return nil, err
+	}
+	tail := styleBlock(g, links, opts)
 	if len(body) == len(blockLines) && len(tail) == 0 {
-		return body
+		return body, nil
 	}
 	for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
 		body = body[:len(body)-1]
 	}
-	return append(body, tail...)
+	for _, line := range tail {
+		body = append(body, line+cr)
+	}
+	return body, nil
 }
 
+// trailingCR reports the carriage return generated lines need to match a CRLF
+// contract, since the splice rejoins on "\n" alone.
+func trailingCR(md string) string {
+	if strings.Contains(md, "\r\n") {
+		return "\r"
+	}
+	return ""
+}
+
+// literalLinks lists the links a mermaid renderer numbers: one per declaration,
+// in source order, including the duplicates the graph collapses into one edge.
+func literalLinks(blockLines []string, g *graph.Graph) ([]graphEdge, error) {
+	var links []graphEdge
+	for _, raw := range blockLines {
+		line := strings.TrimSpace(raw)
+		if idx := inlineCommentStart(line); idx >= 0 {
+			line = strings.TrimSpace(line[:idx])
+		}
+		line = strings.TrimRight(line, "; \t")
+		if hasAnyPrefix(line, "flowchart ", "graph ") || isStyleLine(line) {
+			continue
+		}
+		arrows := topLevelArrows(line)
+		if len(arrows) == 0 {
+			continue
+		}
+		groups, dotted, err := edgeChain(line, arrows, g, 0)
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i+1 < len(groups); i++ {
+			for _, src := range groups[i] {
+				for _, dst := range groups[i+1] {
+					links = append(links, graphEdge{src: src, dst: dst, dotted: dotted[i]})
+				}
+			}
+		}
+	}
+	return links, nil
+}
+
+// isGeneratedStyleLine reports whether Restyle owns the line. classDef is
+// excluded on purpose: Baft never emits one, so every classDef is the author's.
 func isGeneratedStyleLine(line string) bool {
 	trimmed := strings.TrimSpace(line)
-	return isStyleLine(trimmed) || generatedStyleCommentLines[trimmed]
+	return hasAnyPrefix(trimmed, "style ", "linkStyle ") || generatedStyleCommentLines[trimmed]
 }
 
 func isStyleLine(line string) bool {
-	return strings.HasPrefix(line, "classDef ") || strings.HasPrefix(line, "style ") || strings.HasPrefix(line, "linkStyle ")
+	return strings.HasPrefix(line, "classDef ") || isGeneratedStyleLine(line)
 }
 
 func orderedNodeIds(g *graph.Graph) []string {
@@ -251,8 +305,8 @@ func orderedEdges(g *graph.Graph) []graphEdge {
 }
 
 // styleBlock renders the generated styling tail: a blank separator, the notice, then the style lines.
-func styleBlock(g *graph.Graph, opts port.GraphSaveOptions) []string {
-	styleLines := buildStyleLines(g, opts)
+func styleBlock(g *graph.Graph, links []graphEdge, opts port.GraphSaveOptions) []string {
+	styleLines := buildStyleLines(g, links, opts)
 	if len(styleLines) == 0 {
 		return nil
 	}
@@ -263,8 +317,10 @@ func styleBlock(g *graph.Graph, opts port.GraphSaveOptions) []string {
 	return block
 }
 
-func buildStyleLines(g *graph.Graph, opts port.GraphSaveOptions) []string {
-	ids, edges := orderedNodeIds(g), orderedEdges(g)
+// buildStyleLines styles the nodes of g and numbers links by their position in
+// links, which must list them exactly as the rendered diagram declares them.
+func buildStyleLines(g *graph.Graph, links []graphEdge, opts port.GraphSaveOptions) []string {
+	ids := orderedNodeIds(g)
 	palette := normalizedPalette(opts.ColorPalette)
 	nodeColors := map[string]string{}
 	if palette != port.ColorPaletteNone {
@@ -274,7 +330,7 @@ func buildStyleLines(g *graph.Graph, opts port.GraphSaveOptions) []string {
 		}
 	}
 
-	lines := make([]string, 0, len(ids)+len(edges))
+	lines := make([]string, 0, len(ids)+len(links))
 	for _, id := range ids {
 		attrs := nodeStyleAttributes(nodeColors[id], g.IsEndophobic(id))
 		if attrs == "" {
@@ -284,7 +340,7 @@ func buildStyleLines(g *graph.Graph, opts port.GraphSaveOptions) []string {
 	}
 	linkStyleOrder := make([]string, 0)
 	linkStyleGroups := map[string][]string{}
-	for i, edge := range edges {
+	for i, edge := range links {
 		color := nodeColors[edge.src]
 		if color == "" {
 			continue
@@ -576,27 +632,10 @@ func parseConfigLine(line string, g *graph.Graph, lineNum int) error {
 // one node or an `a & b` fan-out. Every node of a group is linked to every node
 // of the next one, tolerated when the joining arrow was dotted.
 func parseEdgeLine(line string, arrows [][]int, g *graph.Graph, lineNum int) error {
-	groups := make([][]string, 0, len(arrows)+1)
-	dotted := make([]bool, 0, len(arrows))
-	pos := 0
-	for _, loc := range arrows {
-		if loc[0] < pos {
-			continue // an arrow that lived inside a skipped edge label
-		}
-		ids, err := parseNodeGroup(line[pos:loc[0]], line, g, lineNum)
-		if err != nil {
-			return err
-		}
-		groups = append(groups, ids)
-		dotted = append(dotted, strings.HasPrefix(line[loc[0]:loc[1]], "-."))
-		pos = skipEdgeLabel(line, loc[1])
-	}
-	ids, err := parseNodeGroup(line[pos:], line, g, lineNum)
+	groups, dotted, err := edgeChain(line, arrows, g, lineNum)
 	if err != nil {
 		return err
 	}
-	groups = append(groups, ids)
-
 	for i := 0; i < len(groups)-1; i++ {
 		for _, src := range groups[i] {
 			for _, dst := range groups[i+1] {
@@ -607,6 +646,31 @@ func parseEdgeLine(line string, arrows [][]int, g *graph.Graph, lineNum int) err
 		}
 	}
 	return nil
+}
+
+// edgeChain splits an edge line into the node groups the arrows join, plus the
+// dottedness of each arrow.
+func edgeChain(line string, arrows [][]int, g *graph.Graph, lineNum int) ([][]string, []bool, error) {
+	groups := make([][]string, 0, len(arrows)+1)
+	dotted := make([]bool, 0, len(arrows))
+	pos := 0
+	for _, loc := range arrows {
+		if loc[0] < pos {
+			continue // an arrow that lived inside a skipped edge label
+		}
+		ids, err := parseNodeGroup(line[pos:loc[0]], line, g, lineNum)
+		if err != nil {
+			return nil, nil, err
+		}
+		groups = append(groups, ids)
+		dotted = append(dotted, strings.HasPrefix(line[loc[0]:loc[1]], "-."))
+		pos = skipEdgeLabel(line, loc[1])
+	}
+	ids, err := parseNodeGroup(line[pos:], line, g, lineNum)
+	if err != nil {
+		return nil, nil, err
+	}
+	return append(groups, ids), dotted, nil
 }
 
 func parseNodeGroup(segment, line string, g *graph.Graph, lineNum int) ([]string, error) {

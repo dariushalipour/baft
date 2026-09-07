@@ -1318,6 +1318,64 @@ func TestRestyleWithoutStylingLeavesContractUntouched(t *testing.T) {
 	}
 }
 
+func TestRestyleNumbersLinksAsDeclared(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  a["a"]` + "\n" +
+		`  b["b"]` + "\n" +
+		`  c["c"]` + "\n" +
+		"\n  a --> b --> c\n  a --> b\n  a -.-> c\n  a & b --> c\n```\n"
+
+	out, err := (&MermaidRepository{}).Restyle(md, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("Restyle: %v", err)
+	}
+	for _, want := range []string{
+		"  a --> b --> c\n  a --> b\n  a -.-> c\n  a & b --> c\n",
+		"  linkStyle 0,2,4 stroke:#1f1f1f,stroke-width:2px\n",
+		"  linkStyle 1,5 stroke:#2a2a2a,stroke-width:2px\n",
+		"  linkStyle 3 stroke:#1f1f1f,stroke-width:2px,stroke-dasharray:5 5\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestRestyleKeepsAuthoredClassDefAndGlobs(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  %% config globSeparator "."` + "\n" +
+		"  classDef highlight fill:#eee\n" +
+		`  api["src.api"]:::highlight` + "\n" +
+		`  db["src.db"]` + "\n" +
+		"\n  api --> db\n```\n"
+
+	out, err := (&MermaidRepository{}).Restyle(md, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("Restyle: %v", err)
+	}
+	if !strings.HasPrefix(out, md[:strings.Index(md, "\n  api --> db")]) {
+		t.Fatalf("classDef, config and globs must survive verbatim, got:\n%s", out)
+	}
+	if !strings.Contains(out, "  style api stroke:#1f1f1f,stroke-width:2px\n") {
+		t.Fatalf("missing generated styling in:\n%s", out)
+	}
+}
+
+func TestRestyleKeepsCRLFLineEndings(t *testing.T) {
+	md := strings.ReplaceAll(richContract, "\n", "\r\n")
+
+	out, err := (&MermaidRepository{}).Restyle(md, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("Restyle: %v", err)
+	}
+	if strings.Contains(strings.ReplaceAll(out, "\r\n", ""), "\n") {
+		t.Fatalf("generated lines must keep CRLF endings, got:\n%q", out)
+	}
+	if !strings.Contains(out, "  linkStyle 0 stroke:#1f1f1f,stroke-width:2px\r\n") {
+		t.Fatalf("missing generated styling in:\n%q", out)
+	}
+}
+
 func TestRestyleReturnsParseError(t *testing.T) {
 	if _, err := (&MermaidRepository{}).Restyle("no fence here\n", port.GraphSaveOptions{}); err == nil {
 		t.Fatal("expected parse error")
