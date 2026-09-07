@@ -90,11 +90,16 @@ Nodes define which files belong to which architectural group.
 - **nodeId** — an alphanumeric identifier used in edges (e.g., `api`, `domain`, `usecase`).
 - **glob_pattern** — a path pattern matching files or directories. Wildcards are escaped: a raw `*` in a node label is a parse error, so the subtree glob `path/**` is written `path/&ast;&ast;`. Baft decodes it on load, and `dump` and `restyle` write it that way.
 
-**Three common shapes:**
+**Shapes:**
 
-- **Exact directory:** `nodeId["path/to/dir"]` — matches files directly in that directory.
-- **Subtree directory:** `nodeId["path/to/dir/&ast;&ast;"]` — matches that directory and nested directories beneath it.
-- **File-shaped:** `nodeId["path/file.ts"]` — matches a single file. Only supported by TypeScript and Dart; every other language reports `file-glob-unsupported`.
+| Glob                          | Claims                                                                                                |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `.`                           | Files directly in the capsule root, and nothing below it                                              |
+| `internal/domain`             | Files directly in that one directory                                                                  |
+| `internal/domain/&ast;&ast;`  | That directory and everything nested beneath it                                                       |
+| `internal/infra/&ast;`        | Files directly in each directory one level under `internal/infra`, but not deeper                     |
+| `internal/infra/&ast;/&ast;&ast;` | The whole subtree under each of those directories                                                 |
+| `src/app.ts`                  | One file. File-shaped globs are TypeScript and Dart only; every other language reports `file-glob-unsupported` |
 
 **Specificity:** When a file matches multiple nodes, the most specific match wins. Specificity is scored by:
 
@@ -180,7 +185,9 @@ flowchart TD
   api --> domain
 ```
 
-Namespace nodes are dotted already, so do not combine `namespaceMode` with `globSeparator "."` — that would rewrite the dots to slashes and nothing would match. File-shaped nodes remain invalid: `file-glob-unsupported` still fires.
+Namespace nodes are dotted already, so do not combine `namespaceMode` with `globSeparator "."`: the dots are rewritten to slashes, and every node then reports `file-glob-unsupported`.
+
+In namespace mode, only a node containing `/` counts as file-shaped. A dotted node naming a file (`MyApp.Api.Handler.cs`) is a legal namespace pattern that simply matches no namespace, so the files it was meant to claim fall through to `no-node`.
 
 ---
 
@@ -221,7 +228,7 @@ flowchart TD
 
 Declaring the same pair both ways (`A -.-> B` and `A --> B`) makes it a plain allowed edge — the solid arrow wins. Chains may mix arrows: `A --> B -.-> C`.
 
-A cycle that runs through a tolerated edge is not reported as a circular dependency: it is the legacy state the contract is ratcheting away from, and every import along that edge is already warned about. A cycle made of solid edges stays an error.
+A cycle that runs through a tolerated edge is not reported as a circular dependency: it is the legacy state the contract is ratcheting away from, and every import along that edge is already warned about. A cycle made entirely of dotted edges is therefore silent until an import actually traverses it, and then only as an `import-tolerated` warning. A cycle made of solid edges stays an error.
 
 ---
 
@@ -241,7 +248,7 @@ A node can have multiple classes: `nodeId["glob"]:::endophobic,otherclass`. Unkn
 
 ## Nested Capsules
 
-When a subdirectory contains its own manifest (making it a child Capsule), it may also have its own contract file. This creates a layered tracking model:
+A subdirectory with its own contract file is an independent bounded context. A manifest there makes it a child Capsule as well, but no manifest is required: a bare `sub/BAFT.md` is adopted as a scoped contract, with its globs read relative to `sub/`. Either way the tracking model is layered:
 
 **Child scope:**
 - The child's contract file tracks only imports where both source and target are within the child directory.
@@ -259,7 +266,7 @@ When a subdirectory contains its own manifest (making it a child Capsule), it ma
 
 ## Validation
 
-For the validation model and the full list of contract diagnostics, see [validation.md](validation.md).
+For the validation model see [validation.md](validation.md); for the full list of contract diagnostics, [the manual](../manual.md#handling-violations).
 
 In this document, the important point is simpler: `check` uses the contract file as the source of architecture rules for tracked files. When the contract itself has problems, `check` reports contract diagnostics. When the source files break the declared architecture, `check` reports source-level violations.
 

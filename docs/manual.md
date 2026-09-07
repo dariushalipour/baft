@@ -62,7 +62,7 @@ flowchart TD
 - **Comments:** Use `%%` for comments inside the Mermaid block. Full-line comments are allowed, and inline comments are allowed after node or edge declarations. `%%` inside quoted labels stays part of the label.
 - **Escaping:** Write every asterisk (`*`) inside a label as `&ast;` — a raw one is a parse error.
 - **Constraints:** `subgraph` syntax is not supported, and so is any link that does not point one way: `---`, `===`, `~~~`, `--o`, `--x` and `<-->` are rejected by name. `flowchart`/`graph` headers and `classDef`/`style`/`linkStyle` lines are tolerated and ignored.
-- **Generated styling:** `baft dump --color-palette ...` and `baft restyle --color-palette ...` append a generated Mermaid notice plus `style` and `linkStyle` lines after the node and edge declarations. Treat that styling section as machine-managed: regenerate it with `baft restyle` or by formatting the file with Baft in your IDE, not by editing it manually. `vibrant`, `muted`, and `mono` define 16 canonical colors; graphs with more than 16 nodes reuse colors in deterministic node order. `none` skips palette coloring and only emits dashed styling for `:::endophobic` nodes.
+- **Generated styling:** `dump` and `restyle` append a generated Mermaid notice plus `style` and `linkStyle` lines after the node and edge declarations. `--color-palette` picks the palette and defaults to `vibrant`, so plain `baft dump .` and `baft restyle .` both write that tail. Treat it as machine-managed: regenerate it with `baft restyle` or by formatting the file with Baft in your IDE, not by editing it manually. `vibrant`, `muted`, and `mono` define 16 canonical colors; graphs with more than 16 nodes reuse colors in deterministic node order. `--color-palette none` skips palette coloring and only emits dashed styling for `:::endophobic` nodes.
 
 ### Node Definitions
 
@@ -157,8 +157,8 @@ Contract-level errors — the contract itself is wrong. These are reported again
 
 ## Styling Workflow
 
-- **`baft dump --color-palette <name>`** writes a styled contract while preserving the same node and edge discovery rules as unstyled dump output.
-- **`baft restyle --color-palette <name>`** rewrites the generated Mermaid styling block for every contract file under the selected root. Every other byte is kept verbatim: prose, headings, the flowchart direction, `%%` comments, node and edge lines, and inline semantic classes such as `:::endophobic`. The rewritten styling block starts with a Mermaid `%%` notice marking it as generated.
+- **`baft dump`** writes a styled contract; `--color-palette <name>` only picks the palette, and never changes which nodes and edges are discovered.
+- **`baft restyle`** rewrites the generated Mermaid styling block for every contract file under the selected root. Every other byte is kept verbatim: prose, headings, the flowchart direction, `%%` comments, node and edge lines, and inline semantic classes such as `:::endophobic`. The rewritten styling block starts with a Mermaid `%%` notice marking it as generated.
 - **`baft restyle --stdin --path <file> --color-palette <name>`** restyles one in-memory contract from stdin and writes the result to stdout. Editor integrations use this mode for the VS Code contract formatter invoked through `Format Document`, the VS Code `Baft: Restyle Contract` command, opt-in VS Code format on save, and IntelliJ Reformat Code so only the active contract changes.
 - **Edge colors:** Each edge is styled with the same stroke color as its source node.
 - **Endophobic nodes:** `:::endophobic` remains the semantic marker in the contract. Generated styling renders those nodes with a dashed stroke rather than a generated Mermaid class.

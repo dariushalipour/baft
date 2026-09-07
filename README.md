@@ -20,7 +20,7 @@ Baft fixes this by making the diagram the actual enforcement mechanism.
 
 - **Executable Architecture:** A standalone CLI that ensures your code matches your design.
 - **Multilingual:** Native support for Go, TypeScript, Dart, Java, Kotlin, Python, Rust, and C#.
-- **Deterministic:** No heuristics or inference—just strict glob matching and import analysis.
+- **Deterministic:** The same tree and contract always produce the same verdict, and an edge is allowed only if you drew it.
 - **Zero-Config:** Automatically discovers capsules from standard project manifests.
 
 ## What Baft Is Not
@@ -103,7 +103,7 @@ In this contract:
 - `usecase` may import `domain` and `infra`
 - `infra` may import `domain`
 - `usecase` is `endophobic`, so files in that node may not import other files in the same node
-- For Java/Kotlin/Python, `%% config globSeparator "."` lets you write globs with dots instead of slashes
+- `%% config globSeparator "."` lets you write globs with dots instead of slashes (useful for Java, Kotlin, and Python)
 - For C#/Java/Kotlin, `%% config namespaceMode "true"` matches imports by declared namespace instead of path, and nodes become namespaces
 
 ### Run the check
@@ -115,14 +115,14 @@ baft check .
 Clean output:
 
 ```text
-✓ myservice (432 files scanned, 847 internal imports checked, graph: 11 nodes, 28 edges)
+✓ /repo/myservice (432 files scanned, 847 internal imports checked, graph: 11 nodes, 28 edges)
 ```
 
 Violation output:
 
 ```text
-✗ myservice (432 files scanned, 847 internal imports checked, graph: 11 nodes, 28 edges)
-    violation [import-not-allowed]: internal/api/handler.go:12:2 (api) → internal/domain (domain) — relation not allowed (add edge in BAFT.md or move the file)
+✗ /repo/myservice (432 files scanned, 847 internal imports checked, graph: 11 nodes, 28 edges)
+    violation [import-not-allowed]: internal/api/handler.go:12:2 (api) → internal/domain (domain) — relation not allowed (add edge in /repo/myservice/BAFT.md or move the file)
 ```
 
 Exit code `0` means clean, `1` means violations or an error, and `2` means a usage error.
@@ -189,6 +189,14 @@ Baft can scan a multilingual repository in one run as long as each capsule has a
 - run: go install github.com/dariushalipour/baft@latest
 - run: baft check .
 ```
+
+## Upgrading
+
+- `--lang java` and `--lang kotlin` are gone; use `--lang jvm`. Java and Kotlin now scan together as one capsule, so contracts that were dumped per language must be regenerated.
+- `namespaceMode` with no file declaring a namespace is now a `namespace-mode-no-namespaces` error instead of a silent fallback to path matching.
+- `-.->` now declares a tolerated edge. The parser used to reject it, so no existing contract changes meaning.
+- `dump` names a new node after the last segment of its glob when that is unique, so regenerated contracts get shorter node ids.
+- The editor plugins are 0.4.0 on protocol 4. Run `baft integrate` again after upgrading the CLI.
 
 ## Docs
 

@@ -12,22 +12,22 @@ interface defined in `internal/port/language.go`.
 
 ## The `Language` interface
 
-```go
-type Language interface {
-    Name() string
-    IsScannableFile(rel string) bool
-    ParseImports(fileSystem FileSystem, absPath string) ([]ImportSpec, error)
-    GetFileNamespace(fileSystem FileSystem, absPath string) (string, error)
-    ResolveInternalTarget(fileSystem FileSystem, spec ImportSpec, c Capsule, fileRel string) (targetDir string, internal bool)
-    SupportsFileGlobs() bool
-    Register(d CapsuleDiscovery)
-}
-```
+[`internal/port/language.go`](../../internal/port/language.go) is the source of
+truth for the method set — read it there rather than a copy in prose. In groups:
 
-`internal/port/language.go` is the source of truth for that signature; the sections below describe what each method owes the core.
+- **Registration** — `Name` gives the `--lang` value used in diagnostics;
+  `Register` declares the manifest names, capsule-id parser, and base ignore
+  entries the discovery service needs.
+- **Scanning** — `IsScannableFile` filters the file walk; `ParseImports`
+  extracts each import as a positioned `ImportSpec`.
+- **Resolution** — `ResolveInternalTarget` decides whether an import stays
+  inside the capsule and maps it to a capsule-relative path;
+  `GetFileNamespace` reports the namespace a file declares, for namespace mode.
+- **Capability** — `SupportsFileGlobs` reports whether contracts for this
+  language may use file-shaped nodes.
 
-Every method on this interface is a language responsibility. None of them can
-be meaningfully shared across languages.
+Every method is a language responsibility. None can be meaningfully shared
+across languages; the sections below describe what each owes the core.
 
 ---
 
@@ -127,9 +127,9 @@ Directory-level nodes have two distinct meanings:
 - `path/to/dir` matches files directly in that directory.
 - `path/to/dir/**` matches the subtree rooted at that directory.
 
-This affects how the core builds node keys in the dump command
-(`graph.NodeKey`) and how the check command validates file-to-node mapping
-(`graph.NodeForPath`).
+This affects which node key the dump command builds
+(`graph.NodeKeyForDir` or `graph.NodeKeyForFile`) and how the check command
+validates file-to-node mapping (`graph.NodeForPath`).
 
 ---
 
@@ -223,8 +223,8 @@ Language modules do not:
   mermaid flowchart format.
 - **Walk the file tree** — `service.WalkCapsule` and `service.WalkAllFiles`
   handle traversal; languages only provide the `IsScannableFile` filter.
-- **Report output** — `Reporter` implementations (text, JSON) produce the
-  final output.
+- **Report output** — `port.CheckResultRenderer` implementations (text, JSON)
+  produce the final output.
 
 The language module's job is strictly: **identify scannable files, extract
 imports from those files, resolve import targets to capsule-relative paths,

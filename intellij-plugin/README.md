@@ -59,7 +59,7 @@ When a file is unsaved, the plugin adds `--overlay-stdin` and streams the curren
 When you run `Reformat Code` on a `BAFT.md`, the plugin runs:
 
 ```bash
-baft restyle --stdin --path /absolute/path/to/BAFT.md --color-palette vibrant
+baft restyle --stdin --path /absolute/path/to/BAFT.md --color-palette <configured palette>
 ```
 
 The formatter only targets the active `BAFT.md` and does not rewrite sibling contracts.

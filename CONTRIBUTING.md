@@ -59,7 +59,7 @@ See [docs/concepts/contract.md](docs/concepts/contract.md) for the format and [d
 
 ## Testing
 
-`go test ./...` runs Go unit tests plus the godog suites: `internal/features/features_test.go` and the `*.feature` files sitting next to the code they cover. Filesystem-dependent tests run against `internal/adapter/fs/memfs`, so they need no fixtures on disk.
+`go test ./...` runs Go unit tests plus the godog suites: `internal/features/features_test.go` and the `*.feature` files sitting next to the code they cover. Filesystem-dependent tests mostly run against `internal/adapter/fs/memfs` and need no fixtures on disk; the ones that must exercise the real filesystem — `internal/cli`, `realfs`, `ignorefs`, `walk`, `python`, `integrations` — build their trees in `t.TempDir()`.
 
 `internal/cli/docs_test.go` guards the hand-written docs against the code: every language in `languageNames` must appear in all three CLI assets, and every rule id in `internal/application/usecase/check` must appear in `docs/manual.md`.
 
