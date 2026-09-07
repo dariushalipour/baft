@@ -25,7 +25,7 @@ import (
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
 	"github.com/dariushalipour/baft/internal/application/usecase/dump"
 	"github.com/dariushalipour/baft/internal/port"
-	"github.com/dariushalipour/baft/pkg/treeview"
+	"github.com/dariushalipour/baft/internal/treeview"
 )
 
 type contractReport struct {

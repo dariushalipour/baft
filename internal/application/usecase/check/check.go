@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -214,46 +213,14 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		})
 	}
 
-	numWorkers := min(runtime.NumCPU(), len(workItems))
-	workChan := make(chan capsuleWork, numWorkers*2)
-	results := make(chan capsuleResultItem, numWorkers*2)
-
-	go func() {
-		for _, w := range workItems {
-			select {
-			case workChan <- w:
-			case <-ctx.Done():
+	results := runParallel(ctx, workItems, func(in <-chan capsuleWork, emit func(capsuleResultItem) bool) {
+		for work := range in {
+			capsuleRes, err := checkCapsule(ctx, wrapped, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
+			if !emit(capsuleResultItem{index: work.index, label: work.label, result: capsuleRes, err: err}) {
 				return
 			}
 		}
-		close(workChan)
-	}()
-
-	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for work := range workChan {
-				capsuleRes, err := checkCapsule(ctx, wrapped, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
-				select {
-				case results <- capsuleResultItem{
-					index:  work.index,
-					label:  work.label,
-					result: capsuleRes,
-					err:    err,
-				}:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
+	})
 
 	collected := make([]capsuleResultItem, 0, len(workItems))
 	for r := range results {
@@ -377,70 +344,17 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 }
 
 func makeContractLoadErrors(contractPath string, err error) []port.Violation {
-	var violations []port.Violation
-
-	var chain *mermaid.ParseErrorWithNext
-	if errors.As(err, &chain) {
-		for cur := chain; cur != nil; {
-			v := port.Violation{
-				Rule:     "contract-load-error",
-				Severity: "error",
-				Source:   "baft",
-				File:     contractPath,
-			}
-			if cur.Raw != "" {
-				v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(cur.Raw), contractPath, cur.Line)
-			} else if cur.Line > 0 {
-				v.Message = fmt.Sprintf("%s (%s:%d)", cur.Msg, contractPath, cur.Line)
-			} else {
-				v.Message = fmt.Sprintf("%s (%s)", cur.Msg, contractPath)
-			}
-			if cur.Line > 0 {
-				v.Line = cur.Line
-			}
-			violations = append(violations, v)
-			if cur.Next == nil {
-				break
-			}
-			var nextChain *mermaid.ParseErrorWithNext
-			if errors.As(cur.Next, &nextChain) {
-				cur = nextChain
-			} else {
-				break
-			}
-		}
-		return violations
-	}
-
-	var pe *mermaid.ParseError
-	if errors.As(err, &pe) {
-		v := port.Violation{
-			Rule:     "contract-load-error",
-			Severity: "error",
-			Source:   "baft",
-			File:     contractPath,
-		}
-		if pe.Raw != "" {
-			v.Message = fmt.Sprintf("unrecognized mermaid line: %s (%s:%d)", strings.TrimSpace(pe.Raw), contractPath, pe.Line)
-		} else if pe.Line > 0 {
-			v.Message = fmt.Sprintf("%s (%s:%d)", pe.Msg, contractPath, pe.Line)
-		} else {
-			v.Message = fmt.Sprintf("%s (%s)", pe.Msg, contractPath)
-		}
-		if pe.Line > 0 {
-			v.Line = pe.Line
-		}
-		return []port.Violation{v}
-	}
-
 	v := port.Violation{
 		Rule:     "contract-load-error",
 		Severity: "error",
 		Source:   "baft",
 		File:     contractPath,
+		Message:  mermaid.At(contractPath, err).Error(),
 	}
-	v.Message = err.Error()
-	if !strings.Contains(v.Message, contractPath) {
+	var pe *mermaid.ParseError
+	if errors.As(err, &pe) {
+		v.Line = pe.Line
+	} else if !strings.Contains(v.Message, contractPath) {
 		v.Message = fmt.Sprintf("%s (%s)", v.Message, contractPath)
 	}
 	return []port.Violation{v}

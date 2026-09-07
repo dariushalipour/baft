@@ -11,7 +11,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/adapter/languages/csharp"
 	"github.com/dariushalipour/baft/internal/port"
-	"github.com/dariushalipour/baft/pkg/treeview"
+	"github.com/dariushalipour/baft/internal/treeview"
 )
 
 func buildFS(rootDir string, tree string, files map[string]string) *memfs.FS {

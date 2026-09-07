@@ -17,7 +17,6 @@ Baft follows a hexagonal (ports and adapters) architecture:
 baft/
 ├── main.go                                          # Entry point: embeds docs/, calls internal/cli
 ├── go.mod                                           # Zero external dependencies
-├── pkg/treeview/                                    # Public utility: tree view rendering
 └── internal/
     ├── cli/                                         # Flag parsing, exit codes, use-case wiring
     ├── port/                                        # Interfaces (ports)
@@ -27,6 +26,7 @@ baft/
     │   └── reporter.go                              # CheckResult, Violation, CheckResultRenderer
     ├── domain/graph/                                # Core domain logic
     │   └── graph.go                                 # Graph, globs, node/edge matching
+    ├── treeview/                                    # ASCII tree parsing (test fixtures)
     ├── application/
     │   ├── service/
     │   │   ├── discovery.go                         # CapsuleDiscovery (two-phase manifest walk)

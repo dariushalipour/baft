@@ -70,63 +70,13 @@ func readGoModulePath(fsys port.FileSystem, modPath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	lineStart := 0
-	for i := 0; i < len(data); i++ {
-		if data[i] == '\n' {
-			line := data[lineStart:i]
-			trimStart := 0
-			for trimStart < len(line) && (line[trimStart] == ' ' || line[trimStart] == '\t') {
-				trimStart++
-			}
-			trimEnd := len(line)
-			for trimEnd > trimStart && (line[trimEnd-1] == ' ' || line[trimEnd-1] == '\t' || line[trimEnd-1] == '\r') {
-				trimEnd--
-			}
-			trimmed := line[trimStart:trimEnd]
-			if len(trimmed) >= 7 && trimmed[0] == 'm' && trimmed[1] == 'o' && trimmed[2] == 'd' && trimmed[3] == 'u' && trimmed[4] == 'l' && trimmed[5] == 'e' && trimmed[6] == ' ' {
-				modStart := 7
-				for modStart < len(trimmed) && (trimmed[modStart] == ' ' || trimmed[modStart] == '\t') {
-					modStart++
-				}
-				modEnd := len(trimmed)
-				for modEnd > modStart && (trimmed[modEnd-1] == ' ' || trimmed[modEnd-1] == '\t') {
-					modEnd--
-				}
-				result := string(trimmed[modStart:modEnd])
-				if len(result) >= 2 && result[0] == '"' && result[len(result)-1] == '"' { // Go 1.16+ allows quoted module paths
-					result = result[1 : len(result)-1]
-				}
-				return result, nil
-			}
-			lineStart = i + 1
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "module" {
+			continue
 		}
-	}
-	if lineStart < len(data) {
-		line := data[lineStart:]
-		trimStart := 0
-		for trimStart < len(line) && (line[trimStart] == ' ' || line[trimStart] == '\t') {
-			trimStart++
-		}
-		trimEnd := len(line)
-		for trimEnd > trimStart && (line[trimEnd-1] == ' ' || line[trimEnd-1] == '\t' || line[trimEnd-1] == '\r') {
-			trimEnd--
-		}
-		trimmed := line[trimStart:trimEnd]
-		if len(trimmed) >= 7 && trimmed[0] == 'm' && trimmed[1] == 'o' && trimmed[2] == 'd' && trimmed[3] == 'u' && trimmed[4] == 'l' && trimmed[5] == 'e' && trimmed[6] == ' ' {
-			modStart := 7
-			for modStart < len(trimmed) && (trimmed[modStart] == ' ' || trimmed[modStart] == '\t') {
-				modStart++
-			}
-			modEnd := len(trimmed)
-			for modEnd > modStart && (trimmed[modEnd-1] == ' ' || trimmed[modEnd-1] == '\t') {
-				modEnd--
-			}
-			result := string(trimmed[modStart:modEnd])
-			if len(result) >= 2 && result[0] == '"' && result[len(result)-1] == '"' {
-				result = result[1 : len(result)-1]
-			}
-			return result, nil
-		}
+		// Go 1.16+ allows quoted module paths.
+		return strings.Trim(fields[1], `"`), nil
 	}
 	return "", fmt.Errorf("no module line in %s", modPath)
 }

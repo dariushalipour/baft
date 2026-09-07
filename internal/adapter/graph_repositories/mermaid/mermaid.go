@@ -1,6 +1,7 @@
 package mermaid
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -63,35 +64,42 @@ var generatedStyleCommentLines = func() map[string]bool {
 
 type MermaidRepository struct{}
 
+// ParseError reports a contract line the parser could not make sense of. File
+// is empty when the parser is handed bare content; callers that know which
+// contract it came from set it so the message reads "… (file:line)".
 type ParseError struct {
-	Line  int
-	Raw   string
-	Label string
-	Msg   string
+	File string
+	Line int
+	Raw  string
+	Msg  string
 }
 
 func (e *ParseError) Error() string {
-	if e.Msg != "" {
-		return e.Msg
+	msg := e.Msg
+	if msg == "" {
+		msg = "unrecognized mermaid line: " + strings.TrimSpace(e.Raw)
 	}
-	return fmt.Sprintf("line %d: unrecognized line in mermaid block: %q", e.Line, e.Raw)
-}
-
-type ParseErrorWithNext struct {
-	Msg  string
-	Line int
-	Raw  string
-	Next error
-}
-
-func (e *ParseErrorWithNext) Error() string {
-	if e.Msg != "" {
-		return e.Msg
+	switch {
+	case e.File != "" && e.Line > 0:
+		return fmt.Sprintf("%s (%s:%d)", msg, e.File, e.Line)
+	case e.File != "":
+		return fmt.Sprintf("%s (%s)", msg, e.File)
+	case e.Line > 0:
+		return fmt.Sprintf("%s (line %d)", msg, e.Line)
 	}
-	return fmt.Sprintf("line %d: unrecognized line in mermaid block: %q", e.Line, e.Raw)
+	return msg
 }
 
-func (e *ParseErrorWithNext) Unwrap() error { return e.Next }
+// At returns err with the contract path folded into its message.
+func At(file string, err error) error {
+	var pe *ParseError
+	if !errors.As(err, &pe) {
+		return err
+	}
+	located := *pe
+	located.File = file
+	return &located
+}
 
 type graphEdge struct {
 	src string
@@ -433,12 +441,7 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 			}
 			continue
 		}
-		trimmed := strings.TrimSpace(raw)
-		label := ""
-		if idx := strings.Index(trimmed, "["); idx > 0 {
-			label = strings.TrimSpace(trimmed[:idx])
-		}
-		return nil, &ParseError{Line: absLine, Raw: raw, Label: label}
+		return nil, &ParseError{Line: absLine, Raw: raw}
 	}
 
 	if len(g.Nodes) == 0 {

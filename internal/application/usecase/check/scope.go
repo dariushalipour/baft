@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -23,7 +22,6 @@ type fileWork struct {
 // targetInfo holds information about a resolved import target.
 type targetInfo struct {
 	abs        string
-	key        string
 	inScopeKey string
 	targetRel  string
 }
@@ -42,7 +40,6 @@ type CrossScopeContext struct {
 	ScopeDir        string
 	Fsys            port.FileSystem
 	Capsule         *port.Capsule
-	Lang            port.Language
 	HasRootContract bool
 	RootGraphIndex  *graph.GraphIndex
 	ScopeCache      *scopeCache
@@ -59,9 +56,6 @@ type ResolutionStrategy interface {
 	// ResolveNode resolves a node ID from a file absolute path and its
 	// associated namespace/key within a specific graph.
 	ResolveNode(fileAbs, targetKey string, scopeGraph *graph.GraphIndex) string
-	// ResolveAncestorNode resolves source and target node IDs for ancestor
-	// scope checking. srcFallback is used when source is not found.
-	ResolveAncestorNode(srcNS, targetNS string, graph *graph.GraphIndex, srcFallback string) (srcNode, dstNode string)
 	// ResolveCrossScope handles cross-scope violation checks.
 	ResolveCrossScope(ctx *CrossScopeContext) []port.Violation
 	// IsFileGlob reports whether the pattern is a file-shaped glob in the
@@ -141,7 +135,6 @@ func (s *pathResolutionStrategy) ResolveImport(spec port.ImportSpec, fileRel str
 	targetAbs := absPath(capsule.Dir, targetPath)
 	return []targetInfo{{
 		abs:        targetAbs,
-		key:        targetPath,
 		inScopeKey: relToSlash(scopeDir, targetAbs),
 		targetRel:  relToSlash(capsule.Dir, targetAbs),
 	}}, nil
@@ -151,51 +144,60 @@ func (s *pathResolutionStrategy) ResolveNode(fileAbs, targetKey string, scopeGra
 	return scopeGraph.NodeForPath(targetKey)
 }
 
-func (s *pathResolutionStrategy) ResolveAncestorNode(srcNS, targetNS string, graph *graph.GraphIndex, srcFallback string) (srcNode, dstNode string) {
-	srcA := graph.NodeForPath(srcNS)
-	dstA := graph.NodeForPath(targetNS)
-	if srcA == "" {
-		srcA = srcFallback
+// resolveCrossScope walks the tiers that may know about both ends of a
+// cross-scope import — the source scope, then its ancestor contracts, then the
+// capsule root — and reports the first tier that resolves both endpoints.
+// accept filters ancestor and root graphs by mode; nodes resolves the endpoints
+// in a tier's graph, given the directory that tier's globs are relative to.
+func resolveCrossScope(
+	ctx *CrossScopeContext,
+	targetRel string,
+	accept func(*graph.Graph) bool,
+	nodes func(g *graph.GraphIndex, dir string) (src, dst string),
+) []port.Violation {
+	tier := func(g *graph.GraphIndex, dir, contractPath string, srcFallback string) ([]port.Violation, bool) {
+		src, dst := nodes(g, dir)
+		if src == "" {
+			src = srcFallback
+		}
+		if src == "" || dst == "" {
+			return nil, false
+		}
+		if !g.Graph().Allows(src, dst) {
+			return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, src, targetRel, dst, contractPath)}, true
+		}
+		return nil, true
 	}
-	return srcA, dstA
+
+	if v, resolved := tier(ctx.ScopeGraph, ctx.ScopeDir, ctx.CfgPath, ctx.Src); resolved {
+		return v
+	}
+	for _, anc := range ancestorContracts(ctx.Fsys, ctx.ScopeDir, ctx.Capsule.Dir, ctx.ScopeCache) {
+		if !accept(anc.graphIndex.Graph()) {
+			continue
+		}
+		if v, resolved := tier(anc.graphIndex, anc.dir, anc.contractPath, ""); resolved {
+			return v
+		}
+	}
+	if ctx.HasRootContract && ctx.RootGraphIndex != nil && accept(ctx.RootGraphIndex.Graph()) {
+		if v, _ := tier(ctx.RootGraphIndex, ctx.Capsule.Dir, ctx.ContractPathAbs, ""); v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 func (s *pathResolutionStrategy) ResolveCrossScope(ctx *CrossScopeContext) []port.Violation {
-	if !escapesScope(relToSlash(ctx.ScopeDir, ctx.TargetAbs)) {
-		dst := ctx.ScopeGraph.NodeForPath(relToSlash(ctx.ScopeDir, ctx.TargetAbs))
-		if dst != "" {
-			if !ctx.ScopeGraph.Graph().Allows(ctx.Src, dst) {
-				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, ctx.Src, ctx.TargetRel, dst, ctx.CfgPath)}
+	return resolveCrossScope(ctx, ctx.TargetRel,
+		func(*graph.Graph) bool { return true },
+		func(g *graph.GraphIndex, dir string) (string, string) {
+			dstRel := relToSlash(dir, ctx.TargetAbs)
+			if dir == ctx.ScopeDir && escapesScope(dstRel) {
+				return "", ""
 			}
-			return nil
-		}
-	}
-
-	for _, anc := range ancestorContracts(ctx.Fsys, ctx.ScopeDir, ctx.Capsule.Dir, ctx.ScopeCache) {
-		srcRel := relToSlash(anc.dir, ctx.SrcAbs)
-		dstRel := relToSlash(anc.dir, ctx.TargetAbs)
-		srcA := anc.graphIndex.NodeForPath(srcRel)
-		dstA := anc.graphIndex.NodeForPath(dstRel)
-		if srcA != "" && dstA != "" {
-			if !anc.graphIndex.Graph().Allows(srcA, dstA) {
-				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcA, ctx.TargetRel, dstA, anc.contractPath)}
-			}
-			return nil
-		}
-	}
-
-	if ctx.HasRootContract && ctx.RootGraphIndex != nil {
-		srcParent := ctx.RootGraphIndex.NodeForPath(relToSlash(ctx.Capsule.Dir, ctx.SrcAbs))
-		dstParent := ctx.RootGraphIndex.NodeForPath(relToSlash(ctx.Capsule.Dir, ctx.TargetAbs))
-		if srcParent != "" && dstParent != "" {
-			if !ctx.RootGraphIndex.Graph().Allows(srcParent, dstParent) {
-				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcParent, ctx.TargetRel, dstParent, ctx.ContractPathAbs)}
-			}
-			return nil
-		}
-	}
-
-	return nil
+			return g.NodeForPath(relToSlash(dir, ctx.SrcAbs)), g.NodeForPath(dstRel)
+		})
 }
 
 func (s *pathResolutionStrategy) IsFileGlob(p string) bool { return graph.IsFileGlob(p) }
@@ -232,7 +234,6 @@ func (s *namespaceResolutionStrategy) ResolveImport(spec port.ImportSpec, fileRe
 		}
 		infos = append(infos, targetInfo{
 			abs:        abs,
-			key:        spec.Namespace,
 			inScopeKey: inScopeKey,
 			targetRel:  spec.Namespace,
 		})
@@ -244,66 +245,21 @@ func (s *namespaceResolutionStrategy) ResolveNode(fileAbs, targetKey string, sco
 	return scopeGraph.NodeForNamespace(targetKey)
 }
 
-func (s *namespaceResolutionStrategy) ResolveAncestorNode(srcNS, targetNS string, graph *graph.GraphIndex, srcFallback string) (srcNode, dstNode string) {
-	srcA := graph.NodeForNamespace(srcNS)
-	dstA := graph.NodeForNamespace(targetNS)
-	if srcA == "" {
-		srcA = srcFallback
-	}
-	return srcA, dstA
+func (s *namespaceResolutionStrategy) ResolveCrossScope(ctx *CrossScopeContext) []port.Violation {
+	srcNS := s.namespaceOf(ctx.SrcAbs, ctx.Src)
+	targetNS := s.namespaceOf(ctx.TargetAbs, ctx.Spec.Namespace)
+	return resolveCrossScope(ctx, targetNS,
+		func(g *graph.Graph) bool { return g.NamespaceMode },
+		func(g *graph.GraphIndex, _ string) (string, string) {
+			return g.NodeForNamespace(srcNS), g.NodeForNamespace(targetNS)
+		})
 }
 
-func (s *namespaceResolutionStrategy) ResolveCrossScope(ctx *CrossScopeContext) []port.Violation {
-	srcNS, ok := s.fileNSMap[ctx.SrcAbs]
-	if !ok || srcNS == "" {
-		srcNS = ctx.Src
+func (s *namespaceResolutionStrategy) namespaceOf(abs, fallback string) string {
+	if ns := s.fileNSMap[abs]; ns != "" {
+		return ns
 	}
-	targetNS, ok := s.fileNSMap[ctx.TargetAbs]
-	if !ok || targetNS == "" {
-		targetNS = ctx.Spec.Namespace
-	}
-
-	// Check current scope first
-	dst := ctx.ScopeGraph.NodeForNamespace(targetNS)
-	if dst != "" {
-		srcCheck := ctx.ScopeGraph.NodeForNamespace(srcNS)
-		if srcCheck == "" {
-			srcCheck = ctx.Src
-		}
-		if !ctx.ScopeGraph.Graph().Allows(srcCheck, dst) {
-			return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcCheck, targetNS, dst, ctx.CfgPath)}
-		}
-		return nil
-	}
-
-	// Walk ancestors — only if ancestor contract is also in namespace mode.
-	for _, anc := range ancestorContracts(ctx.Fsys, ctx.ScopeDir, ctx.Capsule.Dir, ctx.ScopeCache) {
-		if !anc.graphIndex.Graph().NamespaceMode {
-			continue
-		}
-		srcA := anc.graphIndex.NodeForNamespace(srcNS)
-		dstA := anc.graphIndex.NodeForNamespace(targetNS)
-		if srcA != "" && dstA != "" {
-			if !anc.graphIndex.Graph().Allows(srcA, dstA) {
-				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcA, targetNS, dstA, anc.contractPath)}
-			}
-			return nil
-		}
-	}
-
-	// Fallback to root contract — only if root contract is in namespace mode.
-	if ctx.HasRootContract && ctx.RootGraphIndex.Graph().NamespaceMode {
-		srcParent := ctx.RootGraphIndex.NodeForNamespace(srcNS)
-		dstParent := ctx.RootGraphIndex.NodeForNamespace(targetNS)
-		if srcParent != "" && dstParent != "" {
-			if !ctx.RootGraphIndex.Graph().Allows(srcParent, dstParent) {
-				return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, srcParent, targetNS, dstParent, ctx.ContractPathAbs)}
-			}
-			return nil
-		}
-	}
-
-	return nil
+	return fallback
 }
 
 // IsFileGlob treats only a path-shaped pattern as file-shaped: a namespace
@@ -368,52 +324,18 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 		ch.res.errors = append(ch.res.errors, makeNamespaceModeNoNamespacesError(ch.contractPathAbs))
 	}
 
-	numWorkers := min(runtime.NumCPU(), len(filesToCheck))
-	workChan := make(chan fileWork, numWorkers*2)
-	results := make(chan fileCheckResult, numWorkers*2)
-
-	go func() {
-		for _, fw := range filesToCheck {
-			select {
-			case workChan <- fw:
-			case <-ctx.Done():
+	results := runParallel(ctx, filesToCheck, func(in <-chan fileWork, emit func(fileCheckResult) bool) {
+		var acc fileCheckResult
+		for fw := range in {
+			res := ch.checkFileResult(fsys, fw.abs, fw.rel, fw.scopeDir)
+			if res.err != nil {
+				emit(res)
 				return
 			}
+			acc.merge(res)
 		}
-		close(workChan)
-	}()
-
-	var wg sync.WaitGroup
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			var acc fileCheckResult
-			for fw := range workChan {
-				res := ch.checkFileResult(fsys, fw.abs, fw.rel, fw.scopeDir)
-				if res.err != nil {
-					select {
-					case results <- res:
-					case <-ctx.Done():
-					}
-					return
-				}
-				acc.filesEncountered += res.filesEncountered
-				acc.filesScanned += res.filesScanned
-				acc.relations += res.relations
-				acc.violations = append(acc.violations, res.violations...)
-			}
-			select {
-			case results <- acc:
-			case <-ctx.Done():
-			}
-		}()
-	}
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
+		emit(acc)
+	})
 
 	for res := range results {
 		if res.err != nil {
@@ -431,6 +353,13 @@ type fileCheckResult struct {
 	relations        int
 	violations       []port.Violation
 	err              error
+}
+
+func (r *fileCheckResult) merge(o fileCheckResult) {
+	r.filesEncountered += o.filesEncountered
+	r.filesScanned += o.filesScanned
+	r.relations += o.relations
+	r.violations = append(r.violations, o.violations...)
 }
 
 func (ch *capsuleChecker) checkFileResult(fsys port.FileSystem, abs, fileRel string, scopeDir string) fileCheckResult {
@@ -567,7 +496,6 @@ func (ch *capsuleChecker) checkImportResult(spec port.ImportSpec, abs, fileRel, 
 				ScopeDir:        scopeDir,
 				Fsys:            ch.fsys,
 				Capsule:         &ch.capsule,
-				Lang:            ch.lang,
 				HasRootContract: ch.hasRootContract,
 				RootGraphIndex:  ch.rootGraphIndex,
 				ScopeCache:      ch.scopeCache,
