@@ -37,7 +37,8 @@ var (
 
 	// arrowRe matches every directed link Baft accepts: solid, thick and dotted,
 	// each optionally carrying an inline `-- text -->` label. Only the direction
-	// is meaningful; the variant and the label are discarded.
+	// and, for dotted links, the toleration it declares are meaningful; the
+	// variant and the label are otherwise discarded.
 	arrowRe = regexp.MustCompile(`-{2,}(?:\s[^-=>|\n]*\s-{2,})?>|={2,}(?:\s[^-=>|\n]*\s={2,})?>|-\.+(?:\s[^-=>|\n]*\s\.+)?-*>`)
 
 	globDecodeReplacer = strings.NewReplacer(
@@ -102,8 +103,9 @@ func At(file string, err error) error {
 }
 
 type graphEdge struct {
-	src string
-	dst string
+	src    string
+	dst    string
+	dotted bool
 }
 
 var paletteColors = map[port.GraphColorPalette][]string{
@@ -179,7 +181,7 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 	for _, edge := range orderedEdges(g) {
 		sb.WriteString("  ")
 		sb.WriteString(encodeNodeId(edge.src))
-		sb.WriteString(" --> ")
+		sb.WriteString(arrowFor(edge.dotted))
 		sb.WriteString(encodeNodeId(edge.dst))
 		sb.WriteByte('\n')
 	}
@@ -263,7 +265,7 @@ func orderedEdges(g *graph.Graph) []graphEdge {
 	if len(g.EdgeOrder) == count {
 		for _, key := range g.EdgeOrder {
 			if parts := strings.Split(key, "\t"); len(parts) == 2 {
-				edges = append(edges, graphEdge{src: parts[0], dst: parts[1]})
+				edges = append(edges, graphEdge{src: parts[0], dst: parts[1], dotted: g.Tolerated[key]})
 			}
 		}
 		return edges
@@ -280,7 +282,7 @@ func orderedEdges(g *graph.Graph) []graphEdge {
 		}
 		sort.Strings(targets)
 		for _, dst := range targets {
-			edges = append(edges, graphEdge{src: src, dst: dst})
+			edges = append(edges, graphEdge{src: src, dst: dst, dotted: g.IsTolerated(src, dst)})
 		}
 	}
 	return edges
@@ -326,6 +328,9 @@ func buildStyleLines(g *graph.Graph, opts port.GraphSaveOptions) []string {
 			continue
 		}
 		attrs := fmt.Sprintf("stroke:%s,stroke-width:2px", color)
+		if edge.dotted {
+			attrs += ",stroke-dasharray:5 5"
+		}
 		if _, ok := linkStyleGroups[attrs]; !ok {
 			linkStyleOrder = append(linkStyleOrder, attrs)
 		}
@@ -396,6 +401,7 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 		Classes:      map[string]map[string]bool{},
 		NodeLines:    map[string]int{},
 		EdgeLines:    map[string]int{},
+		Tolerated:    map[string]bool{},
 		NodeOrder:    []string{},
 		EdgeOrder:    []string{},
 	}
@@ -606,9 +612,10 @@ func parseConfigLine(line string, g *graph.Graph, lineNum int) error {
 
 // parseEdgeLine reads a chain of node groups joined by arrows, where a group is
 // one node or an `a & b` fan-out. Every node of a group is linked to every node
-// of the next one.
+// of the next one, tolerated when the joining arrow was dotted.
 func parseEdgeLine(line string, arrows [][]int, g *graph.Graph, lineNum int) error {
 	groups := make([][]string, 0, len(arrows)+1)
+	dotted := make([]bool, 0, len(arrows))
 	pos := 0
 	for _, loc := range arrows {
 		if loc[0] < pos {
@@ -619,6 +626,7 @@ func parseEdgeLine(line string, arrows [][]int, g *graph.Graph, lineNum int) err
 			return err
 		}
 		groups = append(groups, ids)
+		dotted = append(dotted, strings.HasPrefix(line[loc[0]:loc[1]], "-."))
 		pos = skipEdgeLabel(line, loc[1])
 	}
 	ids, err := parseNodeGroup(line[pos:], line, g, lineNum)
@@ -630,7 +638,7 @@ func parseEdgeLine(line string, arrows [][]int, g *graph.Graph, lineNum int) err
 	for i := 0; i < len(groups)-1; i++ {
 		for _, src := range groups[i] {
 			for _, dst := range groups[i+1] {
-				if err := addEdge(g, src, dst, lineNum); err != nil {
+				if err := addEdge(g, src, dst, dotted[i], lineNum); err != nil {
 					return err
 				}
 			}
@@ -683,7 +691,9 @@ func skipEdgeLabel(line string, pos int) int {
 	return pos
 }
 
-func addEdge(g *graph.Graph, src, dst string, lineNum int) error {
+// addEdge records src → dst, tolerated only while every declaration of the pair
+// is dotted: a solid one promotes an edge declared dotted elsewhere.
+func addEdge(g *graph.Graph, src, dst string, dotted bool, lineNum int) error {
 	if src == dst {
 		return &ParseError{
 			Line: lineNum,
@@ -693,15 +703,27 @@ func addEdge(g *graph.Graph, src, dst string, lineNum int) error {
 	if _, ok := g.Edges[src]; !ok {
 		g.Edges[src] = map[string]bool{}
 	}
-	key := src + "\t" + dst
+	key := graph.EdgeKey(src, dst)
 	if !g.Edges[src][dst] {
 		g.EdgeOrder = append(g.EdgeOrder, key)
+		if dotted {
+			g.Tolerated[key] = true
+		}
+	} else if !dotted {
+		delete(g.Tolerated, key)
 	}
 	g.Edges[src][dst] = true
 	if _, ok := g.EdgeLines[key]; !ok {
 		g.EdgeLines[key] = lineNum
 	}
 	return nil
+}
+
+func arrowFor(dotted bool) string {
+	if dotted {
+		return " -.-> "
+	}
+	return " --> "
 }
 
 func isIdentifier(s string) bool {

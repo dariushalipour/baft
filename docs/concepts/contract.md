@@ -175,9 +175,33 @@ Edges define allowed import directions.
 - **Self-imports:** Allowed by default. A file in node A can import another file in node A unless the node is `:::endophobic`.
 - **Chained edges:** `A --> B --> C` is parsed as two separate edges: `A --> B` and `B --> C`.
 - **Fan-out and fan-in:** `A --> B & C` is `A --> B` plus `A --> C`; `A & B --> C` is `A --> C` plus `B --> C`. Both sides may fan at once.
-- **Arrow variants:** `-->`, `--->`, `==>` and `-.->` all declare the same allowed import. The arrow style is decoration and carries no meaning.
+- **Arrow variants:** `-->`, `--->` and `==>` all declare the same allowed import; their style is decoration. The dotted `-.->` is the one exception — see [Tolerated edges](#tolerated-edges).
 - **Labels:** `A -->|reads| B` and `A -- reads --> B` are accepted; the label is discarded.
 - **Trailing semicolons** are ignored, so `A --> B;` is valid.
+
+### Tolerated edges
+
+A dotted arrow declares an edge that is allowed but deprecated.
+
+**Syntax:** `sourceNode -.-> targetNode`
+
+Imports along a tolerated edge are reported as `import-tolerated` warnings with severity `warning`. They never fail `check`, which still exits 0. A solid edge stays allowed silently; a missing edge stays an `import-not-allowed` error.
+
+This is the phase-in path for a legacy codebase: declare the architecture you want, mark the edges you have not refactored away yet as dotted, and turn `check` on in CI today. Deleting the dotted arrows one by one is the ratchet.
+
+```mermaid
+flowchart TD
+  api["internal/api/**"]
+  domain["internal/domain/**"]
+  legacy["internal/legacy/**"]
+
+  api --> domain
+  api -.-> legacy
+```
+
+Declaring the same pair both ways (`A -.-> B` and `A --> B`) makes it a plain allowed edge — the solid arrow wins. Chains may mix arrows: `A --> B -.-> C`.
+
+A cycle that runs through a tolerated edge is not reported as a circular dependency: it is the legacy state the contract is ratcheting away from, and every import along that edge is already warned about. A cycle made of solid edges stays an error.
 
 ---
 

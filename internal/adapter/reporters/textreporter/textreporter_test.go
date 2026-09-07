@@ -7,6 +7,13 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
+func stripANSI(s string) string {
+	s = strings.ReplaceAll(s, colorRed, "")
+	s = strings.ReplaceAll(s, colorGreen, "")
+	s = strings.ReplaceAll(s, colorYellow, "")
+	return strings.ReplaceAll(s, colorReset, "")
+}
+
 func TestRenderEmpty(t *testing.T) {
 	r := &TextRenderer{}
 	out := r.Render(&port.CheckResult{})
@@ -106,5 +113,43 @@ func TestRenderPlainByDefault(t *testing.T) {
 	result := &port.CheckResult{Capsules: []port.CapsuleResult{{Label: "mypkg"}}}
 	if out := r.Render(result); strings.Contains(out, "\033") {
 		t.Fatalf("expected no ANSI escapes, got %q", out)
+	}
+}
+
+func TestRenderWarningsDoNotFailTheCapsule(t *testing.T) {
+	r := &TextRenderer{}
+	warning := port.Violation{Rule: "import-tolerated", Severity: "warning", Message: "tolerated import"}
+	result := &port.CheckResult{
+		Capsules: []port.CapsuleResult{{
+			Label:      "mypkg",
+			Violations: []port.Violation{warning, {Rule: "import-not-allowed", Message: "bad import"}},
+		}},
+		Warnings: []string{"mypkg: tolerated import", "standalone warning"},
+	}
+	out := stripANSI(r.Render(result))
+	expected := strings.Join([]string{
+		"⚠ standalone warning",
+		"✗ mypkg",
+		"    violation [import-not-allowed]: bad import",
+		"    warning [import-tolerated]: tolerated import",
+		"",
+	}, "\n")
+	if out != expected {
+		t.Fatalf("expected %q, got %q", expected, out)
+	}
+}
+
+func TestRenderWarningOnlyCapsule(t *testing.T) {
+	r := &TextRenderer{}
+	result := &port.CheckResult{
+		Capsules: []port.CapsuleResult{{
+			Label:      "mypkg",
+			Violations: []port.Violation{{Rule: "import-tolerated", Severity: "warning", Message: "tolerated import"}},
+		}},
+	}
+	out := stripANSI(r.Render(result))
+	expected := "⚠ mypkg\n    warning [import-tolerated]: tolerated import\n"
+	if out != expected {
+		t.Fatalf("expected %q, got %q", expected, out)
 	}
 }

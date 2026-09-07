@@ -152,6 +152,7 @@ Nested capsules are supported. A child directory with its own contract file is t
 
 - **Node:** `nodeId["path/to/dir"]` claims files directly in that directory; `nodeId["path/to/dir/&ast;&ast;"]` claims a whole subtree
 - **Edge:** `A --> B` means files in `A` may import files in `B`
+- **Tolerated edge:** `A -.-> B` allows the import but reports it as a warning, so a legacy repo can declare its target architecture and ratchet toward it without failing CI
 - **Self-imports:** allowed by default
 - **Endophobic node:** `:::endophobic` disables same-node imports
 - **Most specific match wins:** file-shaped globs beat directory-shaped globs

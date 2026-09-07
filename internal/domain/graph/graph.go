@@ -36,9 +36,15 @@ type Graph struct {
 	NodeOrder []string
 
 	// EdgeOrder is the declaration order of edges as defined by the user
-	// in the contract file. Each entry is "src\tdst". Serializers should
+	// in the contract file. Each entry is an EdgeKey. Serializers should
 	// preserve this order, and new graph constructors must populate it.
 	EdgeOrder []string
+
+	// Tolerated holds the EdgeKeys of edges declared with a dotted arrow
+	// ("a -.-> b"). Imports along them are allowed but reported as warnings,
+	// so a legacy codebase can declare its target architecture and ratchet
+	// toward it without failing the check.
+	Tolerated map[string]bool
 
 	// GlobSeparator, when non-empty, indicates the character used as path separator
 	// in node glob patterns (e.g. "." for Kotlin/Java style). Patterns are normalized
@@ -162,6 +168,16 @@ func normalizeGlobSeparator(pattern, sep string) string {
 func isSegmentChar(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
 		(c >= '0' && c <= '9') || c == '_' || c == '-'
+}
+
+// EdgeKey is the map key identifying the edge from sourceID to targetID.
+func EdgeKey(sourceID, targetID string) string {
+	return sourceID + "\t" + targetID
+}
+
+// IsTolerated reports whether the edge from sourceID to targetID was declared dotted.
+func (g *Graph) IsTolerated(sourceID, targetID string) bool {
+	return g.Tolerated[EdgeKey(sourceID, targetID)]
 }
 
 func (g *Graph) Allows(sourceID, targetID string) bool {
@@ -940,6 +956,7 @@ func NewGraph(nodes map[string]string, edges map[string]map[string]bool, nodeOrd
 		NodeDisplays: map[string]string{},
 		Edges:        make(map[string]map[string]bool, len(edges)),
 		Classes:      map[string]map[string]bool{},
+		Tolerated:    map[string]bool{},
 		NodeLines:    map[string]int{},
 		EdgeLines:    map[string]int{},
 		NodeOrder:    make([]string, 0, len(nodes)),
@@ -973,7 +990,7 @@ func NewGraph(nodes map[string]string, edges map[string]map[string]bool, nodeOrd
 	} else {
 		for src, dsts := range edges {
 			for dst := range dsts {
-				g.EdgeOrder = append(g.EdgeOrder, src+"\t"+dst)
+				g.EdgeOrder = append(g.EdgeOrder, EdgeKey(src, dst))
 			}
 		}
 		sort.Strings(g.EdgeOrder)

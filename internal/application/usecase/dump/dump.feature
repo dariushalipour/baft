@@ -2005,3 +2005,66 @@ Feature: Dump BAFT.md from actual imports
         Api --> Domain
       ```
       """
+
+  Scenario: Dump fills gaps - preserves tolerated dotted edges on existing contracts
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ domain/
+         │  └─ model.go
+         ├─ legacy/
+         │  └─ old.go
+         └─ usecase/
+            └─ create.go
+      """
+    Given file "go.mod" has content "module example.com/gaps"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        usecases["internal/usecase"]
+        legacy["internal/legacy"]
+
+        usecases -.-> legacy
+      ```
+      """
+    Given file "internal/domain/model.go" has content:
+      """go
+      package domain
+      type User struct{}
+      """
+    Given file "internal/legacy/old.go" has content "package legacy"
+    Given file "internal/usecase/create.go" has content:
+      """go
+      package usecase
+
+      import (
+      	"example.com/gaps/internal/domain"
+      	_ "example.com/gaps/internal/legacy"
+      )
+
+      func Create() domain.User { return domain.User{} }
+      """
+    Given the dump uses the "go" language adapter
+    When the dump runs from "/Users/jane/baft"
+    And Contract at "BAFT.md" is an amendment
+    And Contract at "BAFT.md" added 1 nodes and 1 edges
+    Then file "BAFT.md" should be:
+      """config
+      <!-- 🧶 Baft architecture contract: edit nodes and edges to change allowed imports. -->
+      <!-- If Baft is new to you, run `baft manual`. -->
+      <!-- Nodes claim file globs. Arrows allow imports. `:::endophobic` forbids same-node imports. -->
+      <!-- Validate with `baft check`. Refresh generated styling with `baft restyle`. -->
+
+      ```mermaid
+      flowchart TD
+        usecases["internal/usecase"]
+        legacy["internal/legacy"]
+        internal_slash_domain["internal/domain"]
+
+        usecases -.-> legacy
+        usecases --> internal_slash_domain
+      ```
+      """

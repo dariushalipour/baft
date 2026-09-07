@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dariushalipour/baft/internal/domain/graph"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -14,6 +15,10 @@ func importPrefix(fileRel string, spec port.ImportSpec, src, targetRel, dst stri
 
 func formatRelation(fileRel string, spec port.ImportSpec, src, targetRel, dst, cfgPath string) string {
 	return fmt.Sprintf("%s — relation not allowed (add edge in %s or move the file)", importPrefix(fileRel, spec, src, targetRel, dst), cfgPath)
+}
+
+func formatTolerated(fileRel string, spec port.ImportSpec, src, targetRel, dst, cfgPath string) string {
+	return fmt.Sprintf("%s — relation tolerated (dotted edge in %s); refactor it away or make the edge solid", importPrefix(fileRel, spec, src, targetRel, dst), cfgPath)
 }
 
 func formatNoNode(scopeRel, cfgPath string) string {
@@ -43,17 +48,26 @@ func formatOverlap(a, b, aCfg, bCfg, aLine, bLine, witness string) string {
 	return fmt.Sprintf("node %q (%s:%s) and node %q (%s:%s) overlap — file %s matches both globs", a, aCfg, aLine, b, bCfg, bLine, witness)
 }
 
-func makeRelationViolation(fileAbs, fileRel string, spec port.ImportSpec, src, targetRel, dst, cfgPath string) port.Violation {
-	return port.Violation{
-		Rule:      "import-not-allowed",
-		Severity:  "error",
+// checkRelation reports on an import along src → dst: nothing for a solid edge,
+// a warning for a dotted (tolerated) one, an error when no edge is declared.
+func checkRelation(g *graph.Graph, fileAbs, fileRel string, spec port.ImportSpec, src, targetRel, dst, cfgPath string) []port.Violation {
+	rule, severity, message := "import-not-allowed", "error", formatRelation(fileRel, spec, src, targetRel, dst, cfgPath)
+	if g.Allows(src, dst) {
+		if !g.IsTolerated(src, dst) {
+			return nil
+		}
+		rule, severity, message = "import-tolerated", "warning", formatTolerated(fileRel, spec, src, targetRel, dst, cfgPath)
+	}
+	return []port.Violation{{
+		Rule:      rule,
+		Severity:  severity,
 		Source:    "baft",
-		Message:   formatRelation(fileRel, spec, src, targetRel, dst, cfgPath),
+		Message:   message,
 		File:      fileAbs,
 		Line:      spec.Line,
 		Column:    spec.Col,
 		ColumnEnd: spec.ColEnd,
-	}
+	}}
 }
 
 func makeNoNodeViolation(fileAbs, scopeRel, cfgPath string) port.Violation {

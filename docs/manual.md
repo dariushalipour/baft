@@ -94,7 +94,8 @@ If some files should be completely invisible to Baft (e.g., generated code, buil
 - **Non-Transitive:** `A --> B --> C` does **not** imply `A --> C`.
 - **Self-Imports:** Allowed by default unless the node is `:::endophobic`.
 - **Fan-out and fan-in:** `A --> B & C` and `A & B --> C` expand to one edge per pair.
-- **Decoration:** `-->`, `==>` and `-.->` mean the same thing; edge labels (`A -->|reads| B`, `A -- reads --> B`) and trailing `;` are discarded.
+- **Tolerated:** `A -.-> B` (dotted) allows the import but reports it as a warning instead of failing the check — the phase-in path for a legacy repo.
+- **Decoration:** `-->` and `==>` mean the same thing; edge labels (`A -->|reads| B`, `A -- reads --> B`) and trailing `;` are discarded.
 
 ---
 

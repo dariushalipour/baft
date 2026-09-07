@@ -163,10 +163,7 @@ func resolveCrossScope(
 		if src == "" || dst == "" {
 			return nil, false
 		}
-		if !g.Graph().Allows(src, dst) {
-			return []port.Violation{makeRelationViolation(ctx.SrcAbs, ctx.FileRel, ctx.Spec, src, targetRel, dst, contractPath)}, true
-		}
-		return nil, true
+		return checkRelation(g.Graph(), ctx.SrcAbs, ctx.FileRel, ctx.Spec, src, targetRel, dst, contractPath), true
 	}
 
 	if v, resolved := tier(ctx.ScopeGraph, ctx.ScopeDir, ctx.CfgPath, ctx.Src); resolved {
@@ -474,9 +471,7 @@ func (ch *capsuleChecker) checkImportResult(spec port.ImportSpec, abs, fileRel, 
 						violations = append(violations, makeEndophobicViolation(abs, scopeRel, spec, t.inScopeKey, src, cfgPath))
 					}
 				} else {
-					if !g.Allows(src, dst) {
-						violations = append(violations, makeRelationViolation(abs, scopeRel, spec, src, t.inScopeKey, dst, cfgPath))
-					}
+					violations = append(violations, checkRelation(g, abs, scopeRel, spec, src, t.inScopeKey, dst, cfgPath)...)
 				}
 			}
 		} else {

@@ -2213,3 +2213,176 @@ Feature: Architecture rule checking
     And 0 relations are examined
     And 1 file is encountered and 1 file is scanned
     And 0 errors and 0 violations are reported
+
+  Scenario: Dotted edge tolerates the import as a warning without failing the check
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         ├─ domain/
+         │  └─ order.go
+         └─ legacy/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application"]
+        domain["internal/domain"]
+        legacy["internal/legacy"]
+
+        app --> domain
+        app -.-> legacy
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import (
+      	"example.com/billing/internal/domain"
+      	"example.com/billing/internal/legacy"
+      )
+      """
+    Given file "internal/domain/order.go" has content "package domain"
+    Given file "internal/legacy/order.go" has content "package legacy"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 2 relations are examined
+    And 3 files are encountered and 3 files are scanned
+    And 0 errors and 0 violations are reported
+    And 1 warning is reported
+    And the warning is:
+      """warnings
+      /Users/jane/baft: internal/application/order.go:5:2 (app) → internal/legacy (legacy) — relation tolerated (dotted edge in /Users/jane/baft/BAFT.md); refactor it away or make the edge solid
+      """
+
+  Scenario: Missing edge still fails while a dotted edge only warns
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         ├─ domain/
+         │  └─ order.go
+         └─ legacy/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application"]
+        domain["internal/domain"]
+        legacy["internal/legacy"]
+
+        app -.-> legacy
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import (
+      	"example.com/billing/internal/domain"
+      	"example.com/billing/internal/legacy"
+      )
+      """
+    Given file "internal/domain/order.go" has content "package domain"
+    Given file "internal/legacy/order.go" has content "package legacy"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 0 errors and 1 violations are reported
+    And 1 warning is reported
+    And the violation is:
+      """violations
+      /Users/jane/baft: internal/application/order.go:4:2 (app) → internal/domain (domain) — relation not allowed (add edge in /Users/jane/baft/BAFT.md or move the file)
+      """
+
+  Scenario: A solid edge elsewhere in the diagram promotes a dotted duplicate
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application"]
+        domain["internal/domain"]
+
+        app -.-> domain
+        app --> domain
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 0 errors and 0 violations are reported
+    And 0 warnings are reported
+
+  Scenario: A cycle that runs through a dotted edge is tolerated, not a circular dependency error
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application"]
+        domain["internal/domain"]
+
+        app --> domain
+        domain -.-> app
+      ```
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+
+      import "example.com/billing/internal/domain"
+      """
+    Given file "internal/domain/order.go" has content:
+      """go
+      package domain
+
+      import "example.com/billing/internal/application"
+      """
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 0 errors and 0 violations are reported
+    And 1 warning is reported
+    And the warning is:
+      """warnings
+      /Users/jane/baft: internal/domain/order.go:3:8 (domain) → internal/application (app) — relation tolerated (dotted edge in /Users/jane/baft/BAFT.md); refactor it away or make the edge solid
+      """

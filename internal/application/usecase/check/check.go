@@ -249,7 +249,12 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 		r.result.errors = dedupeContractErrors(r.result.errors, seenContractErrors)
 		result.Capsules = append(result.Capsules, r.result.toPublic(r.label))
 		for _, v := range r.result.violations {
-			result.Violations = append(result.Violations, r.label+": "+v.Message)
+			msg := r.label + ": " + v.Message
+			if v.Severity == "warning" {
+				result.Warnings = append(result.Warnings, msg)
+			} else {
+				result.Violations = append(result.Violations, msg)
+			}
 		}
 		for _, e := range r.result.errors {
 			result.Errors = append(result.Errors, r.label+": "+e.Message)

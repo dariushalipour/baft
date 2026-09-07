@@ -4,6 +4,7 @@ import "io"
 
 type Writer = io.Writer
 
+// Violation severity is "error" (fails the check) or "warning" (reported only).
 type Violation struct {
 	Rule      string `json:"rule"`
 	Severity  string `json:"severity"`

@@ -68,6 +68,7 @@ func applyCheckAmendments(cc capsuleCtx, contractPath string, current *graph.Gra
 	updated.NamespaceMode = current.NamespaceMode
 	updated.GlobSeparator = current.GlobSeparator
 	updated.Classes = cloneClasses(current.Classes)
+	updated.Tolerated = current.Tolerated
 	if !cc.lang.SupportsFileGlobs() {
 		for id, glob := range updated.Nodes {
 			if _, ok := updated.NodeDisplays[id]; !ok {

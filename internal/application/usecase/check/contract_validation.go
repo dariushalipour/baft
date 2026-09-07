@@ -124,6 +124,11 @@ func cycleErrors(g *graph.Graph, contractPath string) ([]port.Violation, [][]str
 		color[node] = gray
 		path = append(path, node)
 		for dst := range g.Edges[node] {
+			// A cycle through a tolerated edge is the legacy state the contract is
+			// ratcheting away from; every import along it is already warned about.
+			if g.IsTolerated(node, dst) {
+				continue
+			}
 			c, ok := color[dst]
 			if !ok {
 				continue

@@ -1323,3 +1323,77 @@ func TestRestyleReturnsParseError(t *testing.T) {
 		t.Fatal("expected parse error")
 	}
 }
+
+func TestMermaidRepository_LoadDottedEdgeIsTolerated(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  app["app"]` + "\n" +
+		`  domain["domain"]` + "\n" +
+		`  legacy["legacy"]` + "\n" +
+		"  app --> domain -.-> legacy\n" +
+		"```\n"
+
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !g.Allows("app", "domain") || g.IsTolerated("app", "domain") {
+		t.Errorf("app --> domain should be allowed and not tolerated")
+	}
+	if !g.Allows("domain", "legacy") || !g.IsTolerated("domain", "legacy") {
+		t.Errorf("domain -.-> legacy should be allowed and tolerated")
+	}
+	if g.EdgeLines["domain\tlegacy"] != 6 {
+		t.Errorf("edge line = %d, want 6", g.EdgeLines["domain\tlegacy"])
+	}
+}
+
+func TestMermaidRepository_LoadSolidDeclarationPromotesDottedEdge(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  app["app"]` + "\n" +
+		`  legacy["legacy"]` + "\n" +
+		"  app -.-> legacy\n" +
+		"  app --> legacy\n" +
+		"```\n"
+
+	g, err := (&MermaidRepository{}).Load(md)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if g.IsTolerated("app", "legacy") {
+		t.Errorf("a solid declaration should promote the dotted edge")
+	}
+}
+
+func TestMermaidRepository_SaveDottedEdgeRoundTrips(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" +
+		`  app["app"]` + "\n" +
+		`  domain["domain"]` + "\n" +
+		`  legacy["legacy"]` + "\n" +
+		"  app --> domain\n" +
+		"  app -.-> legacy\n" +
+		"```\n"
+
+	repo := &MermaidRepository{}
+	g, err := repo.Load(md)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	saved := repo.Save(g, port.GraphSaveOptions{})
+	if !strings.Contains(saved, "app -.-> legacy") {
+		t.Fatalf("saved contract lost the dotted edge:\n%s", saved)
+	}
+	if !strings.Contains(saved, "app --> domain") {
+		t.Fatalf("saved contract lost the solid edge:\n%s", saved)
+	}
+	if !strings.Contains(saved, "stroke-dasharray:5 5") {
+		t.Errorf("tolerated edge should be styled dashed:\n%s", saved)
+	}
+
+	reloaded, err := repo.Load(saved)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !reloaded.IsTolerated("app", "legacy") || reloaded.IsTolerated("app", "domain") {
+		t.Errorf("toleration did not round-trip: %v", reloaded.Tolerated)
+	}
+}

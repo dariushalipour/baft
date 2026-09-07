@@ -51,6 +51,7 @@ type workspace struct {
 	FilesEncountered int
 	FilesScanned     int
 	Violations       []string
+	Warnings         []string
 	Reports          []contractReport
 }
 
@@ -61,6 +62,7 @@ func (w *workspace) reset() {
 	w.Langs = nil
 	w.Errors = nil
 	w.Violations = nil
+	w.Warnings = nil
 	w.CapsuleCount = 0
 	w.WorkingDir = ""
 	w.Relations = 0
@@ -151,24 +153,12 @@ func registerSharedSteps(sc *godog.ScenarioContext, getter func(context.Context)
 
 	sc.Step(`^the error(?:s)? (?:is|are):$`,
 		func(ctx context.Context, doc *godog.DocString) error {
-			w := getter(ctx)
-			lines := strings.Split(strings.TrimSpace(doc.Content), "\n")
-			var nonBlank []string
-			for _, l := range lines {
-				if s := strings.TrimSpace(l); s != "" {
-					nonBlank = append(nonBlank, s)
-				}
-			}
-			errs := w.Errors
-			if len(errs) != len(nonBlank) {
-				return fmt.Errorf("expected %d errors, got %d", len(nonBlank), len(errs))
-			}
-			for i, line := range nonBlank {
-				if errs[i] != line {
-					return fmt.Errorf("error %d expected %q, got: %s", i+1, line, errs[i])
-				}
-			}
-			return nil
+			return expectLines("error", getter(ctx).Errors, doc)
+		})
+
+	sc.Step(`^the warnings? (?:is|are):$`,
+		func(ctx context.Context, doc *godog.DocString) error {
+			return expectLines("warning", getter(ctx).Warnings, doc)
 		})
 
 	sc.Step(`^(\d+) capsules? (?:is|are) (?:discovered|dumped)$`,
@@ -213,27 +203,38 @@ func registerSharedSteps(sc *godog.ScenarioContext, getter func(context.Context)
 			return nil
 		})
 
-	sc.Step(`^the violations? (?:is|are):$`,
-		func(ctx context.Context, doc *godog.DocString) error {
+	sc.Step(`^(\d+) warnings? (?:is|are) reported$`,
+		func(ctx context.Context, n int) error {
 			w := getter(ctx)
-			lines := strings.Split(strings.TrimSpace(doc.Content), "\n")
-			var nonBlank []string
-			for _, l := range lines {
-				if s := strings.TrimSpace(l); s != "" {
-					nonBlank = append(nonBlank, s)
-				}
-			}
-			violations := w.Violations
-			if len(violations) != len(nonBlank) {
-				return fmt.Errorf("expected %d violations, got %d", len(nonBlank), len(violations))
-			}
-			for i, line := range nonBlank {
-				if violations[i] != line {
-					return fmt.Errorf("violation %d expected %q, got: %s", i+1, line, violations[i])
-				}
+			if len(w.Warnings) != n {
+				return fmt.Errorf("expected %d warnings, got %d: %v", n, len(w.Warnings), w.Warnings)
 			}
 			return nil
 		})
+
+	sc.Step(`^the violations? (?:is|are):$`,
+		func(ctx context.Context, doc *godog.DocString) error {
+			return expectLines("violation", getter(ctx).Violations, doc)
+		})
+}
+
+// expectLines asserts that actual matches the non-blank lines of doc, in order.
+func expectLines(kind string, actual []string, doc *godog.DocString) error {
+	var want []string
+	for _, l := range strings.Split(strings.TrimSpace(doc.Content), "\n") {
+		if s := strings.TrimSpace(l); s != "" {
+			want = append(want, s)
+		}
+	}
+	if len(actual) != len(want) {
+		return fmt.Errorf("expected %d %ss, got %d: %v", len(want), kind, len(actual), actual)
+	}
+	for i, line := range want {
+		if actual[i] != line {
+			return fmt.Errorf("%s %d expected %q, got: %s", kind, i+1, line, actual[i])
+		}
+	}
+	return nil
 }
 
 func addLanguage(w *workspace, langName string) error {
@@ -455,6 +456,7 @@ func initializeCheckScenario(sc *godog.ScenarioContext) {
 				w.ws.FilesScanned += c.FilesScanned
 			}
 			w.ws.Violations = result.Violations
+			w.ws.Warnings = result.Warnings
 			w.ws.Errors = result.Errors
 			return nil
 		})
