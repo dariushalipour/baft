@@ -12,294 +12,198 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-func amendContract(fsys port.FileSystem, rootDir string, capsule port.Capsule, lang port.Language, repo port.GraphRepository, contractPath string, cfg draftConfig) (*AmendDiff, error) {
-	raw, err := fsys.ReadFile(contractPath)
-	if err != nil {
-		return nil, &contractError{contractPath: contractPath, kind: "contract-load-error", message: err.Error()}
-	}
-	current, err := repo.Load(string(raw))
-	if err != nil {
-		return nil, &contractError{contractPath: contractPath, kind: "contract-load-error", message: summarizeContractLoadError(err), cycleGroups: parseCycleGroups(err.Error())}
-	}
-
-	validation := check.ValidateContract(fsys, lang, contractPath, current)
+// amendContract widens an existing contract so that it allows the imports the
+// code actually has. It returns nil when nothing had to be added.
+func amendContract(cc capsuleCtx, contractPath string, current *graph.Graph, cfg draftConfig) (*AmendDiff, error) {
+	validation := check.ValidateContract(cc.fsys, cc.lang, contractPath, current)
 	if len(validation.Errors) > 0 {
 		return nil, &contractError{
 			contractPath: contractPath,
 			kind:         contractValidationKind(validation.Errors),
 			message:      summarizeContractValidationErrors(validation.Errors),
-			cycleGroups:  cycleGroupsFromValidationErrors(validation.Errors),
+			cycleGroups:  validation.Cycles,
 		}
 	}
 
-	updated, diff, err := applyCheckAmendments(fsys, rootDir, capsule, lang, repo, contractPath, current, cfg)
-	if err != nil {
+	updated, diff, err := applyCheckAmendments(cc, contractPath, current, cfg)
+	if err != nil || diff == nil {
 		return nil, err
 	}
-	if diff == nil {
-		return nil, nil
-	}
-
-	content := repo.Save(updated, cfg.saveOpts)
-	if err := fsys.WriteFile(contractPath, []byte(content), 0o644); err != nil {
+	content := cc.repo.Save(updated, cfg.saveOpts)
+	if err := cc.fsys.WriteFile(contractPath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
 	return diff, nil
 }
 
-func applyCheckAmendments(fsys port.FileSystem, rootDir string, capsule port.Capsule, lang port.Language, repo port.GraphRepository, contractPath string, current *graph.Graph, cfg draftConfig) (*graph.Graph, *AmendDiff, error) {
-	res := runCheckForCapsule(fsys, rootDir, capsule, lang, repo)
-	if res == nil || len(res.Violations) == 0 {
-		return current, nil, nil
+func applyCheckAmendments(cc capsuleCtx, contractPath string, current *graph.Graph, cfg draftConfig) (*graph.Graph, *AmendDiff, error) {
+	res, err := check.RunCapsule(cc.fsys, cc.rootDir, cc.capsule, cc.lang, cc.repo, cc.nestedDirs)
+	if err != nil || res == nil || len(res.Violations) == 0 {
+		return nil, nil, err
 	}
 
-	nodeCountBefore := len(current.Nodes)
-	edgeCountBefore := 0
-	for _, targets := range current.Edges {
-		edgeCountBefore += len(targets)
-	}
-
+	contractDir := filepath.Dir(contractPath)
 	nodes := cloneNodes(current.Nodes)
-	displays := cloneNodeDisplays(current.NodeDisplays)
 	edges := cloneEdges(current.Edges)
-	classes := cloneClasses(current.Classes)
-	changed := false
 
 	for _, violation := range res.Violations {
-		var violationChanged bool
-		var err error
 		switch violation.Rule {
 		case "no-node":
-			violationChanged, err = applyNoNodeViolation(nodes, fsys, capsule, contractPath, lang, violation, cfg)
-		case "import-no-node":
-			violationChanged, err = ensureEdgeForImport(nodes, edges, fsys, capsule, contractPath, lang, violation, cfg)
-		case "import-not-allowed":
-			violationChanged, err = ensureEdgeForImport(nodes, edges, fsys, capsule, contractPath, lang, violation, cfg)
+			err = applyNoNodeViolation(nodes, cc, contractDir, violation, cfg)
+		case "import-no-node", "import-not-allowed":
+			err = ensureEdgeForImport(nodes, edges, cc, contractDir, violation, cfg)
 		}
 		if err != nil {
 			return nil, nil, err
 		}
-		if violationChanged {
-			changed = true
-		}
 	}
 
-	if !changed {
-		return current, nil, nil
+	diff := amendDiff(current, nodes, edges)
+	if diff == nil {
+		return nil, nil, nil
 	}
 
-	updated := graph.NewGraph(nodes, edges, appendNodeOrder(current.NodeOrder, nodes), appendEdgeOrder(current.EdgeOrder, edges))
-	updated.NodeDisplays = displays
+	updated := graph.NewGraph(nodes, edges, appendOrder(current.NodeOrder, nodeKeys(nodes)), appendOrder(current.EdgeOrder, edgeKeys(edges)))
+	updated.NodeDisplays = cloneNodes(current.NodeDisplays)
 	updated.NamespaceMode = current.NamespaceMode
 	updated.GlobSeparator = current.GlobSeparator
-	if !lang.SupportsFileGlobs() {
+	updated.Classes = cloneClasses(current.Classes)
+	if !cc.lang.SupportsFileGlobs() {
 		for id, glob := range updated.Nodes {
 			if _, ok := updated.NodeDisplays[id]; !ok {
 				updated.NodeDisplays[id] = glob
 			}
 		}
 	}
-	updated.Classes = classes
-
-	diff := &AmendDiff{
-		Nodes: len(nodes) - nodeCountBefore,
-		Edges: 0,
-	}
-	for src, targets := range edges {
-		if _, ok := current.Edges[src]; !ok {
-			diff.Edges += len(targets)
-		} else {
-			for dst := range targets {
-				if !current.Edges[src][dst] {
-					diff.Edges++
-				}
-			}
-		}
-	}
-
 	return updated, diff, nil
 }
 
-func runCheckForCapsule(fsys port.FileSystem, rootDir string, capsule port.Capsule, lang port.Language, repo port.GraphRepository) *port.CapsuleResult {
-	discovery := service.NewCapsuleDiscovery()
-	lang.Register(discovery)
-	result := check.Run(fsys, rootDir, []port.Language{lang}, repo, discovery)
-	if result == nil {
-		return nil
-	}
-	label := port.Label(capsule)
-	for _, capsuleRes := range result.Capsules {
-		if capsuleRes.Label == label {
-			res := capsuleRes
-			return &res
+// amendDiff reports what the amendment added, or nil when it added nothing. It
+// names nodes by their glob, which is what the user reads, not by the mermaid
+// identifier the contract file carries.
+func amendDiff(current *graph.Graph, nodes map[string]string, edges map[string]map[string]bool) *AmendDiff {
+	var diff AmendDiff
+	for id, glob := range nodes {
+		if _, ok := current.Nodes[id]; !ok {
+			diff.Nodes = append(diff.Nodes, glob)
 		}
 	}
-	return nil
+	for src, dsts := range edges {
+		for dst := range dsts {
+			if !current.Edges[src][dst] {
+				diff.Edges = append(diff.Edges, nodes[src]+" --> "+nodes[dst])
+			}
+		}
+	}
+	if len(diff.Nodes) == 0 && len(diff.Edges) == 0 {
+		return nil
+	}
+	sort.Strings(diff.Nodes)
+	sort.Strings(diff.Edges)
+	return &diff
 }
 
-func ensureEdgeForImport(nodes map[string]string, edges map[string]map[string]bool, fsys port.FileSystem, capsule port.Capsule, contractPath string, lang port.Language, violation port.Violation, cfg draftConfig) (bool, error) {
-	srcID, srcChanged, err := ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, violation.File, cfg)
+func ensureEdgeForImport(nodes map[string]string, edges map[string]map[string]bool, cc capsuleCtx, contractDir string, violation port.Violation, cfg draftConfig) error {
+	srcID, err := ensureNodeForFile(nodes, cc, contractDir, violation.File, cfg, false)
 	if err != nil {
-		return false, err
+		return err
 	}
-	dstID, dstChanged, err := ensureNodeForImportTarget(nodes, fsys, capsule, contractPath, lang, violation, cfg)
+	dstID, err := ensureNodeForImportTarget(nodes, cc, contractDir, violation, cfg)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if srcID == "" || dstID == "" || srcID == dstID {
-		return srcChanged || dstChanged, nil
+		return nil
 	}
 	if edges[srcID] == nil {
 		edges[srcID] = map[string]bool{}
 	}
-	if edges[srcID][dstID] {
-		return srcChanged || dstChanged, nil
-	}
 	edges[srcID][dstID] = true
-	return true, nil
+	return nil
 }
 
-func applyNoNodeViolation(nodes map[string]string, fsys port.FileSystem, capsule port.Capsule, contractPath string, lang port.Language, violation port.Violation, cfg draftConfig) (bool, error) {
-	contractDir := filepath.Dir(contractPath)
-	if service.TrackingScope(fsys, violation.File, capsule.Dir) != contractDir {
-		return false, nil
+func applyNoNodeViolation(nodes map[string]string, cc capsuleCtx, contractDir string, violation port.Violation, cfg draftConfig) error {
+	if service.TrackingScope(cc.fsys, violation.File, cc.capsule.Dir) != contractDir {
+		return nil
 	}
-	if _, err := lang.ParseImports(fsys, violation.File); err != nil {
+	if _, err := cc.lang.ParseImports(cc.fsys, violation.File); err != nil {
 		if os.IsNotExist(err) {
-			return false, nil
+			return nil
 		}
-		return false, err
+		return err
 	}
-	_, changed, err := ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, violation.File, cfg)
-	return changed, err
+	_, err := ensureNodeForFile(nodes, cc, contractDir, violation.File, cfg, false)
+	return err
 }
 
-func ensureNodeForImportTarget(nodes map[string]string, fsys port.FileSystem, capsule port.Capsule, contractPath string, lang port.Language, violation port.Violation, cfg draftConfig) (string, bool, error) {
-	spec, err := importSpecForViolation(lang, fsys, violation.File, violation.Line, violation.Column)
+func ensureNodeForImportTarget(nodes map[string]string, cc capsuleCtx, contractDir string, violation port.Violation, cfg draftConfig) (string, error) {
+	spec, err := importSpecForViolation(cc.lang, cc.fsys, violation.File, violation.Line, violation.Column)
 	if err != nil || spec == nil {
-		return "", false, err
+		return "", err
 	}
-	contractDir := filepath.Dir(contractPath)
-	fileRel, err := filepath.Rel(capsule.Dir, violation.File)
+	fileRel, err := filepath.Rel(cc.capsule.Dir, violation.File)
 	if err != nil {
-		return "", false, err
+		return "", err
 	}
-	targetPath, internal := lang.ResolveInternalTarget(fsys, *spec, capsule, filepath.ToSlash(fileRel))
+	targetPath, internal := cc.lang.ResolveInternalTarget(cc.fsys, *spec, cc.capsule, filepath.ToSlash(fileRel))
 	if !internal {
-		return "", false, nil
+		return "", nil
 	}
 	targetAbs := targetPath
 	if !filepath.IsAbs(targetAbs) {
-		targetAbs = filepath.Join(capsule.Dir, targetAbs)
+		targetAbs = filepath.Join(cc.capsule.Dir, targetAbs)
 	}
 	targetAbs = filepath.Clean(targetAbs)
-	if targetAbs != contractDir && !startsWith(targetAbs, contractDir+string(filepath.Separator)) {
-		if scopeDir := service.TrackingScope(fsys, targetAbs, capsule.Dir); scopeDir != contractDir {
+	if targetAbs != contractDir && !strings.HasPrefix(targetAbs, contractDir+string(filepath.Separator)) {
+		if scopeDir := service.TrackingScope(cc.fsys, targetAbs, cc.capsule.Dir); scopeDir != contractDir {
 			return ensureDirNode(nodes, contractDir, scopeDir)
 		}
 	}
-
-	// Try namespace-based node for import target when namespace mode is enabled
 	if cfg.namespaceMode && spec.Namespace != "" {
-		return ensureExactNode(nodes, spec.Namespace, spec.Namespace)
+		return ensureExactNode(nodes, spec.Namespace, spec.Namespace), nil
 	}
-
-	return ensureAmendNodeForFile(nodes, fsys, capsule, contractPath, lang, targetAbs, cfg)
+	return ensureNodeForFile(nodes, cc, contractDir, targetAbs, cfg, false)
 }
 
-func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsule port.Capsule, contractPath string, lang port.Language, absPath string, cfg draftConfig) (string, bool, error) {
-	contractDir := filepath.Dir(contractPath)
-	scopeDir := service.TrackingScope(fsys, absPath, capsule.Dir)
-	if scopeDir != contractDir {
-		return ensureDirNode(nodes, contractDir, scopeDir)
+// appendOrder keeps the user's declaration order for everything that survived
+// and appends whatever the amendment added, sorted.
+func appendOrder(existing []string, keys []string) []string {
+	present := make(map[string]bool, len(keys))
+	for _, key := range keys {
+		present[key] = true
 	}
-
-	rel, err := filepath.Rel(contractDir, absPath)
-	if err != nil {
-		return "", false, err
-	}
-	rel = filepath.ToSlash(rel)
-
-	// Try namespace-based node first when namespace mode is enabled
-	if cfg.namespaceMode {
-		ns, nsErr := lang.GetFileNamespace(fsys, absPath)
-		if nsErr == nil && ns != "" {
-			return ensureExactNode(nodes, ns, ns)
+	kept := make(map[string]bool, len(existing))
+	order := make([]string, 0, len(keys))
+	for _, key := range existing {
+		if present[key] && !kept[key] {
+			kept[key] = true
+			order = append(order, key)
 		}
 	}
-
-	if existingID := existingOwningNodeForPath(nodes, rel); existingID != "" {
-		return existingID, false, nil
-	}
-	if !lang.SupportsFileGlobs() {
-		dirPath := absPath
-		if _, statErr := fsys.Stat(absPath); statErr != nil {
-			dirPath = filepath.Dir(absPath)
-		}
-		return ensureDirNode(nodes, contractDir, dirPath)
-	}
-
-	return ensureExactNode(nodes, rel, rel)
-}
-
-func startsWith(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-}
-
-// appendNodeOrder keeps the declaration order of the nodes already in the
-// contract and appends the newly created ones.
-func appendNodeOrder(existing []string, nodes map[string]string) []string {
-	order := make([]string, 0, len(nodes))
-	seen := make(map[string]bool, len(nodes))
-	for _, id := range existing {
-		if _, ok := nodes[id]; ok && !seen[id] {
-			seen[id] = true
-			order = append(order, id)
-		}
-	}
-	added := make([]string, 0, len(nodes)-len(order))
-	for id := range nodes {
-		if !seen[id] {
-			added = append(added, id)
+	added := make([]string, 0, len(keys)-len(order))
+	for _, key := range keys {
+		if !kept[key] {
+			added = append(added, key)
 		}
 	}
 	sort.Strings(added)
 	return append(order, added...)
 }
 
-func appendEdgeOrder(existing []string, edges map[string]map[string]bool) []string {
-	seen := make(map[string]bool, len(existing))
-	for _, key := range existing {
-		if src, dst, ok := splitEdgeKey(key); ok {
-			if dsts, ok := edges[src]; ok && dsts[dst] {
-				seen[key] = true
-			}
-		}
+func nodeKeys(nodes map[string]string) []string {
+	keys := make([]string, 0, len(nodes))
+	for id := range nodes {
+		keys = append(keys, id)
 	}
-	result := make([]string, 0, len(edges))
-	for _, key := range existing {
-		if seen[key] {
-			result = append(result, key)
-		}
-	}
-	var newEdges []string
-	for src, dsts := range edges {
-		for dst := range dsts {
-			key := src + "\t" + dst
-			if !seen[key] {
-				newEdges = append(newEdges, key)
-			}
-		}
-	}
-	sort.Strings(newEdges)
-	result = append(result, newEdges...)
-	return result
+	return keys
 }
 
-func splitEdgeKey(key string) (src, dst string, ok bool) {
-	idx := strings.IndexByte(key, '\t')
-	if idx < 0 {
-		return "", "", false
+func edgeKeys(edges map[string]map[string]bool) []string {
+	keys := make([]string, 0, len(edges))
+	for src, dsts := range edges {
+		for dst := range dsts {
+			keys = append(keys, src+"\t"+dst)
+		}
 	}
-	return key[:idx], key[idx+1:], true
+	return keys
 }

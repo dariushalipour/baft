@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/dariushalipour/baft/internal/application/service"
@@ -15,6 +16,7 @@ import (
 
 type ContractValidationResult struct {
 	Errors                []port.Violation
+	Cycles                [][]string
 	HasOverlapError       bool
 	HasDuplicateGlobError bool
 	HasInvalidGlobError   bool
@@ -37,7 +39,9 @@ func validateContractGraph(contractPath string, g *graph.Graph, witnesses func(c
 
 	result.Errors = append(result.Errors, emptyGlobErrors(g, contractPath)...)
 	result.Errors = append(result.Errors, undefinedEdgeNodeErrors(g, contractPath)...)
-	result.Errors = append(result.Errors, cycleErrors(g, contractPath)...)
+	cycleErrs, cycles := cycleErrors(g, contractPath)
+	result.Errors = append(result.Errors, cycleErrs...)
+	result.Cycles = cycles
 
 	duplicateGlobErrors := duplicateNodeGlobErrors(g, contractPath)
 	if len(duplicateGlobErrors) > 0 {
@@ -95,7 +99,9 @@ func undefinedEdgeNodeErrors(g *graph.Graph, contractPath string) []port.Violati
 	return errs
 }
 
-func cycleErrors(g *graph.Graph, contractPath string) []port.Violation {
+// cycleErrors reports every distinct cycle in g, both as violations and as
+// the typed node sequences that produced them.
+func cycleErrors(g *graph.Graph, contractPath string) ([]port.Violation, [][]string) {
 	type state byte
 	const (
 		white state = iota
@@ -110,6 +116,7 @@ func cycleErrors(g *graph.Graph, contractPath string) []port.Violation {
 
 	path := make([]string, 0, len(g.Nodes))
 	var errs []port.Violation
+	var cycles [][]string
 	seenCycles := make(map[string]struct{})
 
 	var dfs func(node string)
@@ -130,18 +137,13 @@ func cycleErrors(g *graph.Graph, contractPath string) []port.Violation {
 					}
 				}
 				if cycleStart >= 0 {
-					cycleStr := ""
-					for i := cycleStart; i < len(path); i++ {
-						if i > cycleStart {
-							cycleStr += " → "
-						}
-						cycleStr += path[i]
-					}
-					cycleStr += " → " + dst
+					cycle := append(append([]string{}, path[cycleStart:]...), dst)
+					cycleStr := strings.Join(cycle, " → ")
 					if _, ok := seenCycles[cycleStr]; !ok {
 						seenCycles[cycleStr] = struct{}{}
 						line := g.EdgeLines[path[len(path)-1]+"\t"+dst]
 						errs = append(errs, makeCycleError(contractPath, line, cycleStr))
+						cycles = append(cycles, cycle)
 					}
 				}
 			} else if c == white {
@@ -163,7 +165,7 @@ func cycleErrors(g *graph.Graph, contractPath string) []port.Violation {
 		}
 	}
 
-	return errs
+	return errs, cycles
 }
 
 func duplicateNodeGlobErrors(g *graph.Graph, cfgPath string) []port.Violation {

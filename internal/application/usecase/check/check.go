@@ -160,6 +160,20 @@ func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo p
 	return RunWithContext(context.Background(), fsys, rootDir, languages, repo, discovery)
 }
 
+// RunCapsule checks a single capsule against its contracts. It skips capsule
+// discovery and the walk of unrelated capsules, so callers that already know
+// which capsule they care about pay for that capsule only. fsys must already
+// carry the caller's ignore rules; nestedDirs lists capsule dirs nested inside
+// this one.
+func RunCapsule(fsys port.FileSystem, rootDir string, capsule port.Capsule, lang port.Language, repo port.GraphRepository, nestedDirs []string) (*port.CapsuleResult, error) {
+	res, err := checkCapsule(context.Background(), fsys, capsule, lang, repo, rootDir, nestedDirs)
+	if err != nil || res == nil {
+		return nil, err
+	}
+	public := res.toPublic(port.Label(capsule))
+	return &public, nil
+}
+
 func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) *port.CheckResult {
 	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
 		RootDir:           rootDir,

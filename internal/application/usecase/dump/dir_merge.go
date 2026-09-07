@@ -2,6 +2,7 @@ package dump
 
 import (
 	"path/filepath"
+	"strings"
 
 	"github.com/dariushalipour/baft/internal/domain/graph"
 	"github.com/dariushalipour/baft/internal/port"
@@ -72,7 +73,7 @@ func resolveFileImports(fsys port.FileSystem, imports []port.ImportSpec, fileRel
 			continue
 		}
 
-		if targetAbs != contractDirClean && !startsWith(targetAbs, contractDirClean+string(filepath.Separator)) {
+		if targetAbs != contractDirClean && !strings.HasPrefix(targetAbs, contractDirClean+string(filepath.Separator)) {
 			continue
 		}
 		dstRel, _ := filepath.Rel(contractDirClean, targetAbs)
@@ -180,14 +181,6 @@ func (cfg draftConfig) isExpandedDir(dir string) bool {
 func cloneNodes(nodes map[string]string) map[string]string {
 	cloned := make(map[string]string, len(nodes))
 	for id, glob := range nodes {
-		cloned[id] = glob
-	}
-	return cloned
-}
-
-func cloneNodeDisplays(displays map[string]string) map[string]string {
-	cloned := make(map[string]string, len(displays))
-	for id, glob := range displays {
 		cloned[id] = glob
 	}
 	return cloned

@@ -33,8 +33,8 @@ type contractReport struct {
 	nodes        int
 	edges        int
 	isNew        bool
-	amendNodes   int
-	amendEdges   int
+	amendNodes   []string
+	amendEdges   []string
 	hasAmendDiff bool
 }
 
@@ -544,7 +544,28 @@ type dumpWorld struct {
 	errors      []dump.DumpError
 	err         error
 	readErrors  map[string]string
+	dryRun      bool
 	logBuf      bytes.Buffer
+}
+
+// amendReport finds the amend diff reported for one contract path.
+func amendReport(w *dumpWorld, path string) (contractReport, error) {
+	expectedAbs := resolveAssertionPath(w.ws.RootDir, w.ws.WorkingDir, path)
+	expectedRel, _ := filepath.Rel(w.ws.RootDir, expectedAbs)
+	expectedRel = filepath.ToSlash(expectedRel)
+	for _, r := range w.ws.Reports {
+		rp := r.contractPath
+		if filepath.IsAbs(rp) {
+			rp, _ = filepath.Rel(w.ws.RootDir, rp)
+		}
+		if filepath.ToSlash(rp) == expectedRel {
+			if !r.hasAmendDiff {
+				return r, fmt.Errorf("contract at %s: expected amend diff, got none", path)
+			}
+			return r, nil
+		}
+	}
+	return contractReport{}, fmt.Errorf("no contract report found for %s", path)
 }
 
 type dumpWorldKey struct{}
@@ -646,30 +667,51 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 
 	sc.Step(`^Contract at "([^"]+)" added (\d+) nodes and (\d+) edges$`,
 		func(ctx context.Context, path string, nodes, edges int) error {
-			w := dw(ctx)
-			expectedAbs := resolveAssertionPath(w.ws.RootDir, w.ws.WorkingDir, path)
-			expectedRel, _ := filepath.Rel(w.ws.RootDir, expectedAbs)
-			expectedRel = filepath.ToSlash(expectedRel)
-			for _, r := range w.ws.Reports {
-				rp := r.contractPath
-				if filepath.IsAbs(rp) {
-					rp, _ = filepath.Rel(w.ws.RootDir, rp)
-				}
-				rp = filepath.ToSlash(rp)
-				if rp == expectedRel {
-					if !r.hasAmendDiff {
-						return fmt.Errorf("contract at %s: expected amend diff, got none", path)
-					}
-					if r.amendNodes != nodes {
-						return fmt.Errorf("contract at %s: expected %d amended nodes, got %d", path, nodes, r.amendNodes)
-					}
-					if r.amendEdges != edges {
-						return fmt.Errorf("contract at %s: expected %d amended edges, got %d", path, edges, r.amendEdges)
-					}
+			r, err := amendReport(dw(ctx), path)
+			if err != nil {
+				return err
+			}
+			if len(r.amendNodes) != nodes {
+				return fmt.Errorf("contract at %s: expected %d amended nodes, got %v", path, nodes, r.amendNodes)
+			}
+			if len(r.amendEdges) != edges {
+				return fmt.Errorf("contract at %s: expected %d amended edges, got %v", path, edges, r.amendEdges)
+			}
+			return nil
+		})
+
+	sc.Step(`^Contract at "([^"]+)" added the edge "([^"]+)"$`,
+		func(ctx context.Context, path, edge string) error {
+			r, err := amendReport(dw(ctx), path)
+			if err != nil {
+				return err
+			}
+			for _, added := range r.amendEdges {
+				if added == edge {
 					return nil
 				}
 			}
-			return fmt.Errorf("no contract report found for %s", path)
+			return fmt.Errorf("contract at %s: expected added edge %q, got %v", path, edge, r.amendEdges)
+		})
+
+	sc.Step(`^Contract at "([^"]+)" added the node "([^"]+)"$`,
+		func(ctx context.Context, path, node string) error {
+			r, err := amendReport(dw(ctx), path)
+			if err != nil {
+				return err
+			}
+			for _, added := range r.amendNodes {
+				if added == node {
+					return nil
+				}
+			}
+			return fmt.Errorf("contract at %s: expected added node %q, got %v", path, node, r.amendNodes)
+		})
+
+	sc.Step(`^the dump only reports what it would change$`,
+		func(ctx context.Context) error {
+			dw(ctx).dryRun = true
+			return nil
 		})
 
 	sc.Step(`^the dump runs from "([^"]*)"$`,
@@ -711,7 +753,11 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 				lang.Register(discovery)
 			}
 
-			result, runErr := dump.RunWith(w.ws.FSys, rootDir, w.ws.Langs, &mermaid.MermaidRepository{}, discovery, &w.logBuf)
+			result, runErr := dump.RunWithOptions(w.ws.FSys, rootDir, w.ws.Langs, &mermaid.MermaidRepository{}, discovery, dump.Options{
+				Save:   port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone},
+				DryRun: w.dryRun,
+				Log:    &w.logBuf,
+			})
 			if runErr != nil {
 				w.err = runErr
 				return nil
@@ -735,9 +781,6 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 						r.hasAmendDiff = true
 						r.amendNodes = c.AmendDiff.Nodes
 						r.amendEdges = c.AmendDiff.Edges
-					} else {
-						r.amendNodes = -1
-						r.amendEdges = -1
 					}
 					w.ws.Reports = append(w.ws.Reports, r)
 				}

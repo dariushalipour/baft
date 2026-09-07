@@ -246,8 +246,7 @@ func TestRunWithOptionsPassesColorPaletteToSave(t *testing.T) {
 		[]port.Language{lang},
 		repo,
 		discovery,
-		port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone},
-		io.Discard,
+		Options{Save: port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone}, Log: io.Discard},
 	)
 	if err != nil {
 		t.Fatalf("RunWithOptions: %v", err)
@@ -296,8 +295,7 @@ func TestRunWithOptionsWritesGeneratedStyleComment(t *testing.T) {
 		[]port.Language{lang},
 		&mermaid.MermaidRepository{},
 		discovery,
-		port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono},
-		io.Discard,
+		Options{Save: port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono}, Log: io.Discard},
 	)
 	if err != nil {
 		t.Fatalf("RunWithOptions: %v", err)
@@ -344,27 +342,24 @@ namespace MyApp.Domain
 		}
 	}
 
-	lang := &csharpLang.Language{}
-	capsule := port.Capsule{Dir: rootDir}
-	contractPath := rootDir + "/BAFT.md"
-
+	cc := capsuleCtx{fsys: fsys, capsule: port.Capsule{Dir: rootDir}, lang: &csharpLang.Language{}}
+	cfg := draftConfig{namespaceMode: true}
 	nodes := map[string]string{}
 
 	// Test with existing file: should succeed
 	violation := port.Violation{File: rootDir + "/Api/Controller.cs"}
-	_, err := applyNoNodeViolation(nodes, fsys, capsule, contractPath, lang, violation, draftConfig{namespaceMode: true})
-	if err != nil {
+	if err := applyNoNodeViolation(nodes, cc, rootDir, violation, cfg); err != nil {
 		t.Fatalf("applyNoNodeViolation with existing file: %v", err)
 	}
 
-	// Test with non-existent file: should silently return false, nil
+	// Test with non-existent file: should silently do nothing
 	// (os.IsNotExist is expected for files that have been deleted)
+	before := len(nodes)
 	violation = port.Violation{File: rootDir + "/Deleted/File.cs"}
-	changed, err := applyNoNodeViolation(nodes, fsys, capsule, contractPath, lang, violation, draftConfig{namespaceMode: true})
-	if err != nil {
+	if err := applyNoNodeViolation(nodes, cc, rootDir, violation, cfg); err != nil {
 		t.Fatalf("applyNoNodeViolation with non-existent file should not error: %v", err)
 	}
-	if changed {
+	if len(nodes) != before {
 		t.Fatal("applyNoNodeViolation with non-existent file should not change nodes")
 	}
 }
@@ -436,5 +431,56 @@ public class Helper { }`,
 		if srcID == "" {
 			t.Error("empty string srcID produced — graph corruption risk")
 		}
+	}
+}
+
+// A dry run must report the amendment it would make without touching the tree.
+func TestRunWithOptions_DryRunReportsWithoutWriting(t *testing.T) {
+	const rootDir = "/Users/jane/baft"
+	const contract = "```mermaid\nflowchart TD\n  api_slash_entry_dot_ts[\"api/entry.ts\"]\n  usecase_slash_consumer_dot_ts[\"usecase/consumer.ts\"]\n```\n"
+
+	fsys := memfs.New()
+	files := map[string]string{
+		rootDir + "/package.json":        `{"name":"@myorg/app"}`,
+		rootDir + "/tsconfig.json":       `{"compilerOptions":{"baseUrl":"."}}`,
+		rootDir + "/BAFT.md":             contract,
+		rootDir + "/api/entry.ts":        "import { consume } from \"../usecase/consumer\"\n\nexport function run() {\n  return consume()\n}\n",
+		rootDir + "/usecase/consumer.ts": "export function consume() {\n  return \"ok\"\n}\n",
+	}
+	for path, content := range files {
+		if err := fsys.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+
+	discovery := service.NewCapsuleDiscovery()
+	lang := &typescript.Language{}
+	lang.Register(discovery)
+
+	result, err := RunWithOptions(fsys, rootDir, []port.Language{lang}, &mermaid.MermaidRepository{}, discovery, Options{DryRun: true, Log: io.Discard})
+	if err != nil {
+		t.Fatalf("RunWithOptions: %v", err)
+	}
+	if len(result.Contracts) != 1 || result.Contracts[0].AmendDiff == nil {
+		t.Fatalf("expected one amended contract, got %#v", result.Contracts)
+	}
+	want := []string{"api/entry.ts --> usecase/consumer.ts"}
+	if !reflect.DeepEqual(result.Contracts[0].AmendDiff.Edges, want) {
+		t.Fatalf("added edges = %v, want %v", result.Contracts[0].AmendDiff.Edges, want)
+	}
+	after, err := fsys.ReadFile(rootDir + "/BAFT.md")
+	if err != nil {
+		t.Fatalf("read BAFT.md: %v", err)
+	}
+	if string(after) != contract {
+		t.Fatalf("dry run rewrote the contract:\n%s", after)
+	}
+}
+
+func TestAppendOrderKeepsUserOrderAndAppendsAdditions(t *testing.T) {
+	got := appendOrder([]string{"zeta", "alpha", "dropped"}, []string{"alpha", "zeta", "new", "beta"})
+	want := []string{"zeta", "alpha", "beta", "new"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("appendOrder() = %v, want %v", got, want)
 	}
 }

@@ -15,8 +15,8 @@ func shouldTrySelectiveExpansion(cfg draftConfig, err error) bool {
 	return cfg.mode == draftModeMergedDirs && isFreshDraftCycle(err)
 }
 
-func retryCycleExpansion(fsys port.FileSystem, rootDir string, capsule port.Capsule, lang port.Language, repo port.GraphRepository, contractDir string, contractPath string, baseCfg draftConfig, cycleErr error) (*ContractDump, *AmendDiff, error, bool) {
-	candidates := cycleExpansionCandidates(fsys, contractDir, lang, cycleErr, baseCfg)
+func retryCycleExpansion(cc capsuleCtx, contractDir string, contractPath string, baseCfg draftConfig, cycleErr error) (*ContractDump, *AmendDiff, error, bool) {
+	candidates := cycleExpansionCandidates(cc.fsys, contractDir, cc.lang, cycleErr, baseCfg)
 	if len(candidates) == 0 {
 		return nil, nil, nil, false
 	}
@@ -27,12 +27,12 @@ func retryCycleExpansion(fsys port.FileSystem, rootDir string, capsule port.Caps
 	var lastRes *ContractDump
 	var lastErr error
 	for _, cfg := range plans {
-		res, err := dumpCapsule(fsys, capsule, lang, repo, rootDir, contractDir, cfg)
+		res, err := dumpCapsule(cc, contractDir, cfg)
 		if err != nil {
 			return nil, nil, err, true
 		}
 		lastRes = res
-		diff, err := amendContract(fsys, rootDir, capsule, lang, repo, contractPath, cfg)
+		diff, err := amendDraft(cc, contractPath, cfg)
 		if err == nil {
 			return res, diff, nil, true
 		}
@@ -49,13 +49,10 @@ func cycleExpansionCandidates(fsys port.FileSystem, contractDir string, lang por
 	if !errors.As(err, &loadErr) {
 		return nil
 	}
+	unique := make([]string, 0, len(loadErr.cycleGroups))
+	seen := map[string]bool{}
 	for _, cycle := range loadErr.cycleGroups {
-		unique := make([]string, 0, len(cycle))
-		seen := map[string]bool{}
-		for idx, nodeID := range cycle {
-			if idx == len(cycle)-1 && len(cycle) > 1 && nodeID == cycle[0] {
-				continue
-			}
+		for _, nodeID := range cycle {
 			if seen[nodeID] || cfg.isExpandedDir(nodeID) {
 				continue
 			}
@@ -65,20 +62,16 @@ func cycleExpansionCandidates(fsys port.FileSystem, contractDir string, lang por
 			seen[nodeID] = true
 			unique = append(unique, nodeID)
 		}
-		if len(unique) == 0 {
-			continue
-		}
-		sort.Slice(unique, func(i, j int) bool {
-			left := scannableFileCount(fsys, contractDir, unique[i], lang)
-			right := scannableFileCount(fsys, contractDir, unique[j], lang)
-			if left != right {
-				return left < right
-			}
-			return unique[i] < unique[j]
-		})
-		return unique
 	}
-	return nil
+	sort.Slice(unique, func(i, j int) bool {
+		left := scannableFileCount(fsys, contractDir, unique[i], lang)
+		right := scannableFileCount(fsys, contractDir, unique[j], lang)
+		if left != right {
+			return left < right
+		}
+		return unique[i] < unique[j]
+	})
+	return unique
 }
 
 func expansionPlans(baseCfg draftConfig, candidates []string) []draftConfig {
@@ -98,35 +91,7 @@ func isFreshDraftCycle(err error) bool {
 	if !errors.As(err, &loadErr) {
 		return false
 	}
-	return loadErr.kind == "circular-dependency" && strings.Contains(loadErr.message, "circular dependency")
-}
-
-func summarizeContractLoadError(err error) string {
-	msg := strings.TrimSpace(err.Error())
-	if strings.Contains(msg, "circular dependency") {
-		return "circular dependency"
-	}
-	return msg
-}
-
-func parseCycleGroups(msg string) [][]string {
-	parts := strings.Split(strings.TrimSpace(msg), ";")
-	cycles := make([][]string, 0, len(parts))
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		if !strings.HasPrefix(part, "circular dependency: ") {
-			continue
-		}
-		body := strings.TrimSpace(strings.TrimPrefix(part, "circular dependency: "))
-		if body == "" {
-			continue
-		}
-		nodes := strings.Split(body, " → ")
-		if len(nodes) >= 2 {
-			cycles = append(cycles, nodes)
-		}
-	}
-	return cycles
+	return loadErr.kind == "circular-dependency"
 }
 
 func makeDumpError(label string, err error) DumpError {
@@ -164,14 +129,6 @@ func contractValidationKind(errors []port.Violation) string {
 		}
 	}
 	return errors[0].Rule
-}
-
-func cycleGroupsFromValidationErrors(errors []port.Violation) [][]string {
-	parts := make([]string, 0, len(errors))
-	for _, violation := range errors {
-		parts = append(parts, normalizeValidationMessage(violation.Message))
-	}
-	return parseCycleGroups(strings.Join(parts, "; "))
 }
 
 func normalizeValidationMessage(message string) string {

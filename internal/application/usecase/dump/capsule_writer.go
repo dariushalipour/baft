@@ -35,7 +35,8 @@ func resolveTargetNodeKey(fsys port.FileSystem, absPath string, rel string, lang
 	return nodeKey(rel, false)
 }
 
-func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo port.GraphRepository, rootDir string, contractDir string, cfg draftConfig) (*ContractDump, error) {
+func dumpCapsule(cc capsuleCtx, contractDir string, cfg draftConfig) (*ContractDump, error) {
+	fsys, p, lang := cc.fsys, cc.capsule, cc.lang
 	nodes := map[string]string{}
 	edges := map[string]map[string]bool{}
 	filesEncountered := 0
@@ -147,7 +148,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 		nodes, edges = mergeDirectoryNodes(fsys, fileRecords, p, lang, cfg)
 	}
 	if contractDir == p.Dir {
-		if err := addBoundaryRelations(fsys, p, lang, contractDir, nodes, edges, cfg, namespaceMap); err != nil {
+		if err := addBoundaryRelations(cc, contractDir, nodes, edges, cfg, namespaceMap); err != nil {
 			return nil, err
 		}
 	}
@@ -172,7 +173,7 @@ func dumpCapsule(fsys port.FileSystem, p port.Capsule, lang port.Language, repo 
 	}
 
 	contractPath := filepath.Join(contractDir, port.ContractFile)
-	content := repo.Save(g, cfg.saveOpts)
+	content := cc.repo.Save(g, cfg.saveOpts)
 	if err := fsys.WriteFile(contractPath, []byte(content), 0o644); err != nil {
 		return nil, err
 	}
@@ -209,7 +210,8 @@ func resolveTargetByNamespace(fsys port.FileSystem, spec port.ImportSpec, c port
 	return filepath.Clean(targetAbs), true
 }
 
-func addBoundaryRelations(fsys port.FileSystem, capsule port.Capsule, lang port.Language, contractDir string, nodes map[string]string, edges map[string]map[string]bool, cfg draftConfig, namespaceMap map[string]string) error {
+func addBoundaryRelations(cc capsuleCtx, contractDir string, nodes map[string]string, edges map[string]map[string]bool, cfg draftConfig, namespaceMap map[string]string) error {
+	fsys, capsule, lang := cc.fsys, cc.capsule, cc.lang
 	return fsys.WalkDir(context.Background(), contractDir, func(abs string, d os.DirEntry) error {
 		if d.IsDir() {
 			return nil
@@ -276,12 +278,10 @@ func addBoundaryRelations(fsys port.FileSystem, capsule port.Capsule, lang port.
 					continue
 				}
 			} else {
-				srcID, _, err = boundaryNodeForDraft(nodes, fsys, capsule, contractDir, lang, abs, cfg)
-				if err != nil {
+				if srcID, err = ensureNodeForFile(nodes, cc, contractDir, abs, cfg, true); err != nil {
 					return err
 				}
-				dstID, _, err = boundaryNodeForDraft(nodes, fsys, capsule, contractDir, lang, targetAbs, cfg)
-				if err != nil {
+				if dstID, err = ensureNodeForFile(nodes, cc, contractDir, targetAbs, cfg, true); err != nil {
 					return err
 				}
 			}

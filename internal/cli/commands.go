@@ -68,6 +68,7 @@ func (a *app) dump(args []string) int {
 	var langs stringList
 	fset := newFlagSet("dump")
 	palette := paletteFlag(fset)
+	dryRun := fset.Bool("dry-run", false, "report what would change without writing")
 	fset.Var(&langs, "lang", "language filter (repeatable)")
 
 	operands, err := parse(fset, args)
@@ -87,7 +88,8 @@ func (a *app) dump(args []string) int {
 		return a.usageErr("dump", err)
 	}
 
-	result, err := dump.RunWithOptions(realfs.New(), root, languages, &mermaid.MermaidRepository{}, newDiscovery(languages), saveOpts, a.errOut)
+	opts := dump.Options{Save: saveOpts, DryRun: *dryRun, Log: a.errOut}
+	result, err := dump.RunWithOptions(realfs.New(), root, languages, &mermaid.MermaidRepository{}, newDiscovery(languages), opts)
 	if err != nil {
 		return a.fail("error: %v", err)
 	}
@@ -96,10 +98,22 @@ func (a *app) dump(args []string) int {
 		if c.IsNew {
 			status = "new"
 		}
-		if c.AmendDiff != nil {
-			fmt.Fprintf(a.out, "[%s] %s (+%d nodes, +%d edges)\n", status, c.ContractPath, c.AmendDiff.Nodes, c.AmendDiff.Edges)
-		} else {
+		if *dryRun {
+			status = "would amend"
+			if c.IsNew {
+				status = "would create"
+			}
+		}
+		if c.AmendDiff == nil {
 			fmt.Fprintf(a.out, "[%s] %s (%d files, %d nodes, %d edges)\n", status, c.ContractPath, c.FilesScanned, c.Nodes, c.Edges)
+			continue
+		}
+		fmt.Fprintf(a.out, "[%s] %s (+%d nodes, +%d edges)\n", status, c.ContractPath, len(c.AmendDiff.Nodes), len(c.AmendDiff.Edges))
+		for _, node := range c.AmendDiff.Nodes {
+			fmt.Fprintf(a.out, "    + node %s\n", node)
+		}
+		for _, edge := range c.AmendDiff.Edges {
+			fmt.Fprintf(a.out, "    + edge %s\n", edge)
 		}
 	}
 	if len(result.Errors) > 0 {

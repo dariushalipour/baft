@@ -542,6 +542,88 @@ Feature: Dump BAFT.md from actual imports
       ```
       """
 
+  Scenario: Dump names every node and edge it adds to an existing contract
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ domain/
+         │  └─ model.go
+         └─ usecase/
+            └─ create.go
+      """
+    Given file "go.mod" has content "module example.com/named"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        usecases["internal/usecase"]
+      ```
+      """
+    Given file "internal/domain/model.go" has content:
+      """go
+      package domain
+      type User struct{}
+      """
+    Given file "internal/usecase/create.go" has content:
+      """go
+      package usecase
+      
+      import "example.com/named/internal/domain"
+      
+      func Create() domain.User { return domain.User{} }
+      """
+    Given the dump uses the "go" language adapter
+    When the dump runs from "/Users/jane/baft"
+    Then Contract at "BAFT.md" added 1 nodes and 1 edges
+    And Contract at "BAFT.md" added the node "internal/domain"
+    And Contract at "BAFT.md" added the edge "internal/usecase --> internal/domain"
+
+  Scenario: A dry-run dump reports the amendment without writing it
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ internal/
+         ├─ domain/
+         │  └─ model.go
+         └─ usecase/
+            └─ create.go
+      """
+    Given file "go.mod" has content "module example.com/dryrun"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        usecases["internal/usecase"]
+      ```
+      """
+    Given file "internal/domain/model.go" has content:
+      """go
+      package domain
+      type User struct{}
+      """
+    Given file "internal/usecase/create.go" has content:
+      """go
+      package usecase
+      
+      import "example.com/dryrun/internal/domain"
+      
+      func Create() domain.User { return domain.User{} }
+      """
+    Given the dump uses the "go" language adapter
+    And the dump only reports what it would change
+    When the dump runs from "/Users/jane/baft"
+    Then Contract at "BAFT.md" added the edge "internal/usecase --> internal/domain"
+    And file "BAFT.md" should be:
+      """config
+      ```mermaid
+      flowchart TD
+        usecases["internal/usecase"]
+      ```
+      """
+
   Scenario: Dump mixed - some contracts get new BAFT.md, existing ones get gap-filled
     Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree

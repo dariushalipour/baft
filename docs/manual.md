@@ -142,4 +142,5 @@ Common error messages:
 - **Claim New Files:** Ensure every new file is covered by a node glob.
 - **Scope Respect:** Authorize sibling imports in the **parent** contract, never the child.
 - **Atomic Updates:** Update the contract file in the same commit as the code changes that require it.
+- **Dump Widens:** `baft dump` amends an existing contract by allowing every import it currently forbids. Never run it to "refresh" a contract; use `baft dump --dry-run` and fix the import instead.
 - **Final Check:** Always run `baft check` before finishing.
