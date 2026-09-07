@@ -353,5 +353,4 @@ flowchart TD
 | npm/TypeScript | `package.json` directory     | All `*.ts`, `*.tsx` files in the package       |
 | Rust           | `Cargo.toml` (per crate)     | All `*.rs` files under `src/` in the crate     |
 | Dart           | `pubspec.yaml` directory     | All `*.dart` files under `lib/` in the package |
-| Java           | `build.gradle.kts`, `build.gradle`, or `pom.xml` directory | All `*.java` files in source sets |
-| Gradle/Kotlin  | `build.gradle.kts` directory | All `*.kt` files matching source set prefixes  |
+| Java/Kotlin    | `build.gradle.kts`, `build.gradle`, or `pom.xml` directory | All `*.java` and `*.kt` files in source sets |

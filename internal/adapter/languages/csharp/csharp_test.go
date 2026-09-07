@@ -184,30 +184,6 @@ func TestResolveInternalTarget(t *testing.T) {
 	}
 }
 
-func TestIsInternalCapsule(t *testing.T) {
-	cases := []struct {
-		spec string
-		base string
-		want bool
-	}{
-		{"MyApp", "MyApp", true},
-		{"MyApp.Domain", "MyApp", true},
-		{"MyApp.Domain.Entities", "MyApp", true},
-		{"MyApp2.Domain", "MyApp", false},
-		{"MyApp2", "MyApp", false},
-		{"MyAppApi.Controller", "MyApp", false},
-		{"Other.Domain", "MyApp", false},
-		{"My", "MyApp", false},
-		{"MyApp.", "MyApp", false},
-		{"", "MyApp", false},
-	}
-	for _, c := range cases {
-		if got := isInternalCapsule(c.spec, c.base); got != c.want {
-			t.Errorf("isInternalCapsule(%q, %q) = %v, want %v", c.spec, c.base, got, c.want)
-		}
-	}
-}
-
 // TestParseImports_ColEnd_AliasedImport verifies that ColEnd covers the visible
 // alias token (e.g., "Db"), not the resolved namespace ("MyApp.Infra.Database").
 // Regression: ColEnd was incorrectly using the resolved namespace length.

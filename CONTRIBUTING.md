@@ -38,8 +38,7 @@ baft/
         │   ├── golang/golang.go
         │   ├── dart/dart.go
         │   ├── typescript/typescript.go
-        │   ├── java/java.go
-        │   ├── kotlin/kotlin.go
+        │   ├── jvm/jvm.go                          # Java + Kotlin (one Gradle/Maven capsule)
         │   ├── python/python.go
         │   └── rust/rust.go
         ├── fs/                                      # Filesystem adapters
@@ -180,49 +179,21 @@ re := regexp.MustCompile(`import\s+([A-Za-z_][A-Za-z0-9_.]*)\.\*?`)
 
 If an optional part of your pattern (like `.*` wildcards) sits inside a capture group, it becomes part of the captured string. Keep optional suffixes outside the group, or strip them in code after capture.
 
-### Capsule prefix matching requires word boundaries
+### Dot-separated namespaces have shared helpers
 
-```go
-// WRONG — "com.example2" matches "com.example"
-strings.HasPrefix(spec, basePkg)
+`internal/adapter/languages/internal/namespaces` owns the two traps every
+dot-namespaced adapter (C#, JVM, Python) used to re-implement — and get wrong.
+Call them instead of writing your own:
 
-// RIGHT — check the next character is a dot
-strings.HasPrefix(spec, basePkg) && spec[len(basePkg)] == '.'
-```
-
-`strings.HasPrefix("com.example2", "com.example")` is `true`. Always verify the character after the prefix is `.` (or end-of-string for exact matches).
-
-### Cumulative prefix algorithms need running state
-
-Finding a common capsule prefix across multiple paths requires building up the candidate cumulatively:
-
-```go
-// WRONG — checks each part in isolation
-for _, p := range parts {
-    for _, path := range allPaths {
-        if !strings.HasPrefix(path, p+"/") { /* fail */ }
-    }
-}
-
-// RIGHT — builds cumulative prefix
-candidate := []string{}
-for _, p := range parts {
-    candidate = append(candidate, p)
-    prefix := strings.Join(candidate, "/") + "/"
-    for _, path := range allPaths {
-        if !strings.HasPrefix(path, prefix) && path != strings.Join(candidate, "/") {
-            goto done
-        }
-    }
-done:
-}
-```
-
-Checking each path segment individually doesn't work — you need to verify the full accumulated prefix against every path.
+- `IsInternal(spec, base)` — `strings.HasPrefix("com.example2", "com.example")`
+  is `true`, so the next character must be a `.` (or the strings must be equal).
+- `CommonPrefix(fsys, srcDirs, exts)` — the capsule ID is the longest *segment*
+  prefix shared by every source directory; comparing raw string prefixes makes
+  `app` swallow `application`.
 
 ### Kotlin multi-platform has many source sets
 
-Kotlin isn't just `src/main/kotlin`. Multi-platform projects use `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their `*Test` counterparts. Your `IsScannableFile` and `findBaseCapsule` must recognize all of them.
+Kotlin isn't just `src/main/kotlin`. Multi-platform projects use `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their `*Test` counterparts. The JVM adapter therefore takes every `src/<sourceSet>/{java,kotlin}` directory (minus test source sets) and derives the capsule ID from their combined package prefix.
 
 ### Generated files need explicit exclusion
 

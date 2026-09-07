@@ -368,30 +368,6 @@ func TestResolveInternalTarget(t *testing.T) {
 	}
 }
 
-func TestIsInternalCapsule(t *testing.T) {
-	tests := []struct {
-		spec string
-		pkg  string
-		want bool
-	}{
-		{"mypackage", "mypackage", true},
-		{"mypackage.services", "mypackage", true},
-		{"mypackage.api.routes.v2", "mypackage", true},
-		{"mypackage_extra", "mypackage", false},
-		{"mypackages.auth", "mypackage", false},
-		{"other.services", "mypackage", false},
-		{"mypackageservices.foo", "mypackage", false},
-		{"mypackage.", "mypackage", false},
-		{"mypackage.x.", "mypackage", false},
-	}
-	for _, tt := range tests {
-		got := isInternalCapsule(tt.spec, tt.pkg)
-		if got != tt.want {
-			t.Errorf("isInternalCapsule(%q, %q) = %v, want %v", tt.spec, tt.pkg, got, tt.want)
-		}
-	}
-}
-
 func TestResolveSourcePrefix(t *testing.T) {
 	tests := []struct {
 		fileRel string

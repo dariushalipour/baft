@@ -1,16 +1,13 @@
 package python
 
 import (
-	"context"
-	"fmt"
-	"io/fs"
-	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/dariushalipour/baft/internal/adapter/languages/internal/lineoffsets"
+	"github.com/dariushalipour/baft/internal/adapter/languages/internal/namespaces"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -18,8 +15,10 @@ type Language struct{}
 
 func (Language) Name() string { return "python" }
 
+var exts = []string{".py", ".pyi"}
+
 func (Language) IsScannableFile(rel string) bool {
-	return strings.HasSuffix(rel, ".py") || strings.HasSuffix(rel, ".pyi")
+	return strings.HasSuffix(rel, exts[0]) || strings.HasSuffix(rel, exts[1])
 }
 
 var importRe = regexp.MustCompile(`(?m)^\s*(?:from\s+(\.+(?:[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s+import|import\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*))`)
@@ -368,7 +367,7 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 		return resolveRelativeImport(spec.Path, pkg, fileRel)
 	}
 
-	if !isInternalCapsule(spec.Path, pkg) {
+	if !namespaces.IsInternal(spec.Path, pkg) {
 		return "", false
 	}
 	srcPrefix := resolveSourcePrefix(fileRel)
@@ -453,20 +452,6 @@ func resolveSourcePrefix(fileRel string) string {
 	return ""
 }
 
-func isInternalCapsule(spec, pkg string) bool {
-	if spec == pkg {
-		return true
-	}
-	if len(spec) <= len(pkg) {
-		return false
-	}
-	if !strings.HasPrefix(spec, pkg) {
-		return false
-	}
-	next := spec[len(pkg)]
-	return next == '.' && len(spec) > len(pkg)+1 && spec[len(spec)-1] != '.'
-}
-
 func (Language) GetFileNamespace(_ port.FileSystem, _ string) (string, error) { return "", nil }
 func (Language) SupportsFileGlobs() bool                                      { return false }
 func (Language) Register(d port.CapsuleDiscovery) {
@@ -515,81 +500,5 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 		return "", nil
 	}
 
-	root := path.Clean("/" + filepath.ToSlash(chosenSrc))
-	var relPaths []string
-	err := fsys.WalkDir(context.Background(), chosenSrc, func(abs string, d fs.DirEntry) error {
-		if d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(abs, ".py") && !strings.HasSuffix(abs, ".pyi") {
-			return nil
-		}
-		rel := strings.TrimPrefix(path.Clean("/"+filepath.ToSlash(abs)), root+"/")
-		dir := path.Dir(rel)
-		if dir != "." {
-			relPaths = append(relPaths, dir)
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-
-	if len(relPaths) == 0 {
-		return "", fmt.Errorf("no .py files in subdirectories of %s", chosenSrc)
-	}
-
-	relPaths = uniqueDirs(relPaths)
-	sort.Strings(relPaths)
-	common := longestCommonPrefixPaths(relPaths)
-
-	if common == "" {
-		return "", fmt.Errorf("cannot determine base capsule")
-	}
-
-	return strings.Replace(common, "/", ".", -1), nil
-}
-
-func uniqueDirs(paths []string) []string {
-	seen := make(map[string]bool)
-	var result []string
-	for _, p := range paths {
-		if !seen[p] {
-			seen[p] = true
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
-func longestCommonPrefixPaths(paths []string) string {
-	if len(paths) == 0 {
-		return ""
-	}
-	if len(paths) == 1 {
-		return paths[0]
-	}
-
-	firstParts := strings.Split(paths[0], "/")
-	var common []string
-
-	for i, p := range firstParts {
-		match := true
-		for _, path := range paths[1:] {
-			pathParts := strings.Split(path, "/")
-			if i >= len(pathParts) || pathParts[i] != p {
-				match = false
-				break
-			}
-		}
-		if !match {
-			break
-		}
-		common = append(common, p)
-	}
-
-	if len(common) == 0 {
-		return ""
-	}
-	return strings.Join(common, "/")
+	return namespaces.CommonPrefix(fsys, []string{chosenSrc}, exts)
 }

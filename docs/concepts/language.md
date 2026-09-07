@@ -32,7 +32,8 @@ be meaningfully shared across languages.
 ## 1. `Name()`
 
 Returns a short identifier used in diagnostics and CLI flags (e.g. `"go"`,
-`"dart"`, `"kotlin"`).
+`"dart"`, `"jvm"`). `--lang java` and `--lang kotlin` both select the `jvm`
+adapter, which scans `.java` and `.kt` files in the same capsule.
 
 ---
 
@@ -65,8 +66,7 @@ The format and mechanism are entirely language-specific:
 | Go         | AST-based (`go/parser`, `go/token`)          | `"github.com/user/repo/path"`                     |
 | Dart       | Regex on `import`/`export`/`part` directives | `"lib/path/to/file"`                              |
 | TypeScript | Four regex patterns                          | `"./relative"`, `"@alias/path"`, `"package-name"` |
-| Java       | Regex on `import` statements                 | `"com.example.module.Class"`                      |
-| Kotlin     | Regex on `import` statements                 | `"com.example.module.Class"`                      |
+| JVM        | Regex on `import` statements                 | `"com.example.module.Class"`                      |
 | Python     | Regex on `import`/`from X import` statements | `"package.module.submodule"`                      |
 | Rust       | Regex on `use`/`mod`/`extern crate`          | `"crate::path::to::item"`                         |
 | C#         | Regex on `using` directives                  | `"MyApp.Domain.Entities"` (namespace), populates `Namespace` field |
@@ -97,8 +97,7 @@ The resolution semantics are language-specific:
 | Go         | Prefix match against `CapsuleID`                            | Strip `CapsuleID/` prefix                              |
 | Dart       | `package:` URI name matches `CapsuleID`                     | Map `package:<name>/<path>` to `lib/<path>`            |
 | TypeScript | `tsconfig.json` paths alias, `baseUrl`, package name match  | Resolve extensions (`.js` -> `.ts`), `index.ts`        |
-| Java       | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
-| Kotlin     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
+| JVM        | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Python     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Rust       | `crate::` prefix, `super::`/`self::` hops, crate name match | Resolve multi-hop `super::` paths, `crate::` from root |
 | C#         | Prefix match against assembly/capsule name (dot-separated) | Convert dots to slashes, resolve from source root |
@@ -148,8 +147,7 @@ Each language adapter implements its own manifest parser:
 | Go         | `go.mod`                             | `readGoModulePath` | `module github.com/...`            |
 | Dart       | `pubspec.yaml`                       | `readPubspecName`  | `name: my_package`                 |
 | TypeScript | `package.json`                       | `readCapsuleName`  | `"name": "my-package"`             |
-| Java       | `build.gradle.kts`, `build.gradle`, `pom.xml` | `findBaseCapsule`  | common package prefix from source  |
-| Kotlin     | `build.gradle.kts`, `build.gradle`   | `findBaseCapsule`  | common package prefix from source  |
+| JVM        | `build.gradle.kts`, `build.gradle`, `pom.xml` | `findBaseCapsule`  | common package prefix from source  |
 | Python     | `pyproject.toml`, `setup.py`         | `findBaseCapsule`  | common package prefix from source  |
 | Rust       | `Cargo.toml`                         | `readCargoName`    | `[package] name = ...`             |
 | C#         | `*.csproj`                           | `readCsharpProject` | `<RootNamespace>` or `<AssemblyName>` |
@@ -193,8 +191,7 @@ Returns the namespace declaration from a source file's header, or `("", nil)` if
 | Language   | Implementation                                    |
 | ---------- | ------------------------------------------------- |
 | C#         | Regex on `namespace MyApp.Api` declaration        |
-| Java       | Regex on `package com.example.api` declaration    |
-| Kotlin     | Regex on `package com.example.api` declaration    |
+| JVM        | Regex on `package com.example.api` declaration    |
 | Go         | `("", nil)` — no namespace concept                |
 | TypeScript | `("", nil)` — no namespace concept                |
 | Dart       | `("", nil)` — no namespace concept                |

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dariushalipour/baft/internal/adapter/languages/internal/lineoffsets"
+	"github.com/dariushalipour/baft/internal/adapter/languages/internal/namespaces"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -80,7 +81,7 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 		return "", false
 	}
 	ns := spec.Path
-	if !isInternalCapsule(ns, basePkg) {
+	if !namespaces.IsInternal(ns, basePkg) {
 		return "", false
 	}
 	rest := strings.TrimPrefix(ns, basePkg)
@@ -89,20 +90,6 @@ func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c
 		return ".", true
 	}
 	return strings.Replace(rest, ".", "/", -1), true
-}
-
-func isInternalCapsule(spec, basePkg string) bool {
-	if spec == basePkg {
-		return true
-	}
-	if len(spec) <= len(basePkg) {
-		return false
-	}
-	if !strings.HasPrefix(spec, basePkg) {
-		return false
-	}
-	next := spec[len(basePkg)]
-	return next == '.' && len(spec) > len(basePkg)+1 && spec[len(spec)-1] != '.'
 }
 
 func (Language) SupportsFileGlobs() bool { return false }

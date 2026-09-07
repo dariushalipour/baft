@@ -167,8 +167,7 @@ TypeScript and Dart support file-shaped nodes. Go, Java, Kotlin, Python, and Rus
 - Go
 - TypeScript
 - Dart
-- Java
-- Kotlin, including common multiplatform layouts
+- Java and Kotlin, scanned together per Gradle/Maven capsule, including common multiplatform layouts
 - Python
 - Rust
 - C#, with namespace-aware mode for `using` directives

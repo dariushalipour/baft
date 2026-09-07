@@ -207,5 +207,4 @@ but those terms mean different things in different ecosystems.
 | Python         | `pyproject.toml`, `setup.py` (source path common prefix) | Python package / module |
 | Rust           | `Cargo.toml` (`[package]` → `name`)            | Cargo crate/package |
 | Dart           | `pubspec.yaml` (`name:` line)                  | Dart package        |
-| Java           | `build.gradle.kts`, `build.gradle`, `pom.xml` (source path common prefix) | Gradle module / Maven project |
-| Gradle/Kotlin  | `build.gradle.kts` (source path common prefix) | Gradle module       |
+| Java/Kotlin    | `build.gradle.kts`, `build.gradle`, `pom.xml` (source path common prefix) | Gradle module / Maven project |

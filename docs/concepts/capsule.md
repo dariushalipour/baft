@@ -303,6 +303,5 @@ language.
 | npm/TypeScript | `package.json`           | npm package         | TypeScript modules (files), namespaces     |
 | Rust           | `Cargo.toml` (per crate) | Cargo crate/package | Rust modules (`mod`, `crate::`)            |
 | Dart           | `pubspec.yaml`           | Dart package        | Dart libraries (`lib/`)                    |
-| Java           | `build.gradle.kts`, `build.gradle`, `pom.xml` | Gradle module / Maven project | Java packages (dot-separated namespaces) |
-| Gradle/Kotlin  | `build.gradle.kts`       | Gradle module       | Kotlin packages (dot-separated namespaces) |
+| Java/Kotlin    | `build.gradle.kts`, `build.gradle`, `pom.xml` | Gradle module / Maven project | Java and Kotlin packages (dot-separated namespaces) |
 | Python         | `pyproject.toml`, `setup.py` | Python package / module | Python packages (dot-separated namespaces) |

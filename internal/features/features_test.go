@@ -19,7 +19,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/adapter/languages/csharp"
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
-	"github.com/dariushalipour/baft/internal/adapter/languages/kotlin"
+	"github.com/dariushalipour/baft/internal/adapter/languages/jvm"
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
@@ -243,7 +243,7 @@ func addLanguage(w *workspace, langName string) error {
 	case "typescript":
 		w.Langs = append(w.Langs, &typescript.Language{})
 	case "kotlin":
-		w.Langs = append(w.Langs, kotlin.Language{})
+		w.Langs = append(w.Langs, jvm.Language{})
 	case "csharp":
 		w.Langs = append(w.Langs, &csharp.Language{})
 	}
@@ -582,7 +582,7 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 			case "typescript":
 				lang = &typescript.Language{}
 			case "kotlin":
-				lang = kotlin.Language{}
+				lang = jvm.Language{}
 			case "csharp":
 				lang = &csharp.Language{}
 			}
