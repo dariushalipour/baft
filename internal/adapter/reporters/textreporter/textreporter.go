@@ -27,21 +27,16 @@ func (r *TextRenderer) paint(color, msg string) string {
 
 func (r *TextRenderer) Render(result *port.CheckResult) string {
 	var out strings.Builder
-	// Capsule-scoped entries are printed under their capsule below.
+	// Capsule-scoped warnings are printed under their capsule below.
 	scoped := make(map[string]bool)
 	for _, c := range result.Capsules {
-		for _, v := range c.Errors {
-			scoped[c.Label+": "+v.Message] = true
-		}
 		for _, v := range c.Violations {
 			scoped[c.Label+": "+v.Message] = true
 		}
 	}
 
 	for _, e := range result.Errors {
-		if !scoped[e] {
-			writeLine(&out, r.paint(colorRed, "✗ "+e))
-		}
+		writeLine(&out, r.paint(colorRed, "✗ "+e))
 	}
 
 	for _, w := range result.Warnings {

@@ -18,6 +18,32 @@ class BaftCliTest {
     }
 
     @Test
+    fun `the configured executable is used verbatim`() {
+        assertEquals("/opt/bin/baft", resolveBinary("  /opt/bin/baft  "))
+    }
+
+    @Test
+    fun `an unset executable falls back to a PATH lookup`() {
+        assertTrue(resolveBinary("  ").endsWith("baft") || resolveBinary("").endsWith("baft.exe"))
+    }
+
+    @Test
+    fun `a repeated notification is shown once`() {
+        val deduper = NotificationDeduper()
+
+        assertTrue(deduper.isNew("Baft check failed"))
+        assertFalse(deduper.isNew("Baft check failed"))
+        assertTrue(deduper.isNew(versionMismatchDetail("mismatch", "0.4.0", "0.3.1")))
+        assertFalse(deduper.isNew("Installed: 0.3.1, Expected: 0.4.0"))
+        assertTrue(deduper.isNew("Baft check failed"))
+    }
+
+    @Test
+    fun `a mismatch without both versions falls back to the CLI message`() {
+        assertEquals("mismatch", versionMismatchDetail("mismatch", null, "0.3.1"))
+    }
+
+    @Test
     fun `product names map to the CLI integration ids`() {
         assertEquals("goland", jetbrainsIntegrationId("GoLand"))
         assertEquals("intellij-community", jetbrainsIntegrationId("IntelliJ IDEA Community Edition"))

@@ -14,8 +14,11 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <notificationGroup id="BAFT" displayType="BALLOON"/>
-        <!-- Registered for every language because the languages baft scans differ per
-             IDE; BaftAnnotator.collectInformation filters to the files baft scans. -->
+        <!-- Registered for every language: the annotator EP is keyed by language id,
+             those ids differ per IDE, and a file whose language plugin is absent (a .go
+             file in IDEA, BAFT.md without the Markdown plugin) is plain text. Narrowing
+             the registration would silently drop diagnostics for those files, so
+             BaftAnnotator.collectInformation filters to the files baft scans instead. -->
         <externalAnnotator
             language=""
             implementationClass="com.baft.intellij.BaftAnnotator"/>

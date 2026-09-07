@@ -80,26 +80,6 @@ func TestRenderWithErrors(t *testing.T) {
 	}
 }
 
-func TestRenderDoesNotDuplicateCapsuleErrors(t *testing.T) {
-	r := &TextRenderer{}
-	result := &port.CheckResult{
-		Errors: []string{"mypkg: parse failed"},
-		Capsules: []port.CapsuleResult{{
-			Label:  "mypkg",
-			Errors: []port.Violation{{Rule: "contract-load-error", Message: "parse failed"}},
-		}},
-	}
-	out := r.Render(result)
-	expected := strings.Join([]string{
-		"✗ mypkg",
-		"    error [contract-load-error]: parse failed",
-		"",
-	}, "\n")
-	if out != expected {
-		t.Fatalf("expected %q, got %q", expected, out)
-	}
-}
-
 func TestRenderColorized(t *testing.T) {
 	r := &TextRenderer{Color: true}
 	result := &port.CheckResult{Capsules: []port.CapsuleResult{{Label: "mypkg"}}}

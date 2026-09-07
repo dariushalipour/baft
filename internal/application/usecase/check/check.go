@@ -241,9 +241,6 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 				result.Violations = append(result.Violations, msg)
 			}
 		}
-		for _, e := range r.result.errors {
-			result.Errors = append(result.Errors, r.label+": "+e.Message)
-		}
 	}
 	if err := ctx.Err(); err != nil {
 		return &port.CheckResult{Errors: []string{err.Error()}}

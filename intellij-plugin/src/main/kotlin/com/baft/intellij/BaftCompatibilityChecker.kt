@@ -74,14 +74,6 @@ class BaftCompatibilityChecker(
     }
 
     /**
-     * Forget a cached success so the check can be run again.
-     * Intended for testing only.
-     */
-    internal fun reset() {
-        compatible = null
-    }
-
-    /**
      * Factory interface for creating processes, to allow testing without
      * spawning real subprocesses.
      */

@@ -66,7 +66,7 @@ func (a *app) check(args []string) int {
 	if len(result.Capsules) == 0 {
 		fmt.Fprintf(a.errOut, "warning: nothing was checked under %s — no capsule with a BAFT.md contract was found\n", root)
 	}
-	if len(result.Violations) > 0 || len(result.Errors) > 0 {
+	if result.Failed() {
 		return exitFail
 	}
 	return exitOK

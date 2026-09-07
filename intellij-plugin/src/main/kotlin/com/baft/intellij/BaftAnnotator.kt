@@ -16,14 +16,13 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiFile
 import java.io.File
-import java.util.concurrent.atomic.AtomicReference
 
 data class BaftAnnotatorInfo(val projectRoot: String, val filePath: String, val overlayJson: String?)
 data class BaftOverlayFile(val path: String, val content: String)
 data class BaftOverlayPayload(val files: List<BaftOverlayFile>)
 
 private val gson = Gson()
-private val lastNotification = AtomicReference<String?>(null)
+private val notifications = NotificationDeduper()
 
 private val checkRunner = BaftCheckRunner(binaryPath = ::findBinary, gson = gson)
 
@@ -114,7 +113,7 @@ private fun currentIntegrationId(): String =
     jetbrainsIntegrationId(ApplicationNamesInfo.getInstance().fullProductNameWithEdition)
 
 private fun notifyError(message: String) {
-    if (lastNotification.getAndSet(message) == message) return
+    if (!notifications.isNew(message)) return
     ApplicationManager.getApplication().invokeLater {
         NotificationGroupManager.getInstance()
             .getNotificationGroup(BAFT_NOTIFICATION_GROUP_ID)
@@ -127,12 +126,8 @@ private fun notifyError(message: String) {
 }
 
 private fun notifyVersionMismatch(message: String, expectedVersion: String?, pluginVersion: String?) {
-    val detail = if (expectedVersion != null && pluginVersion != null) {
-        "Installed: $pluginVersion, Expected: $expectedVersion"
-    } else {
-        message
-    }
-    if (lastNotification.getAndSet(detail) == detail) return
+    val detail = versionMismatchDetail(message, expectedVersion, pluginVersion)
+    if (!notifications.isNew(detail)) return
     ApplicationManager.getApplication().invokeLater {
         val notification = NotificationGroupManager.getInstance()
             .getNotificationGroup(BAFT_NOTIFICATION_GROUP_ID)

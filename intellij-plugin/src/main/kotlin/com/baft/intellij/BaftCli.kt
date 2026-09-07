@@ -1,6 +1,7 @@
 package com.baft.intellij
 
 import java.io.File
+import java.util.concurrent.atomic.AtomicReference
 
 const val BAFT_NOTIFICATION_GROUP_ID = "BAFT"
 
@@ -9,9 +10,11 @@ private val scannedFile = Regex("""(\.(go|ts|tsx|py|pyi|rs|java|kt|cs|dart)|[\\/
 
 internal fun isScannedByBaft(path: String): Boolean = scannedFile.containsMatchIn(path)
 
-internal fun findBinary(): String {
-    val configured = BaftSettings.getInstance().binaryPath.trim()
-    if (configured.isNotEmpty()) return configured
+internal fun findBinary(): String = resolveBinary(BaftSettings.getInstance().binaryPath)
+
+// The configured executable wins; otherwise the first `baft` on PATH.
+internal fun resolveBinary(configured: String): String {
+    if (configured.isNotBlank()) return configured.trim()
     val os = System.getProperty("os.name").lowercase()
     val isWin = os.contains("win")
     val name = if (isWin) "baft.exe" else "baft"
@@ -21,6 +24,17 @@ internal fun findBinary(): String {
         .firstOrNull { it.canExecute() }
         ?.absolutePath ?: name
 }
+
+/** Every notification funnels through here so a repeated message is shown once. */
+internal class NotificationDeduper {
+    private val last = AtomicReference<String?>(null)
+
+    fun isNew(message: String): Boolean = last.getAndSet(message) != message
+}
+
+// A mismatch is only actionable when both versions are known.
+internal fun versionMismatchDetail(message: String, expectedVersion: String?, pluginVersion: String?): String =
+    if (expectedVersion != null && pluginVersion != null) "Installed: $pluginVersion, Expected: $expectedVersion" else message
 
 // The CLI identifies each IDE by these ids; `integrate --integration=<id>` installs
 // into exactly that IDE instead of the first one of the JetBrains family.

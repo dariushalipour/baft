@@ -6,6 +6,7 @@ vi.mock("child_process", () => ({
   spawn: (...args: unknown[]) => mockSpawn(...args),
 }));
 
+const config: Record<string, string> = {};
 vi.mock("vscode", () => ({
   window: {
     createOutputChannel: () => ({
@@ -15,7 +16,9 @@ vi.mock("vscode", () => ({
   workspace: {
     textDocuments: [],
     getWorkspaceFolder: () => undefined,
-    getConfiguration: () => ({ get: (_key: string, fallback: string) => fallback }),
+    getConfiguration: () => ({
+      get: (key: string, fallback: string) => config[key] ?? fallback,
+    }),
   },
 }));
 
@@ -293,7 +296,34 @@ describe("isScanned", () => {
 });
 
 describe("binaryPath", () => {
+  beforeEach(() => {
+    delete config.binaryPath;
+    mockSpawn.mockClear();
+  });
+
   it("falls back to the PATH lookup when unset", () => {
     expect(binaryPath()).toBe("baft");
+  });
+
+  it("spawns the configured executable for every command", async () => {
+    config.binaryPath = "  /opt/bin/baft  ";
+    expect(binaryPath()).toBe("/opt/bin/baft");
+
+    const output = { appendLine: vi.fn() } as any;
+    const proc = () => {
+      const p = createMockProcess({ stdout: '{"violations":[],"errors":[]}' });
+      p.stdin = { end: vi.fn() };
+      return p;
+    };
+
+    mockSpawn.mockImplementation(proc);
+    await runCheck("/project/root", output);
+    await runRestyle("BAFT.md", "# c", "vibrant", output);
+    await verifyCompatibility("vscode", "0.2.1");
+
+    for (const call of mockSpawn.mock.calls) {
+      expect(call[0]).toBe("/opt/bin/baft");
+    }
+    expect(mockSpawn).toHaveBeenCalledTimes(3);
   });
 });

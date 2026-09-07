@@ -118,23 +118,6 @@ class BaftCompatibilityCheckerTest {
     }
 
     @Test
-    fun `reset allows re-running the check`() {
-        var callCount = 0
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":true,"code":"ok","message":"compatible"}""",
-            exitValue = 0,
-        )
-
-        val checker = createChecker(binaryPath = { callCount++; "/fake/baft" })
-
-        checker.check()
-        checker.reset()
-        checker.check()
-
-        assertEquals(2, callCount)
-    }
-
-    @Test
     fun `check reports the running IDE, not just the family`() {
         mockFactory.nextProcess = MockProcessResult(
             stdout = """{"compatible":true,"code":"ok","message":"compatible"}""",

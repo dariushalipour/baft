@@ -488,6 +488,11 @@ func initializeCheckScenario(sc *godog.ScenarioContext) {
 			w.ws.Violations = result.Violations
 			w.ws.Warnings = result.Warnings
 			w.ws.Errors = result.Errors
+			for _, c := range result.Capsules {
+				for _, e := range c.Errors {
+					w.ws.Errors = append(w.ws.Errors, c.Label+": "+e.Message)
+				}
+			}
 			return nil
 		})
 
