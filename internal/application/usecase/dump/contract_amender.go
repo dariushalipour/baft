@@ -88,7 +88,7 @@ func applyCheckAmendments(fsys port.FileSystem, rootDir string, capsule port.Cap
 		return current, nil, nil
 	}
 
-	updated := graph.NewGraph(nodes, edges, nil, appendEdgeOrder(current.EdgeOrder, edges))
+	updated := graph.NewGraph(nodes, edges, appendNodeOrder(current.NodeOrder, nodes), appendEdgeOrder(current.EdgeOrder, edges))
 	updated.NodeDisplays = displays
 	updated.NamespaceMode = current.NamespaceMode
 	updated.GlobSeparator = current.GlobSeparator
@@ -100,7 +100,6 @@ func applyCheckAmendments(fsys port.FileSystem, rootDir string, capsule port.Cap
 		}
 	}
 	updated.Classes = classes
-	updated.EdgeOrder = appendEdgeOrder(current.EdgeOrder, edges)
 
 	diff := &AmendDiff{
 		Nodes: len(nodes) - nodeCountBefore,
@@ -245,6 +244,27 @@ func ensureAmendNodeForFile(nodes map[string]string, fsys port.FileSystem, capsu
 
 func startsWith(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+}
+
+// appendNodeOrder keeps the declaration order of the nodes already in the
+// contract and appends the newly created ones.
+func appendNodeOrder(existing []string, nodes map[string]string) []string {
+	order := make([]string, 0, len(nodes))
+	seen := make(map[string]bool, len(nodes))
+	for _, id := range existing {
+		if _, ok := nodes[id]; ok && !seen[id] {
+			seen[id] = true
+			order = append(order, id)
+		}
+	}
+	added := make([]string, 0, len(nodes)-len(order))
+	for id := range nodes {
+		if !seen[id] {
+			added = append(added, id)
+		}
+	}
+	sort.Strings(added)
+	return append(order, added...)
 }
 
 func appendEdgeOrder(existing []string, edges map[string]map[string]bool) []string {

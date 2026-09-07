@@ -528,8 +528,8 @@ Feature: Dump BAFT.md from actual imports
       
       ```mermaid
       flowchart TD
-        internal_slash_domain["internal/domain"]
         usecases["internal/usecase"]:::endophobic
+        internal_slash_domain["internal/domain"]
       
         usecases --> internal_slash_domain
       
@@ -1113,9 +1113,9 @@ Feature: Dump BAFT.md from actual imports
         eta_dot_ts["eta.ts"]
         gamma_dot_ts["gamma.ts"]
         theta_dot_ts["theta.ts"]
-        usecase_slash_consumer_dot_ts["usecase/consumer.ts"]
         usecase_slash_helper_dot_ts["usecase/helper.ts"]
         zeta_dot_ts["zeta.ts"]
+        usecase_slash_consumer_dot_ts["usecase/consumer.ts"]
       
         usecase_slash_consumer_dot_ts --> alpha_dot_ts
         usecase_slash_consumer_dot_ts --> beta_dot_ts

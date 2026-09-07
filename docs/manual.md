@@ -58,10 +58,10 @@ flowchart TD
 
 ### Format & Syntax
 
-- **Mermaid Block:** Only the first fenced `mermaid` flowchart block is parsed. Everything else is ignored.
+- **Mermaid Block:** Exactly one fenced `mermaid` block is parsed; a second one is a parse error. Its header may be `flowchart <direction>` or `graph <direction>`.
 - **Comments:** Use `%%` for comments inside the Mermaid block. Full-line comments are allowed, and inline comments are allowed after node or edge declarations. `%%` inside quoted labels stays part of the label.
 - **Escaping:** Use `&ast;` for literal asterisks (`*`) inside labels.
-- **Constraints:** `subgraph` syntax is not supported.
+- **Constraints:** `subgraph` syntax and undirected links (`---`, `===`, `~~~`) are not supported.
 - **Generated styling:** `baft dump --color-palette ...` and `baft restyle --color-palette ...` append a generated Mermaid notice plus `style` and `linkStyle` lines after the node and edge declarations. Treat that styling section as machine-managed: regenerate it with `baft restyle` or by formatting the file with Baft in your IDE, not by editing it manually. `vibrant`, `muted`, and `mono` define 16 canonical colors; graphs with more than 16 nodes reuse colors in deterministic node order. `none` skips palette coloring and only emits dashed styling for `:::endophobic` nodes.
 
 ### Node Definitions
@@ -93,6 +93,8 @@ If some files should be completely invisible to Baft (e.g., generated code, buil
 - **Directional:** `A --> B` allows A to import B, but not vice versa.
 - **Non-Transitive:** `A --> B --> C` does **not** imply `A --> C`.
 - **Self-Imports:** Allowed by default unless the node is `:::endophobic`.
+- **Fan-out and fan-in:** `A --> B & C` and `A & B --> C` expand to one edge per pair.
+- **Decoration:** `-->`, `==>` and `-.->` mean the same thing; edge labels (`A -->|reads| B`, `A -- reads --> B`) and trailing `;` are discarded.
 
 ---
 

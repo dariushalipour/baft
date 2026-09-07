@@ -34,26 +34,10 @@ var (
 		"\x0c", "_form_feed_",
 	)
 
-	nodeIdDecodeReplacer = strings.NewReplacer(
-		"_slash_", "/",
-		"_dot_", ".",
-		"_dash_", "-",
-		"_asterisk_", "*",
-		"_atsign_", "@",
-		"_lsqb_", "[",
-		"_rsqb_", "]",
-		"_lbrace_", "{",
-		"_rbrace_", "}",
-		"_plus_", "+",
-		"_qmark_", "?",
-		"_comma_", ",",
-		"_space_", " ",
-		"_tab_", "\t",
-		"_newline_", "\n",
-		"_carriage_return_", "\r",
-		"_vertical_tab_", "\x0b",
-		"_form_feed_", "\x0c",
-	)
+	// arrowRe matches every directed link Baft accepts: solid, thick and dotted,
+	// each optionally carrying an inline `-- text -->` label. Only the direction
+	// is meaningful; the variant and the label are discarded.
+	arrowRe = regexp.MustCompile(`-{2,}(?:\s[^-=>|\n]*\s-{2,})?>|={2,}(?:\s[^-=>|\n]*\s={2,})?>|-\.+(?:\s[^-=>|\n]*\s\.+)?-*>`)
 
 	globDecodeReplacer = strings.NewReplacer(
 		"&ast;", "*",
@@ -354,29 +338,27 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 		if line == "" {
 			continue
 		}
-		if line[0] == '%' && len(line) >= 2 && line[1] == '%' {
+		if strings.HasPrefix(line, "%%") {
 			stripped := strings.TrimSpace(line[2:])
-			if strings.HasPrefix(stripped, "config ") {
+			if fields := strings.Fields(stripped); len(fields) > 0 && fields[0] == "config" {
 				if err := parseConfigLine(stripped, g, absLine); err != nil {
 					return nil, err
 				}
-				continue
 			}
 			continue
 		}
-		if line == "flowchart TD" || line == "flowchart LR" || line == "flowchart RL" || line == "flowchart BT" ||
-			strings.HasPrefix(line, "flowchart ") || line == "graph TD" || line == "graph LR" || line == "graph RL" || line == "graph BT" ||
-			strings.HasPrefix(line, "graph ") || strings.HasPrefix(line, "classDef ") || strings.HasPrefix(line, "style ") || strings.HasPrefix(line, "linkStyle ") {
+		if hasAnyPrefix(line, "flowchart ", "graph ", "classDef ", "style ", "linkStyle ") {
 			continue
 		}
 		if idx := inlineCommentStart(line); idx >= 0 {
 			line = strings.TrimSpace(line[:idx])
-			if line == "" {
-				continue
-			}
 		}
-		if strings.Contains(line, "-->") {
-			if err := parseEdgeLine(line, g, absLine); err != nil {
+		line = strings.TrimRight(line, "; \t")
+		if line == "" {
+			continue
+		}
+		if arrows := topLevelArrows(line); len(arrows) > 0 {
+			if err := parseEdgeLine(line, arrows, g, absLine); err != nil {
 				return nil, err
 			}
 			continue
@@ -402,23 +384,73 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 	return g, nil
 }
 
-func inlineCommentStart(line string) int {
-	inQuotes := false
-	for idx := 0; idx+1 < len(line); idx++ {
-		if line[idx] == '"' {
-			inQuotes = !inQuotes
-			continue
+func hasAnyPrefix(s string, prefixes ...string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(s, p) {
+			return true
 		}
-		if !inQuotes && line[idx] == '%' && line[idx+1] == '%' {
-			return idx
+	}
+	return false
+}
+
+// maskLine flags the bytes that sit inside a quoted string or a node label,
+// where mermaid punctuation carries no structural meaning.
+func maskLine(line string) []bool {
+	mask := make([]bool, len(line))
+	inQuotes, depth := false, 0
+	for i := 0; i < len(line); i++ {
+		mask[i] = inQuotes || depth > 0
+		switch c := line[i]; {
+		case c == '"':
+			inQuotes = !inQuotes
+		case c == '[' && !inQuotes:
+			depth++
+		case c == ']' && !inQuotes && depth > 0:
+			depth--
+		}
+	}
+	return mask
+}
+
+func inlineCommentStart(line string) int {
+	mask := maskLine(line)
+	for i := 0; i+1 < len(line); i++ {
+		if !mask[i] && line[i] == '%' && line[i+1] == '%' {
+			return i
 		}
 	}
 	return -1
 }
 
+// topLevelArrows locates the link tokens that separate node groups, ignoring
+// any that appear inside a node label.
+func topLevelArrows(line string) [][]int {
+	mask := maskLine(line)
+	var arrows [][]int
+	for _, loc := range arrowRe.FindAllStringIndex(line, -1) {
+		if !mask[loc[0]] {
+			arrows = append(arrows, loc)
+		}
+	}
+	return arrows
+}
+
+// splitOutside splits on sep wherever it is not inside a quoted string or label.
+func splitOutside(s string, sep byte) []string {
+	mask := maskLine(s)
+	var parts []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep && !mask[i] {
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	return append(parts, s[start:])
+}
+
 func registerNode(g *graph.Graph, m []string, lineNum int) error {
-	rawID := m[1]
-	id := decodeNodeId(rawID)
+	id := m[1]
 
 	rawGlob := m[2]
 	if rawGlob == "" {
@@ -441,12 +473,10 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 	g.Nodes[id] = glob
 	if _, ok := g.NodeLines[id]; !ok {
 		g.NodeOrder = append(g.NodeOrder, id)
+		g.NodeLines[id] = lineNum
 	}
 	if _, ok := g.NodeDisplays[id]; !ok {
 		g.NodeDisplays[id] = glob
-	}
-	if _, ok := g.NodeLines[id]; !ok {
-		g.NodeLines[id] = lineNum
 	}
 
 	if len(m) >= 5 && m[4] != "" {
@@ -463,102 +493,148 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 	return nil
 }
 
+// parseConfigLine parses a `config <key> <value>` directive. The value may be
+// bare or wrapped in single or double quotes.
 func parseConfigLine(line string, g *graph.Graph, lineNum int) error {
-	trimmed := strings.TrimSpace(line[len("config "):])
-	if strings.HasPrefix(trimmed, `globSeparator "`) {
-		val := trimmed[len(`globSeparator "`):]
-		if !strings.HasSuffix(val, `"`) {
-			return &ParseError{
-				Line: lineNum,
-				Msg:  fmt.Sprintf("invalid config directive: %q", line),
-			}
-		}
-		val = val[:len(val)-1]
-		if val == "" {
-			return &ParseError{
-				Line: lineNum,
-				Msg:  "globSeparator must not be empty",
-			}
-		}
-		g.GlobSeparator = val
-		return nil
+	fail := func(format string, args ...any) error {
+		return &ParseError{Line: lineNum, Msg: fmt.Sprintf(format, args...)}
 	}
-	if strings.HasPrefix(trimmed, `namespaceMode "`) {
-		val := trimmed[len(`namespaceMode "`):]
-		if !strings.HasSuffix(val, `"`) {
-			return &ParseError{
-				Line: lineNum,
-				Msg:  fmt.Sprintf("invalid config directive: %q", line),
-			}
+	rest := strings.TrimSpace(strings.TrimPrefix(line, "config"))
+	key, value := rest, ""
+	if idx := strings.IndexAny(rest, " \t"); idx >= 0 {
+		key, value = rest[:idx], strings.TrimSpace(rest[idx+1:])
+	}
+	switch {
+	case key == "":
+		return fail("config directive is missing a key: %q", line)
+	case value == "":
+		return fail("config key %q is missing a value", key)
+	}
+	if q := value[0]; q == '"' || q == '\'' {
+		if len(value) < 2 || value[len(value)-1] != q {
+			return fail("config key %q has an unterminated quoted value: %s", key, value)
 		}
-		val = val[:len(val)-1]
-		g.NamespaceMode = val == "true"
-		return nil
+		value = value[1 : len(value)-1]
 	}
-	return &ParseError{
-		Line: lineNum,
-		Msg:  fmt.Sprintf("unrecognized config directive: %q", line),
+	switch key {
+	case "globSeparator":
+		if value == "" {
+			return fail("config key %q must not be empty", key)
+		}
+		g.GlobSeparator = value
+	case "namespaceMode":
+		switch strings.ToLower(value) {
+		case "true":
+			g.NamespaceMode = true
+		case "false":
+			g.NamespaceMode = false
+		default:
+			return fail("config key %q expects true or false, got %q", key, value)
+		}
+	default:
+		return fail("unknown config key %q", key)
 	}
+	return nil
 }
 
-func parseEdgeLine(line string, g *graph.Graph, lineNum int) error {
-	tokens := splitArrow(line)
-	if len(tokens) < 2 {
-		return &ParseError{
-			Line: lineNum,
-			Msg:  fmt.Sprintf("edge has fewer than two nodes: %q", line),
+// parseEdgeLine reads a chain of node groups joined by arrows, where a group is
+// one node or an `a & b` fan-out. Every node of a group is linked to every node
+// of the next one.
+func parseEdgeLine(line string, arrows [][]int, g *graph.Graph, lineNum int) error {
+	groups := make([][]string, 0, len(arrows)+1)
+	pos := 0
+	for _, loc := range arrows {
+		if loc[0] < pos {
+			continue // an arrow that lived inside a skipped edge label
 		}
+		ids, err := parseNodeGroup(line[pos:loc[0]], line, g, lineNum)
+		if err != nil {
+			return err
+		}
+		groups = append(groups, ids)
+		pos = skipEdgeLabel(line, loc[1])
 	}
-	ids := make([]string, len(tokens))
-	for i, tok := range tokens {
-		tok = strings.TrimSpace(tok)
-		if m := nodeRe.FindStringSubmatch(tok); m != nil {
-			if err := registerNode(g, m, lineNum); err != nil {
-				return err
-			}
-			ids[i] = decodeNodeId(m[1])
-			continue
-		}
-		if !isIdentifier(tok) {
-			return &ParseError{
-				Line: lineNum,
-				Msg:  fmt.Sprintf("invalid edge token %q in line %q", tok, line),
-			}
-		}
-		ids[i] = decodeNodeId(tok)
+	ids, err := parseNodeGroup(line[pos:], line, g, lineNum)
+	if err != nil {
+		return err
 	}
-	for i := 0; i < len(ids)-1; i++ {
-		src, dst := ids[i], ids[i+1]
-		if src == dst {
-			return &ParseError{
-				Line: lineNum,
-				Msg:  fmt.Sprintf("edge references same node on both sides: %s → %s", src, dst),
+	groups = append(groups, ids)
+
+	for i := 0; i < len(groups)-1; i++ {
+		for _, src := range groups[i] {
+			for _, dst := range groups[i+1] {
+				if err := addEdge(g, src, dst, lineNum); err != nil {
+					return err
+				}
 			}
-		}
-		if _, ok := g.Edges[src]; !ok {
-			g.Edges[src] = map[string]bool{}
-		}
-		if _, ok := g.Edges[src][dst]; !ok {
-			g.EdgeOrder = append(g.EdgeOrder, src+"\t"+dst)
-		}
-		g.Edges[src][dst] = true
-		if _, ok := g.EdgeLines[src+"\t"+dst]; !ok {
-			g.EdgeLines[src+"\t"+dst] = lineNum
 		}
 	}
 	return nil
 }
 
-func splitArrow(line string) []string {
-	parts := strings.Split(line, "-->")
-	out := make([]string, 0, len(parts))
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
+func parseNodeGroup(segment, line string, g *graph.Graph, lineNum int) ([]string, error) {
+	parts := splitOutside(segment, '&')
+	ids := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, &ParseError{
+				Line: lineNum,
+				Msg:  fmt.Sprintf("edge has an empty node reference in %q", line),
+			}
+		}
+		if m := nodeRe.FindStringSubmatch(part); m != nil {
+			if err := registerNode(g, m, lineNum); err != nil {
+				return nil, err
+			}
+			ids = append(ids, m[1])
+			continue
+		}
+		if !isIdentifier(part) {
+			return nil, &ParseError{
+				Line: lineNum,
+				Msg:  fmt.Sprintf("invalid node reference %q in edge %q", part, line),
+			}
+		}
+		ids = append(ids, part)
+	}
+	return ids, nil
+}
+
+// skipEdgeLabel steps over a `|text|` label trailing an arrow; labels are
+// decoration and carry no contract meaning.
+func skipEdgeLabel(line string, pos int) int {
+	i := pos
+	for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	if i < len(line) && line[i] == '|' {
+		if end := strings.IndexByte(line[i+1:], '|'); end >= 0 {
+			return i + end + 2
 		}
 	}
-	return out
+	return pos
+}
+
+func addEdge(g *graph.Graph, src, dst string, lineNum int) error {
+	if src == dst {
+		return &ParseError{
+			Line: lineNum,
+			Msg:  fmt.Sprintf("edge references same node on both sides: %s → %s", src, dst),
+		}
+	}
+	if _, ok := g.Edges[src]; !ok {
+		g.Edges[src] = map[string]bool{}
+	}
+	key := src + "\t" + dst
+	if !g.Edges[src][dst] {
+		g.EdgeOrder = append(g.EdgeOrder, key)
+	}
+	g.Edges[src][dst] = true
+	if _, ok := g.EdgeLines[key]; !ok {
+		g.EdgeLines[key] = lineNum
+	}
+	return nil
 }
 
 func isIdentifier(s string) bool {
@@ -612,25 +688,18 @@ func decodeNodeGlob(s string) string {
 	return globDecodeReplacer.Replace(s)
 }
 
+// encodeNodeId maps a graph node id onto a mermaid-safe identifier. Load keeps
+// ids verbatim, so encoding must be idempotent for a loaded graph to
+// re-serialize unchanged.
 func encodeNodeId(s string) string {
 	if s == "" || s == "." {
 		return "root"
 	}
 	result := nodeIdReplacer.Replace(s)
-	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
+	if result[0] >= '0' && result[0] <= '9' {
 		result = "n" + result
 	}
 	return result
-}
-
-func decodeNodeId(s string) string {
-	if s == "root" {
-		return "."
-	}
-	if len(s) > 1 && s[0] == 'n' && s[1] >= '0' && s[1] <= '9' {
-		s = s[1:]
-	}
-	return nodeIdDecodeReplacer.Replace(s)
 }
 
 func quotedEncode(s string) string {

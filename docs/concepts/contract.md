@@ -58,7 +58,7 @@ A contract file is:
 A contract file has two parts:
 
 1. **Markdown text** — everything outside the Mermaid block is ignored by tooling. This is where developers write explanations, decisions, and context.
-2. **Mermaid flowchart block** — the first fenced ````mermaid` block is parsed. Everything else (subsequent mermaid blocks, code blocks, images) is ignored.
+2. **Mermaid flowchart block** — the single fenced ````mermaid` block is parsed. Everything else (code blocks, images) is ignored.
 
 ````markdown
 <!-- Baft -- Architecture Contract -->
@@ -77,7 +77,7 @@ flowchart TD
 ```
 ````
 
-Only the first mermaid block is parsed. If multiple ````mermaid` blocks exist, the parser returns an error.
+A contract may hold exactly one mermaid block; a second one is a parse error. The block header may be `flowchart <direction>` or `graph <direction>`.
 
 ---
 
@@ -131,11 +131,11 @@ flowchart TD
 
 When `globSeparator` is set, every dot that appears between path segments is treated as a separator and normalized to `/` internally. The `check` and `dump` commands then work with the normalized paths transparently.
 
-**Syntax:** `%% config globSeparator "<char>"`
+**Syntax:** `%% config <key> <value>`, where the value may be bare or wrapped in single or double quotes. The keys are `globSeparator` (any non-empty string) and `namespaceMode` (`true` or `false`, any casing). An unknown key or an invalid value is a parse error naming the key.
 
 - The directive must be placed inside the Mermaid block, after the `flowchart` declaration.
 - It must be wrapped in `%%` so Mermaid preview tools ignore it.
-- `<char>` can be any non-empty string (single character, multi-character, or emoji).
+- The `globSeparator` value can be any non-empty string (single character, multi-character, or emoji).
 - The separator is applied to all node globs in the same contract.
 
 **Why the `%%` wrapper?** The `config` keyword is not valid Mermaid syntax. Without `%%`, Mermaid preview tools in your IDE will fail to render the diagram. The `%%` comment makes the line invisible to Mermaid while still being readable by Baft.
@@ -174,6 +174,10 @@ Edges define allowed import directions.
 - **Non-transitive:** `A --> B --> C` does NOT imply `A --> C`. Every required edge must be explicit.
 - **Self-imports:** Allowed by default. A file in node A can import another file in node A unless the node is `:::endophobic`.
 - **Chained edges:** `A --> B --> C` is parsed as two separate edges: `A --> B` and `B --> C`.
+- **Fan-out and fan-in:** `A --> B & C` is `A --> B` plus `A --> C`; `A & B --> C` is `A --> C` plus `B --> C`. Both sides may fan at once.
+- **Arrow variants:** `-->`, `--->`, `==>` and `-.->` all declare the same allowed import. The arrow style is decoration and carries no meaning.
+- **Labels:** `A -->|reads| B` and `A -- reads --> B` are accepted; the label is discarded.
+- **Trailing semicolons** are ignored, so `A --> B;` is valid.
 
 ---
 
@@ -284,9 +288,10 @@ flowchart TD
 The following Mermaid features are NOT supported:
 
 - **`subgraph` syntax** — nodes are flat, not grouped into subgraphs.
-- **Multiple mermaid blocks** — only the first ````mermaid` block is parsed. Subsequent blocks cause a parse error.
-- **`classDef` definitions** — classes are inline only (`:::endophobic`). Custom class definitions are not parsed.
-- **Directed graph syntax (`graph`)** — only `flowchart` is supported.
+- **Multiple mermaid blocks** — a second ````mermaid` block is a parse error.
+- **`classDef` definitions** — `classDef` lines are skipped. Classes are inline only (`:::endophobic`).
+- **Undirected and invisible links** — `A --- B`, `A === B` and `A ~~~ B` are rejected; an edge must point somewhere.
+- **Node ids** — must match `[A-Za-z_][A-Za-z0-9_]*`. They are kept verbatim, so they are also what diagnostics report.
 
 ---
 

@@ -1,6 +1,7 @@
 package mermaid
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -344,8 +345,9 @@ func TestRoundTrip_RawGraph(t *testing.T) {
 		"src/usecase/create.ts": "src/usecase/create.ts",
 	}
 	for id, want := range expectedGlobs {
-		if roundTrip.Nodes[id] != want {
-			t.Errorf("node %q: got %q, want %q", id, roundTrip.Nodes[id], want)
+		encoded := encodeNodeId(id)
+		if roundTrip.Nodes[encoded] != want {
+			t.Errorf("node %q: got %q, want %q", encoded, roundTrip.Nodes[encoded], want)
 		}
 	}
 }
@@ -422,8 +424,12 @@ func TestRoundTrip_SpecialCharNodeIDs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load after save: %v\nsaved:\n%s", err, saved)
 			}
-			if loaded.Nodes[tc.id] != tc.glob {
-				t.Errorf("round-trip mismatch: got %q, want %q\nsaved:\n%s", loaded.Nodes[tc.id], tc.glob, saved)
+			id := encodeNodeId(tc.id)
+			if loaded.Nodes[id] != tc.glob {
+				t.Errorf("round-trip mismatch: got %q, want %q\nsaved:\n%s", loaded.Nodes[id], tc.glob, saved)
+			}
+			if resaved := (&MermaidRepository{}).Save(loaded, port.GraphSaveOptions{}); resaved != saved {
+				t.Errorf("re-save is not stable:\n%s\nvs\n%s", resaved, saved)
 			}
 		})
 	}
@@ -449,10 +455,10 @@ func TestRoundTrip_SpecialCharEdges(t *testing.T) {
 		t.Fatalf("load after save: %v\nsaved:\n%s", err, saved)
 	}
 
-	if !loaded.Allows("@scope/pkg", "src/domain") {
+	if !loaded.Allows(encodeNodeId("@scope/pkg"), encodeNodeId("src/domain")) {
 		t.Error("missing edge @scope/pkg --> src/domain")
 	}
-	if !loaded.Allows("my-pkg[ver]", "@scope/pkg") {
+	if !loaded.Allows(encodeNodeId("my-pkg[ver]"), encodeNodeId("@scope/pkg")) {
 		t.Error("missing edge my-pkg[ver] --> @scope/pkg")
 	}
 }
@@ -597,7 +603,7 @@ func TestMermaidRepository_EndophobicClass(t *testing.T) {
 	}
 }
 
-func TestEncodeDecodeNodeId(t *testing.T) {
+func TestEncodeNodeId(t *testing.T) {
 	cases := []struct {
 		raw, encoded string
 	}{
@@ -626,9 +632,8 @@ func TestEncodeDecodeNodeId(t *testing.T) {
 		if enc != tc.encoded {
 			t.Errorf("encodeNodeId(%q) = %q, want %q", tc.raw, enc, tc.encoded)
 		}
-		dec := decodeNodeId(tc.encoded)
-		if dec != tc.raw {
-			t.Errorf("decodeNodeId(%q) = %q, want %q", tc.encoded, dec, tc.raw)
+		if again := encodeNodeId(enc); again != enc {
+			t.Errorf("encodeNodeId(%q) is not idempotent: %q", enc, again)
 		}
 	}
 }
@@ -1089,5 +1094,149 @@ func TestCheckCycles_SelfCycle(t *testing.T) {
 	// Self-cycles are caught at parse time before cycle detection.
 	if got := err.Error(); !strings.Contains(got, "same node") {
 		t.Fatalf("expected same-node error, got: %q", got)
+	}
+}
+
+func loadLines(lines ...string) (*graph.Graph, error) {
+	return (&MermaidRepository{}).Load("```mermaid\nflowchart TD\n" + strings.Join(lines, "\n") + "\n```\n")
+}
+
+func TestLoad_EdgeSyntax(t *testing.T) {
+	nodes := []string{`a["a/&ast;&ast;"]`, `b["b/&ast;&ast;"]`, `c["c/&ast;&ast;"]`, `d["d/&ast;&ast;"]`}
+	cases := []struct {
+		name  string
+		line  string
+		edges []string
+	}{
+		{"plain", "a --> b", []string{"a b"}},
+		{"long arrow", "a ----> b", []string{"a b"}},
+		{"thick", "a ==> b", []string{"a b"}},
+		{"dotted", "a -.-> b", []string{"a b"}},
+		{"long dotted", "a -..-> b", []string{"a b"}},
+		{"pipe label", "a -->|calls| b", []string{"a b"}},
+		{"dotted pipe label", "a -.->|calls| b", []string{"a b"}},
+		{"inline label", "a -- calls --> b", []string{"a b"}},
+		{"dotted inline label", "a -. calls .-> b", []string{"a b"}},
+		{"thick inline label", "a == calls ==> b", []string{"a b"}},
+		{"trailing semicolon", "a --> b;", []string{"a b"}},
+		{"trailing semicolon and spaces", "a --> b ; ", []string{"a b"}},
+		{"fan out", "a --> b & c", []string{"a b", "a c"}},
+		{"fan in", "a & b --> c", []string{"a c", "b c"}},
+		{"fan both ways", "a & b --> c & d", []string{"a c", "a d", "b c", "b d"}},
+		{"chained", "a --> b --> c", []string{"a b", "b c"}},
+		{"chained with labels", "a -->|x| b -- y --> c", []string{"a b", "b c"}},
+		{"chained fan out", "a --> b & c --> d", []string{"a b", "a c", "b d", "c d"}},
+		{"inline node in fan out", `a --> b & d["d/&ast;&ast;"]`, []string{"a b", "a d"}},
+		{"label containing an arrow", "a -->|a --> c| b", []string{"a b"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g, err := loadLines(append(append([]string{}, nodes...), tc.line)...)
+			if err != nil {
+				t.Fatalf("load %q: %v", tc.line, err)
+			}
+			var got []string
+			for src, dsts := range g.Edges {
+				for dst := range dsts {
+					got = append(got, src+" "+dst)
+				}
+			}
+			sort.Strings(got)
+			if strings.Join(got, ", ") != strings.Join(tc.edges, ", ") {
+				t.Errorf("edges: got %v, want %v", got, tc.edges)
+			}
+		})
+	}
+}
+
+func TestLoad_EdgeSyntaxErrors(t *testing.T) {
+	cases := []struct{ name, line string }{
+		{"missing source", "--> b"},
+		{"missing target", "a -->"},
+		{"empty fan member", "a --> b &"},
+		{"two ids in one group", "a --> b c"},
+		{"undirected link", "a --- b"},
+		{"invisible link", "a ~~~ b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := loadLines(`a["a/&ast;&ast;"]`, `b["b/&ast;&ast;"]`, tc.line); err == nil {
+				t.Fatalf("expected error for %q", tc.line)
+			}
+		})
+	}
+}
+
+func TestLoad_KeepsHandWrittenNodeIds(t *testing.T) {
+	g, err := loadLines(`  n8n["n8n/&ast;&ast;"];`, `  my_dot_pkg["pkg/&ast;&ast;"]`, "  n8n --> my_dot_pkg")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	for _, id := range []string{"n8n", "my_dot_pkg"} {
+		if _, ok := g.Nodes[id]; !ok {
+			t.Errorf("node %q was rewritten: %v", id, g.Nodes)
+		}
+	}
+	if !g.Allows("n8n", "my_dot_pkg") {
+		t.Errorf("edge missing: %v", g.Edges)
+	}
+}
+
+func TestLoad_GraphHeaderAndConfig(t *testing.T) {
+	g, err := (&MermaidRepository{}).Load("```mermaid\ngraph LR\n" +
+		"  %% config namespaceMode 'True'\n" +
+		`  a["a/&ast;&ast;"]` + "\n```\n")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !g.NamespaceMode {
+		t.Error("namespaceMode should be enabled")
+	}
+}
+
+func TestParseConfigLine(t *testing.T) {
+	cases := []struct {
+		name, line string
+		wantSep    string
+		wantNS     bool
+		wantErr    string
+	}{
+		{name: "double quoted separator", line: `config globSeparator "."`, wantSep: "."},
+		{name: "single quoted separator", line: `config globSeparator '.'`, wantSep: "."},
+		{name: "bare separator", line: `config globSeparator .`, wantSep: "."},
+		{name: "extra whitespace", line: "config   globSeparator   '.'", wantSep: "."},
+		{name: "namespace mode true", line: `config namespaceMode "true"`, wantNS: true},
+		{name: "namespace mode mixed case", line: `config namespaceMode "True"`, wantNS: true},
+		{name: "namespace mode bare upper", line: `config namespaceMode TRUE`, wantNS: true},
+		{name: "namespace mode false", line: `config namespaceMode 'false'`},
+		{name: "missing key", line: "config", wantErr: `config directive is missing a key`},
+		{name: "missing value", line: "config namespaceMode", wantErr: `config key "namespaceMode" is missing a value`},
+		{name: "unknown key", line: `config nope "1"`, wantErr: `unknown config key "nope"`},
+		{name: "unterminated quote", line: `config globSeparator "abc`, wantErr: `config key "globSeparator" has an unterminated quoted value`},
+		{name: "empty separator", line: `config globSeparator ""`, wantErr: `config key "globSeparator" must not be empty`},
+		{name: "non boolean", line: `config namespaceMode "yes"`, wantErr: `config key "namespaceMode" expects true or false, got "yes"`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &graph.Graph{}
+			err := parseConfigLine(tc.line, g, 7)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error: got %v, want %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if g.GlobSeparator != tc.wantSep {
+				t.Errorf("globSeparator: got %q, want %q", g.GlobSeparator, tc.wantSep)
+			}
+			if g.NamespaceMode != tc.wantNS {
+				t.Errorf("namespaceMode: got %v, want %v", g.NamespaceMode, tc.wantNS)
+			}
+		})
 	}
 }
