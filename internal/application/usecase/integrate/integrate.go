@@ -20,10 +20,10 @@ type Manager interface {
 }
 
 type Options struct {
-	In         io.Reader
-	Out        io.Writer
-	AutoSelect bool
-	Family     string
+	In          io.Reader
+	Out         io.Writer
+	AutoSelect  bool
+	Integration string
 }
 
 func Run(ctx context.Context, manager Manager, opts Options) error {
@@ -58,7 +58,7 @@ func Run(ctx context.Context, manager Manager, opts Options) error {
 	var selection integrations.IDEInstallation
 
 	if opts.AutoSelect {
-		selection, err = autoSelectInstallation(installations, opts.Family)
+		selection, err = autoSelectInstallation(installations, opts.Integration)
 		if err != nil {
 			return err
 		}
@@ -89,30 +89,29 @@ func Run(ctx context.Context, manager Manager, opts Options) error {
 	return nil
 }
 
-func autoSelectInstallation(installations []integrations.IDEInstallation, family string) (integrations.IDEInstallation, error) {
-	if family == "" {
+// autoSelectInstallation prefers the IDE whose id is exactly the requested one,
+// so `--integration=intellij-ultimate` never installs into GoLand, and falls
+// back to the first installation of the requested family.
+func autoSelectInstallation(installations []integrations.IDEInstallation, integration string) (integrations.IDEInstallation, error) {
+	if integration == "" {
 		return installations[0], nil
 	}
 
-	targetFamily := familyForDisplay(family)
-	for _, ide := range installations {
-		if ide.Family == targetFamily {
+	family := integrations.FamilyForID(integration)
+	fallback := -1
+	for i, ide := range installations {
+		if ide.ID == integration {
 			return ide, nil
 		}
+		if fallback < 0 && family != "" && ide.Family == family {
+			fallback = i
+		}
+	}
+	if fallback >= 0 {
+		return installations[fallback], nil
 	}
 
-	return integrations.IDEInstallation{}, fmt.Errorf("no installation found for family %q", family)
-}
-
-func familyForDisplay(family string) string {
-	switch family {
-	case "vscode", "vscode-insiders":
-		return integrations.FamilyVSCode
-	case "jetbrains", "goland", "intellij-ultimate", "intellij-community", "webstorm", "rider", "android-studio", "rustrover":
-		return integrations.FamilyJetBrains
-	default:
-		return family
-	}
+	return integrations.IDEInstallation{}, fmt.Errorf("no installation found for integration %q", integration)
 }
 
 func displayLabel(ide integrations.IDEInstallation) string {

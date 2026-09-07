@@ -6,43 +6,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"sync"
 )
 
 const protocolVersion = 3
 
+// Stable, machine-readable classifications of a compatibility report.
+// Clients switch on these instead of matching the human-readable message.
+const (
+	CodeOK                     = "ok"
+	CodeUnsupportedIntegration = "unsupported_integration"
+	CodeVersionUnavailable     = "expected_version_unavailable"
+	CodeProtocolMismatch       = "protocol_mismatch"
+	CodeVersionMismatch        = "version_mismatch"
+)
+
 type CompatibilityReport struct {
 	Compatible      bool   `json:"compatible"`
+	Code            string `json:"code"`
 	IntegrationID   string `json:"integration_id"`
 	Family          string `json:"family"`
 	Protocol        int    `json:"protocol"`
 	PluginVersion   string `json:"plugin_version"`
 	ExpectedVersion string `json:"expected_version,omitempty"`
 	CLIVersion      string `json:"cli_version"`
-	CLIMin          string `json:"cli_min"`
 	Message         string `json:"message"`
-	Warning         string `json:"warning,omitempty"`
-}
-
-type compatibilitySpec struct {
-	Family   string
-	CLIMin   string
-	Protocol int
-}
-
-var compatibilitySpecs = map[string]compatibilitySpec{
-	FamilyVSCode: {
-		Family:   FamilyVSCode,
-		CLIMin:   "0.1.0",
-		Protocol: protocolVersion,
-	},
-	FamilyJetBrains: {
-		Family:   FamilyJetBrains,
-		CLIMin:   "0.1.0",
-		Protocol: protocolVersion,
-	},
 }
 
 var (
@@ -57,7 +46,7 @@ func getEmbeddedVersions() {
 		jetbrainsVer, jetbrainsErr := getEmbeddedJetBrainsVersion()
 
 		if vscodeErr != nil || jetbrainsErr != nil {
-			embeddedVersionsErr = fmt.Errorf("could not load embedded plugin versions: %w", fmt.Errorf("%v; %v", vscodeErr, jetbrainsErr))
+			embeddedVersionsErr = fmt.Errorf("could not load embedded plugin versions: %v; %v", vscodeErr, jetbrainsErr)
 			return
 		}
 
@@ -68,66 +57,46 @@ func getEmbeddedVersions() {
 	})
 }
 
+// VerifyCompatibility reports whether a plugin build may talk to this CLI.
+// Plugins ship embedded in the CLI, so the policy is exact version equality.
 func VerifyCompatibility(cliVersion, integrationID, pluginVersion string, protocol int) CompatibilityReport {
-	family := familyForIntegrationID(integrationID)
-	spec, ok := compatibilitySpecs[family]
-	if !ok {
-		return CompatibilityReport{
-			Compatible:    false,
-			IntegrationID: integrationID,
-			CLIVersion:    cliVersion,
-			PluginVersion: pluginVersion,
-			Protocol:      protocol,
-			Message:       "unsupported integration: " + integrationID,
-		}
-	}
-
 	report := CompatibilityReport{
-		Compatible:    true,
 		IntegrationID: integrationID,
-		Family:        family,
+		Family:        FamilyForID(integrationID),
 		Protocol:      protocol,
 		PluginVersion: pluginVersion,
 		CLIVersion:    cliVersion,
-		CLIMin:        spec.CLIMin,
-		Message:       "compatible",
 	}
-	expectedVersion, err := expectedPluginVersion(family)
-	if err != nil {
-		report.Compatible = false
-		report.Message = "Baft CLI could not determine the expected plugin version for " + family + ": " + err.Error()
-		return report
+	if report.Family == "" {
+		return report.fail(CodeUnsupportedIntegration, "unsupported integration: "+integrationID)
 	}
 
-	if protocol != spec.Protocol {
-		report.Compatible = false
-		report.Message = fmt.Sprintf("Baft plugin protocol mismatch: plugin uses protocol %d, CLI expects protocol %d", protocol, spec.Protocol)
-		return report
+	expectedVersion, err := expectedPluginVersion(report.Family)
+	if err != nil {
+		return report.fail(CodeVersionUnavailable, "Baft CLI could not determine the expected plugin version for "+report.Family+": "+err.Error())
+	}
+	if protocol != protocolVersion {
+		return report.fail(CodeProtocolMismatch, fmt.Sprintf("Baft plugin protocol mismatch: plugin uses protocol %d, CLI expects protocol %d", protocol, protocolVersion))
 	}
 	if pluginVersion != expectedVersion {
-		report.Compatible = false
 		report.ExpectedVersion = expectedVersion
-		report.Message = fmt.Sprintf("Baft plugin version mismatch: expected %s, got %s", expectedVersion, pluginVersion)
-		return report
-	}
-	if isDevVersion(cliVersion) {
-		report.Warning = "CLI version is a development build; semantic version checks were skipped"
-		return report
+		return report.fail(CodeVersionMismatch, fmt.Sprintf("Baft plugin version mismatch: expected %s, got %s", expectedVersion, pluginVersion))
 	}
 
-	cmp, err := compareSemver(cliVersion, spec.CLIMin)
-	if err != nil {
-		report.Warning = "CLI version is not a semantic version; semantic version checks were skipped"
-		return report
-	}
-	if cmp < 0 {
-		report.Compatible = false
-		report.Message = fmt.Sprintf("Baft plugin requires CLI >= %s. Current version: %s", spec.CLIMin, cliVersion)
-	}
+	report.Compatible = true
+	report.Code = CodeOK
+	report.Message = "compatible"
 	return report
 }
 
-func familyForIntegrationID(id string) string {
+func (r CompatibilityReport) fail(code, message string) CompatibilityReport {
+	r.Code = code
+	r.Message = message
+	return r
+}
+
+// FamilyForID maps an IDE identifier to its integration family.
+func FamilyForID(id string) string {
 	switch id {
 	case "vscode", "vscode-insiders":
 		return FamilyVSCode
@@ -144,73 +113,6 @@ func expectedPluginVersion(family string) (string, error) {
 		return "", embeddedVersionsErr
 	}
 	return embeddedPluginVersions[family], nil
-}
-
-func expectedProtocol(family string) int {
-	return compatibilitySpecs[family].Protocol
-}
-
-func isDevVersion(version string) bool {
-	trimmed := strings.TrimSpace(strings.ToLower(version))
-	return trimmed == "" || trimmed == "dev" || trimmed == "(devel)"
-}
-
-type semver struct {
-	major int
-	minor int
-	patch int
-}
-
-func compareSemver(left, right string) (int, error) {
-	lhs, err := parseSemver(left)
-	if err != nil {
-		return 0, err
-	}
-	rhs, err := parseSemver(right)
-	if err != nil {
-		return 0, err
-	}
-	if lhs.major != rhs.major {
-		if lhs.major < rhs.major {
-			return -1, nil
-		}
-		return 1, nil
-	}
-	if lhs.minor != rhs.minor {
-		if lhs.minor < rhs.minor {
-			return -1, nil
-		}
-		return 1, nil
-	}
-	if lhs.patch != rhs.patch {
-		if lhs.patch < rhs.patch {
-			return -1, nil
-		}
-		return 1, nil
-	}
-	return 0, nil
-}
-
-func parseSemver(value string) (semver, error) {
-	trimmed := strings.TrimSpace(strings.TrimPrefix(value, "v"))
-	trimmed = strings.SplitN(trimmed, "-", 2)[0]
-	parts := strings.Split(trimmed, ".")
-	if len(parts) != 3 {
-		return semver{}, fmt.Errorf("invalid semantic version: %s", value)
-	}
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return semver{}, fmt.Errorf("invalid semantic version: %s", value)
-	}
-	minor, err := strconv.Atoi(parts[1])
-	if err != nil {
-		return semver{}, fmt.Errorf("invalid semantic version: %s", value)
-	}
-	patch, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return semver{}, fmt.Errorf("invalid semantic version: %s", value)
-	}
-	return semver{major: major, minor: minor, patch: patch}, nil
 }
 
 func getEmbeddedVSCodeVersion() (string, error) {

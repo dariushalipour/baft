@@ -7,8 +7,7 @@ Flags:
   --reporter=<name>   Output reporter format. Options:
                         text    Human-readable, colorized terminal output (default)
                         json    Pretty-printed JSON of the full check result (capsules, violations, warnings, errors)
-                        vsce    Compact JSON array of diagnostics for the VS Code extension
-                        vsce, intellij  Compact JSON array of diagnostics (identical format); the difference is which editor extension consumes it
+                        vsce, intellij  Compact JSON `{"violations":[...],"errors":[...]}` for the editor plugins (identical format); the difference is which editor extension consumes it
   --overlay-stdin     Read an unsaved-file overlay payload from stdin before checking.
                       The payload is a JSON object of the form `{"files":[{"path":"...","content":"..."}]}`.
                       Baft uses an in-memory overlay filesystem so that checks are performed against the unsaved (dirty) buffer contents rather than the on-disk version.

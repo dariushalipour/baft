@@ -129,15 +129,35 @@ func TestRunAutoSelectWithFamily(t *testing.T) {
 	var out bytes.Buffer
 
 	err := Run(context.Background(), manager, Options{
-		AutoSelect: true,
-		Family:     "jetbrains",
-		Out:        &out,
+		AutoSelect:  true,
+		Integration: "jetbrains",
+		Out:         &out,
 	})
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
 	if got := manager.installed; len(got) != 1 || got[0] != "goland" {
 		t.Fatalf("installed = %v, want [goland]", got)
+	}
+}
+
+func TestRunAutoSelectPrefersExactIDOverFamily(t *testing.T) {
+	manager := &fakeManager{
+		detected: []integrations.IDEInstallation{
+			{ID: "goland", Family: integrations.FamilyJetBrains, DisplayName: "GoLand", Version: "2026.1"},
+			{ID: "intellij-ultimate", Family: integrations.FamilyJetBrains, DisplayName: "IntelliJ IDEA", Version: "2026.1"},
+		},
+	}
+
+	err := Run(context.Background(), manager, Options{
+		AutoSelect:  true,
+		Integration: "intellij-ultimate",
+	})
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if got := manager.installed; len(got) != 1 || got[0] != "intellij-ultimate" {
+		t.Fatalf("installed = %v, want [intellij-ultimate]", got)
 	}
 }
 
@@ -149,8 +169,8 @@ func TestRunAutoSelectUnknownFamily(t *testing.T) {
 	}
 
 	err := Run(context.Background(), manager, Options{
-		AutoSelect: true,
-		Family:     "jetbrains",
+		AutoSelect:  true,
+		Integration: "jetbrains",
 	})
 	if err == nil {
 		t.Fatalf("expected error for unknown family, got nil")

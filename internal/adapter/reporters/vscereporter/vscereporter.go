@@ -6,17 +6,25 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
+// payload is the wire format read by the editor plugins: per-file diagnostics
+// plus the top-level errors that abort a check, so a hard failure is visible
+// instead of looking like "no violations".
+type payload struct {
+	Violations []port.Violation `json:"violations"`
+	Errors     []string         `json:"errors"`
+}
+
 type VSCERenderer struct{}
 
 func (r *VSCERenderer) Render(result *port.CheckResult) string {
-	var diagnostics []port.Violation
+	out := payload{Violations: []port.Violation{}, Errors: result.Errors}
+	if out.Errors == nil {
+		out.Errors = []string{}
+	}
 	for _, c := range result.Capsules {
-		diagnostics = append(diagnostics, c.Violations...)
-		diagnostics = append(diagnostics, c.Errors...)
+		out.Violations = append(out.Violations, c.Violations...)
+		out.Violations = append(out.Violations, c.Errors...)
 	}
-	if diagnostics == nil {
-		return "[]\n"
-	}
-	b, _ := json.Marshal(diagnostics)
+	b, _ := json.Marshal(out)
 	return string(b) + "\n"
 }

@@ -5,7 +5,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.lang.ProcessBuilder
 import kotlin.test.*
 
 class BaftCompatibilityCheckerTest {
@@ -29,150 +28,106 @@ class BaftCompatibilityCheckerTest {
     @Test
     fun `check returns success when CLI reports compatible`() {
         mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":true,"message":"compatible"}""",
+            stdout = """{"compatible":true,"code":"ok","message":"compatible"}""",
             exitValue = 0,
         )
 
-        val checker = createChecker()
-        val result = checker.check()
-
-        assertTrue(result is CompatibilityResult.Success)
+        assertTrue(createChecker().check() is CompatibilityResult.Success)
     }
 
     @Test
-    fun `check returns versionMismatch when CLI reports version mismatch`() {
+    fun `check classifies a version mismatch by code, not by message`() {
         mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":false,"message":"Baft plugin version mismatch: expected 0.2.1, got 0.1.2","expected_version":"0.2.1","plugin_version":"0.1.2"}""",
+            stdout = """{"compatible":false,"code":"version_mismatch","message":"les versions ne correspondent pas","expected_version":"0.2.1","plugin_version":"0.1.2"}""",
             exitValue = 1,
         )
 
-        val checker = createChecker()
-        val result = checker.check()
+        val result = assertIs<CompatibilityResult.VersionMismatch>(createChecker().check())
 
-        assertTrue(result is CompatibilityResult.VersionMismatch)
-        val vm = result as CompatibilityResult.VersionMismatch
-        assertEquals("0.2.1", vm.expectedVersion)
-        assertEquals("0.1.2", vm.pluginVersion)
-        assertTrue(vm.message.contains("version mismatch"))
+        assertEquals("0.2.1", result.expectedVersion)
+        assertEquals("0.1.2", result.pluginVersion)
         assertEquals(1, capturedMismatchMessages.size)
     }
 
     @Test
     fun `check returns failure for non-version-mismatch incompatibility`() {
         mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":false,"message":"Baft plugin protocol mismatch: plugin uses protocol 2, CLI expects protocol 3"}""",
+            stdout = """{"compatible":false,"code":"protocol_mismatch","message":"Baft plugin protocol mismatch: plugin uses protocol 2, CLI expects protocol 3"}""",
             exitValue = 1,
         )
 
-        val checker = createChecker()
-        val result = checker.check()
+        val result = assertIs<CompatibilityResult.Failure>(createChecker().check())
 
-        assertTrue(result is CompatibilityResult.Failure)
-        val failure = result as CompatibilityResult.Failure
-        assertTrue(failure.message.contains("protocol mismatch"))
+        assertTrue(result.message.contains("protocol mismatch"))
         assertEquals(1, capturedFailureMessages.size)
     }
 
     @Test
     fun `check returns failure when binary not found`() {
-        val checker = BaftCompatibilityChecker(
-            binaryPath = { throw java.io.IOException("not found") },
-            pluginVersion = { "0.2.1" },
-            onVersionMismatch = { msg, ev, pv -> capturedMismatchMessages.add(Triple(msg, ev, pv)) },
-            onFailure = { msg -> capturedFailureMessages.add(msg) },
-            gson = gson,
-            processBuilderFactory = mockFactory,
-        )
+        val checker = createChecker(binaryPath = { throw java.io.IOException("not found") })
 
-        val result = checker.check()
+        val result = assertIs<CompatibilityResult.Failure>(checker.check())
 
-        assertTrue(result is CompatibilityResult.Failure)
-        assertEquals("Baft: binary not found in PATH", (result as CompatibilityResult.Failure).message)
+        assertTrue(result.message.contains("Baft: binary not found"))
     }
 
     @Test
     fun `check returns failure when stdout is invalid json`() {
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = "not json at all",
-            exitValue = 1,
-        )
+        mockFactory.nextProcess = MockProcessResult(stdout = "not json at all", exitValue = 1)
 
-        val checker = createChecker()
-        val result = checker.check()
+        val result = assertIs<CompatibilityResult.Failure>(createChecker().check())
 
-        assertTrue(result is CompatibilityResult.Failure)
-        assertEquals("Baft compatibility check failed", (result as CompatibilityResult.Failure).message)
+        assertEquals("Baft compatibility check failed", result.message)
     }
 
     @Test
     fun `check returns failure when stderr has content and stdout is empty`() {
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = "",
-            stderr = "some error from CLI",
-            exitValue = 1,
-        )
+        mockFactory.nextProcess = MockProcessResult(stderr = "some error from CLI", exitValue = 1)
 
-        val checker = createChecker()
-        val result = checker.check()
+        val result = assertIs<CompatibilityResult.Failure>(createChecker().check())
 
-        assertTrue(result is CompatibilityResult.Failure)
-        assertEquals("some error from CLI", (result as CompatibilityResult.Failure).message)
+        assertEquals("some error from CLI", result.message)
     }
 
     @Test
-    fun `check caches result on subsequent calls`() {
+    fun `check caches a success and keeps annotating every later file`() {
         var callCount = 0
         mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":false,"message":"Baft plugin version mismatch: expected 0.2.1, got 0.1.2"}""",
+            stdout = """{"compatible":true,"code":"ok","message":"compatible"}""",
+            exitValue = 0,
+        )
+
+        val checker = createChecker(binaryPath = { callCount++; "/fake/baft" })
+
+        repeat(3) { assertTrue(checker.check() is CompatibilityResult.Success) }
+        assertEquals(1, callCount)
+    }
+
+    @Test
+    fun `check retries after a failure`() {
+        var callCount = 0
+        mockFactory.nextProcess = MockProcessResult(
+            stdout = """{"compatible":false,"code":"version_mismatch","message":"mismatch"}""",
             exitValue = 1,
         )
 
-        val checker = BaftCompatibilityChecker(
-            binaryPath = {
-                callCount++
-                "/fake/baft"
-            },
-            pluginVersion = { "0.2.1" },
-            onVersionMismatch = { msg, ev, pv -> capturedMismatchMessages.add(Triple(msg, ev, pv)) },
-            onFailure = { msg -> capturedFailureMessages.add(msg) },
-            gson = gson,
-            processBuilderFactory = mockFactory,
-        )
+        val checker = createChecker(binaryPath = { callCount++; "/fake/baft" })
 
-        checker.check()
-        checker.check()
-        checker.check()
-
-        assertEquals(1, callCount)
+        repeat(3) { checker.check() }
+        assertEquals(3, callCount)
     }
 
     @Test
     fun `reset allows re-running the check`() {
         var callCount = 0
         mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":true,"message":"compatible"}""",
+            stdout = """{"compatible":true,"code":"ok","message":"compatible"}""",
             exitValue = 0,
         )
 
-        val checker = BaftCompatibilityChecker(
-            binaryPath = {
-                callCount++
-                "/fake/baft"
-            },
-            pluginVersion = { "0.2.1" },
-            onVersionMismatch = { msg, ev, pv -> capturedMismatchMessages.add(Triple(msg, ev, pv)) },
-            onFailure = { msg -> capturedFailureMessages.add(msg) },
-            gson = gson,
-            processBuilderFactory = mockFactory,
-        )
+        val checker = createChecker(binaryPath = { callCount++; "/fake/baft" })
 
         checker.check()
-        assertEquals(1, callCount)
-
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":true,"message":"compatible"}""",
-            exitValue = 0,
-        )
         checker.reset()
         checker.check()
 
@@ -180,76 +135,52 @@ class BaftCompatibilityCheckerTest {
     }
 
     @Test
-    fun `check uses injected plugin version`() {
-        var capturedVersion = ""
+    fun `check reports the running IDE, not just the family`() {
         mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":true,"message":"compatible"}""",
+            stdout = """{"compatible":true,"code":"ok","message":"compatible"}""",
             exitValue = 0,
         )
 
-        val checker = BaftCompatibilityChecker(
-            binaryPath = { "/fake/baft" },
-            pluginVersion = {
-                capturedVersion = "1.0.0-beta"
-                "1.0.0-beta"
-            },
-            onVersionMismatch = { msg, ev, pv -> capturedMismatchMessages.add(Triple(msg, ev, pv)) },
-            onFailure = { msg -> capturedFailureMessages.add(msg) },
-            gson = gson,
-            processBuilderFactory = mockFactory,
-        )
+        createChecker(integrationId = { "intellij-ultimate" }).check()
 
-        checker.check()
-        assertEquals("1.0.0-beta", capturedVersion)
+        assertContains(mockFactory.commands.last(), "--integration=intellij-ultimate")
+        assertContains(mockFactory.commands.last(), "--plugin-version=0.2.1")
     }
 
-    // --- Reinstall tests ---
+    // --- Reinstall ---
 
     @Test
-    fun `reinstall calls onSuccess when CLI exits 0`() {
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = "Baft integration installed successfully for VS Code 1.100.0",
-            exitValue = 0,
-        )
+    fun `reinstall targets the running IDE and calls onSuccess when CLI exits 0`() {
+        mockFactory.nextProcess = MockProcessResult(exitValue = 0)
 
-        val checker = createChecker()
-        checker.reinstall(
+        createChecker(integrationId = { "goland" }).reinstall(
             onSuccess = { capturedSuccessCallbacks.add(Unit) },
             onError = { capturedErrorCallbacks.add(it) },
         )
 
         assertEquals(1, capturedSuccessCallbacks.size)
         assertEquals(0, capturedErrorCallbacks.size)
+        assertContains(mockFactory.commands.last(), "--integration=goland")
     }
 
     @Test
     fun `reinstall calls onError when CLI exits non-zero`() {
-        mockFactory.nextProcess = MockProcessResult(
-            stderr = "no supported integrations detected",
-            exitValue = 1,
-        )
+        mockFactory.nextProcess = MockProcessResult(stderr = "no supported integrations detected", exitValue = 1)
 
-        val checker = createChecker()
-        checker.reinstall(
+        createChecker().reinstall(
             onSuccess = { capturedSuccessCallbacks.add(Unit) },
             onError = { capturedErrorCallbacks.add(it) },
         )
 
         assertEquals(0, capturedSuccessCallbacks.size)
-        assertEquals(1, capturedErrorCallbacks.size)
-        assertEquals("no supported integrations detected", capturedErrorCallbacks[0])
+        assertEquals(listOf("no supported integrations detected"), capturedErrorCallbacks)
     }
 
     @Test
     fun `reinstall calls onError with default message when stderr is empty`() {
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = "",
-            stderr = "",
-            exitValue = 1,
-        )
+        mockFactory.nextProcess = MockProcessResult(exitValue = 1)
 
-        val checker = createChecker()
-        checker.reinstall(
+        createChecker().reinstall(
             onSuccess = { capturedSuccessCallbacks.add(Unit) },
             onError = { capturedErrorCallbacks.add(it) },
         )
@@ -259,66 +190,26 @@ class BaftCompatibilityCheckerTest {
 
     @Test
     fun `reinstall calls onError when binary not found`() {
-        val checker = BaftCompatibilityChecker(
-            binaryPath = { throw java.io.IOException("not found") },
-            pluginVersion = { "0.2.1" },
-            onVersionMismatch = { _, _, _ -> },
-            onFailure = { },
-            gson = gson,
-            processBuilderFactory = mockFactory,
-        )
-
-        checker.reinstall(
+        createChecker(binaryPath = { throw java.io.IOException("not found") }).reinstall(
             onSuccess = { capturedSuccessCallbacks.add(Unit) },
             onError = { capturedErrorCallbacks.add(it) },
         )
 
         assertEquals(0, capturedSuccessCallbacks.size)
-        assertEquals(1, capturedErrorCallbacks.size)
         assertTrue(capturedErrorCallbacks[0].contains("Could not run reinstall"))
     }
 
-    // --- Version mismatch callback fires ---
-
-    @Test
-    fun `check fires onVersionMismatch callback for version mismatch`() {
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":false,"message":"Baft plugin version mismatch: expected 0.2.1, got 0.1.2","expected_version":"0.2.1","plugin_version":"0.1.2"}""",
-            exitValue = 1,
-        )
-
-        val checker = createChecker()
-        checker.check()
-
-        assertEquals(1, capturedMismatchMessages.size)
-        val triple = capturedMismatchMessages[0]
-        assertEquals("0.2.1", triple.second)
-        assertEquals("0.1.2", triple.third)
-    }
-
-    @Test
-    fun `check fires onFailure callback for other failures`() {
-        mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":false,"message":"Baft plugin protocol mismatch: plugin uses protocol 2, CLI expects protocol 3"}""",
-            exitValue = 1,
-        )
-
-        val checker = createChecker()
-        checker.check()
-
-        assertEquals(1, capturedFailureMessages.size)
-        assertTrue(capturedFailureMessages[0].contains("protocol mismatch"))
-    }
-
-    // --- Helpers ---
-
-    private fun createChecker(): BaftCompatibilityChecker {
+    private fun createChecker(
+        binaryPath: () -> String = { "/fake/baft" },
+        integrationId: () -> String = { "jetbrains" },
+    ): BaftCompatibilityChecker {
         return BaftCompatibilityChecker(
-            binaryPath = { "/fake/baft" },
+            binaryPath = binaryPath,
             pluginVersion = { "0.2.1" },
             onVersionMismatch = { msg, ev, pv -> capturedMismatchMessages.add(Triple(msg, ev, pv)) },
             onFailure = { msg -> capturedFailureMessages.add(msg) },
             gson = gson,
+            integrationId = integrationId,
             processBuilderFactory = mockFactory,
         )
     }
@@ -332,17 +223,17 @@ data class MockProcessResult(
 
 class TestProcessBuilderFactory : BaftCompatibilityChecker.ProcessBuilderFactory {
     var nextProcess: MockProcessResult? = null
+    val commands = mutableListOf<List<String>>()
 
     override fun start(vararg command: String): java.lang.Process {
-        val result = nextProcess ?: MockProcessResult()
-        return MockProcess(result)
+        commands.add(command.toList())
+        return MockProcess(nextProcess ?: MockProcessResult())
     }
 }
 
 class MockProcess(private val result: MockProcessResult) : java.lang.Process() {
     private val stdoutStream = ByteArrayInputStream(result.stdout.toByteArray(Charsets.UTF_8))
     private val stderrStream = ByteArrayInputStream(result.stderr.toByteArray(Charsets.UTF_8))
-    private val stdoutCopy = ByteArrayInputStream(result.stdout.toByteArray(Charsets.UTF_8))
 
     override fun getInputStream(): java.io.InputStream = stdoutStream
     override fun getOutputStream(): java.io.OutputStream = ByteArrayOutputStream()

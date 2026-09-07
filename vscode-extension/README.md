@@ -12,12 +12,13 @@ This extension does not implement architecture rules itself. It runs the [Baft](
 - Opt-in format on save with `baft.format.onSave`
 - Command Palette support via `Baft: Restyle Contract`
 - Configurable formatting palette with `baft.format.colorPalette`
+- Configurable CLI location with `baft.binaryPath` when `baft` is not on `PATH`
 - The CLI stays the single source of truth
 
 ## Requirements
 
 - VS Code 1.85+
-- `baft` installed and available in `PATH`
+- `baft` installed and available in `PATH` (or pointed at with `baft.binaryPath`)
 
 ## Install Baft
 
@@ -87,9 +88,9 @@ To opt in on save, add this in VS Code settings:
 
 ## Troubleshooting
 
-**"Baft: binary not found in PATH"**
+**"Baft: 'baft' not found"**
 
-VS Code cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.
+VS Code cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`, or set `baft.binaryPath` to its absolute path. That setting is machine-scoped, so a workspace cannot point Baft at a binary it ships.
 
 **"Baft plugin version mismatch"**
 

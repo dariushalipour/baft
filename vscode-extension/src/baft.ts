@@ -3,6 +3,9 @@ import * as vscode from "vscode";
 
 const PROTOCOL_VERSION = 3;
 
+// Files baft scans, plus the contract itself. Nothing else can change a result.
+const SCANNED = /(\.(go|ts|tsx|py|pyi|rs|java|kt|cs|dart)|[\\/]BAFT\.md)$/;
+
 export interface Violation {
   rule: string;
   severity: string;
@@ -14,35 +17,48 @@ export interface Violation {
   columnEnd?: number;
 }
 
+export interface CheckOutput {
+  violations: Violation[];
+  errors: string[];
+}
+
+export interface CompatibilityReport {
+  compatible: boolean;
+  code?: string;
+  message: string;
+  expected_version?: string;
+  plugin_version?: string;
+}
+
 interface OverlayFile {
   path: string;
   content: string;
-}
-
-interface OverlayPayload {
-  files: OverlayFile[];
-}
-
-interface CompatibilityReport {
-  compatible: boolean;
-  message: string;
-  warning?: string;
-  expected_version?: string;
-  plugin_version?: string;
 }
 
 export type RestyleColorPalette = "vibrant" | "muted" | "mono" | "none";
 
 const running = new Map<string, ChildProcess>();
 
+export function isScanned(fsPath: string): boolean {
+  return SCANNED.test(fsPath);
+}
+
+// Machine-scoped setting, so a workspace can never point Baft at a binary it ships.
+export function binaryPath(): string {
+  const configured = vscode.workspace
+    .getConfiguration("baft")
+    .get<string>("binaryPath", "")
+    .trim();
+  return configured || "baft";
+}
+
 export function verifyCompatibility(
   integrationId: string,
-  pluginVersion: string,
-  output: vscode.OutputChannel
-): Promise<CompatibilityReport | undefined> {
+  pluginVersion: string
+): Promise<CompatibilityReport> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
-      "baft",
+      binaryPath(),
       [
         "integrate",
         "--verify-compatible",
@@ -68,30 +84,16 @@ export function verifyCompatibility(
       reject(err);
     });
 
-    proc.on("close", (code, signal) => {
+    proc.on("close", (_code, signal) => {
       if (signal !== null) {
         reject(new Error("Baft compatibility check was interrupted"));
         return;
       }
-
-      let report: CompatibilityReport | undefined;
       try {
-        report = JSON.parse(stdout.trim()) as CompatibilityReport;
+        resolve(JSON.parse(stdout.trim()) as CompatibilityReport);
       } catch {
-        report = undefined;
+        reject(new Error(stderr.trim() || "Baft compatibility check failed"));
       }
-
-      if (report?.warning) {
-        output.appendLine(`Baft: ${report.warning}`);
-      }
-
-      if (code === 0 && report?.compatible) {
-        resolve(report);
-        return;
-      }
-
-      const message = report?.message || stderr.trim() || "Baft compatibility check failed";
-      resolve(report);
     });
   });
 }
@@ -99,7 +101,7 @@ export function verifyCompatibility(
 export function runCheck(
   cwd: string,
   output: vscode.OutputChannel
-): Promise<Violation[]> {
+): Promise<CheckOutput> {
   const overlay = collectOverlay(cwd);
 
   running.get(cwd)?.kill();
@@ -112,7 +114,7 @@ export function runCheck(
     }
     args.push(".");
 
-    const proc = spawn("baft", args, {
+    const proc = spawn(binaryPath(), args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -139,14 +141,18 @@ export function runCheck(
     proc.on("close", (_code, signal) => {
       running.delete(cwd);
       if (signal !== null) {
-        resolve([]);
+        reject(new Error("Baft check was interrupted"));
         return;
       }
       try {
-        resolve(JSON.parse(stdout.trim()));
+        const parsed = JSON.parse(stdout.trim()) as Partial<CheckOutput>;
+        resolve({
+          violations: parsed.violations ?? [],
+          errors: parsed.errors ?? [],
+        });
       } catch {
         output.appendLine(`Baft: failed to parse output:\n${stdout}`);
-        resolve([]);
+        reject(new Error("Baft: could not parse check output"));
       }
     });
   });
@@ -160,7 +166,7 @@ export function runRestyle(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const proc = spawn(
-      "baft",
+      binaryPath(),
       [
         "restyle",
         "--stdin",
@@ -209,6 +215,7 @@ function collectOverlay(cwd: string): string | undefined {
       (doc) =>
         doc.isDirty &&
         doc.uri.scheme === "file" &&
+        isScanned(doc.uri.fsPath) &&
         vscode.workspace.getWorkspaceFolder(doc.uri)?.uri.fsPath === cwd
     )
     .map<OverlayFile>((doc) => ({
@@ -221,6 +228,5 @@ function collectOverlay(cwd: string): string | undefined {
     return undefined;
   }
 
-  const payload: OverlayPayload = { files };
-  return JSON.stringify(payload);
+  return JSON.stringify({ files });
 }

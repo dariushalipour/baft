@@ -10,9 +10,7 @@ import (
 	"strings"
 )
 
-type vscodeInstaller struct {
-	cliVersion string
-}
+type vscodeInstaller struct{}
 
 type vscodeCandidate struct {
 	ID          string
@@ -20,8 +18,8 @@ type vscodeCandidate struct {
 	Commands    []string
 }
 
-func newVSCodeInstaller(cliVersion string) Installer {
-	return &vscodeInstaller{cliVersion: cliVersion}
+func newVSCodeInstaller() Installer {
+	return &vscodeInstaller{}
 }
 
 func (i *vscodeInstaller) Family() string {
@@ -94,15 +92,6 @@ func (i *vscodeInstaller) Verify(ctx context.Context, ide IDEInstallation) error
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	vscodeVersion, err := expectedPluginVersion(FamilyVSCode)
-	if err != nil {
-		return fmt.Errorf("could not determine embedded VS Code plugin version: %w", err)
-	}
-	report := VerifyCompatibility(i.cliVersion, ide.ID, vscodeVersion, expectedProtocol(FamilyVSCode))
-	if !report.Compatible {
-		return fmt.Errorf(report.Message)
-	}
-
 	cmd := exec.CommandContext(ctx, ide.Executable, "--list-extensions", "--show-versions")
 	output, err := cmd.CombinedOutput()
 	if err != nil {

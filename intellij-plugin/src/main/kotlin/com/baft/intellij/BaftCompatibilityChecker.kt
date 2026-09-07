@@ -3,8 +3,30 @@ package com.baft.intellij
 import com.google.gson.Gson
 import com.google.gson.JsonSyntaxException
 import java.io.IOException
-import java.io.InputStream
-import java.lang.ProcessBuilder
+
+const val COMPATIBILITY_VERSION_MISMATCH = "version_mismatch"
+
+data class BaftCompatibilityReport(
+    val compatible: Boolean = false,
+    val code: String? = null,
+    val message: String? = null,
+    val expected_version: String? = null,
+    val plugin_version: String? = null,
+)
+
+sealed class CompatibilityResult {
+    object Success : CompatibilityResult()
+    data class Failure(val message: String) : CompatibilityResult()
+    data class VersionMismatch(val message: String, val expectedVersion: String?, val pluginVersion: String?) :
+        CompatibilityResult()
+
+    companion object {
+        fun success(): CompatibilityResult = Success
+        fun failure(message: String?) = Failure(message ?: "unknown error")
+        fun versionMismatch(message: String, expectedVersion: String?, pluginVersion: String?) =
+            VersionMismatch(message, expectedVersion, pluginVersion)
+    }
+}
 
 /**
  * Standalone compatibility checker that can be tested without the IntelliJ SDK.
@@ -20,35 +42,28 @@ class BaftCompatibilityChecker(
     private val onVersionMismatch: (message: String, expectedVersion: String?, pluginVersion: String?) -> Unit,
     private val onFailure: (message: String) -> Unit,
     private val gson: Gson = Gson(),
+    private val integrationId: () -> String = { "jetbrains" },
     private val protocolVersion: Int = 3,
     private val processBuilderFactory: ProcessBuilderFactory = DefaultProcessBuilderFactory,
 ) {
 
-    private var checked = false
-    private var failureMessage: String? = null
+    @Volatile
+    private var compatible: CompatibilityResult? = null
 
     /**
-     * Run the compatibility check once. Subsequent calls return the cached result.
+     * Run the compatibility check. A success is cached for the rest of the
+     * session; a failure is retried, and the callbacks (which de-duplicate
+     * notifications) report it again.
      */
     fun check(): CompatibilityResult {
-        if (checked) {
-            return CompatibilityResult.failure(failureMessage)
-        }
+        compatible?.let { return it }
 
         synchronized(this) {
-            if (checked) {
-                return CompatibilityResult.failure(failureMessage)
-            }
+            compatible?.let { return it }
 
             val result = doCheck()
-            failureMessage = when (result) {
-                is CompatibilityResult.Success -> null
-                is CompatibilityResult.Failure -> result.message
-                is CompatibilityResult.VersionMismatch -> result.message
-            }
-            checked = true
             when (result) {
-                is CompatibilityResult.Success -> { /* ok */ }
+                is CompatibilityResult.Success -> compatible = result
                 is CompatibilityResult.Failure -> onFailure(result.message)
                 is CompatibilityResult.VersionMismatch -> onVersionMismatch(
                     result.message, result.expectedVersion, result.pluginVersion
@@ -59,12 +74,11 @@ class BaftCompatibilityChecker(
     }
 
     /**
-     * Reset the cache so the check can be run again.
+     * Forget a cached success so the check can be run again.
      * Intended for testing only.
      */
     internal fun reset() {
-        checked = false
-        failureMessage = null
+        compatible = null
     }
 
     /**
@@ -87,12 +101,12 @@ class BaftCompatibilityChecker(
                 binaryPath(),
                 "integrate",
                 "--verify-compatible",
-                "--integration=jetbrains",
+                "--integration=${integrationId()}",
                 "--plugin-version=${pluginVersion()}",
                 "--protocol=$protocolVersion",
             )
         } catch (e: IOException) {
-            return CompatibilityResult.failure("Baft: binary not found in PATH")
+            return CompatibilityResult.failure("Baft: binary not found. Install the CLI or set the Baft executable in Settings.")
         }
 
         val stdoutText = process.inputStream.bufferedReader().readText().trim()
@@ -107,17 +121,13 @@ class BaftCompatibilityChecker(
         }
 
         return when {
-            process.exitValue() == 0 && report?.compatible == true -> {
-                CompatibilityResult.success()
-            }
-            !report?.message.isNullOrBlank() -> {
-                val msg = report.message
-                if (msg.contains("version mismatch")) {
-                    CompatibilityResult.versionMismatch(msg, report.expected_version, report.plugin_version)
-                } else {
-                    CompatibilityResult.failure(msg)
-                }
-            }
+            report?.compatible == true -> CompatibilityResult.success()
+            report?.code == COMPATIBILITY_VERSION_MISMATCH -> CompatibilityResult.versionMismatch(
+                report.message ?: "Baft plugin version mismatch",
+                report.expected_version,
+                report.plugin_version,
+            )
+            !report?.message.isNullOrBlank() -> CompatibilityResult.failure(report?.message)
             stderrText.isNotBlank() -> CompatibilityResult.failure(stderrText)
             else -> CompatibilityResult.failure("Baft compatibility check failed")
         }
@@ -134,10 +144,9 @@ class BaftCompatibilityChecker(
             val process = processBuilderFactory.start(
                 binaryPath(),
                 "integrate",
-                "--integration=jetbrains",
+                "--integration=${integrationId()}",
                 "--yes",
             )
-            val stdout = process.inputStream.bufferedReader().readText()
             val stderr = process.errorStream.bufferedReader().readText()
             process.waitFor()
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -28,7 +29,7 @@ func findTestBinary(t *testing.T) string {
 
 func TestContractVerifyCompatibleMatchingVersion(t *testing.T) {
 	binary := findTestBinary(t)
-	protocol := expectedProtocol(FamilyVSCode)
+	protocol := protocolVersion
 	expectedVersion, err := expectedPluginVersion(FamilyVSCode)
 	if err != nil {
 		t.Fatalf("could not get embedded VS Code version: %v", err)
@@ -37,7 +38,7 @@ func TestContractVerifyCompatibleMatchingVersion(t *testing.T) {
 	cmd := exec.Command(binary, "integrate", "--verify-compatible",
 		"--integration=vscode",
 		"--plugin-version="+expectedVersion,
-		"--protocol="+formatInt(protocol),
+		"--protocol="+strconv.Itoa(protocol),
 	)
 
 	out, err := cmd.CombinedOutput()
@@ -61,12 +62,12 @@ func TestContractVerifyCompatibleMatchingVersion(t *testing.T) {
 
 func TestContractVerifyCompatibleVersionMismatch(t *testing.T) {
 	binary := findTestBinary(t)
-	protocol := expectedProtocol(FamilyVSCode)
+	protocol := protocolVersion
 
 	cmd := exec.Command(binary, "integrate", "--verify-compatible",
 		"--integration=vscode",
 		"--plugin-version=0.0.1",
-		"--protocol="+formatInt(protocol),
+		"--protocol="+strconv.Itoa(protocol),
 	)
 
 	out, err := cmd.CombinedOutput()
@@ -91,8 +92,8 @@ func TestContractVerifyCompatibleVersionMismatch(t *testing.T) {
 		t.Fatalf("expected plugin_version=0.0.1, got %s", report.PluginVersion)
 	}
 
-	if !strings.Contains(report.Message, "version mismatch") {
-		t.Fatalf("expected message to contain 'version mismatch', got: %s", report.Message)
+	if report.Code != CodeVersionMismatch {
+		t.Fatalf("expected code=%s, got %s", CodeVersionMismatch, report.Code)
 	}
 }
 
@@ -103,11 +104,11 @@ func TestContractVerifyCompatibleProtocolMismatch(t *testing.T) {
 		t.Fatalf("could not get embedded VS Code version: %v", err)
 	}
 
-	wrongProtocol := expectedProtocol(FamilyVSCode) - 1
+	wrongProtocol := protocolVersion - 1
 	cmd := exec.Command(binary, "integrate", "--verify-compatible",
 		"--integration=vscode",
 		"--plugin-version="+expectedVersion,
-		"--protocol="+formatInt(wrongProtocol),
+		"--protocol="+strconv.Itoa(wrongProtocol),
 	)
 
 	out, err := cmd.CombinedOutput()
@@ -124,8 +125,8 @@ func TestContractVerifyCompatibleProtocolMismatch(t *testing.T) {
 		t.Fatalf("expected compatible=false, got true")
 	}
 
-	if !strings.Contains(report.Message, "protocol mismatch") {
-		t.Fatalf("expected message to contain 'protocol mismatch', got: %s", report.Message)
+	if report.Code != CodeProtocolMismatch {
+		t.Fatalf("expected code=%s, got %s", CodeProtocolMismatch, report.Code)
 	}
 }
 
@@ -176,16 +177,4 @@ func TestContractVersionOutput(t *testing.T) {
 	if version == "" {
 		t.Fatal("expected non-empty version output")
 	}
-}
-
-func formatInt(n int) string {
-	if n < 10 {
-		return string(rune('0' + n))
-	}
-	result := ""
-	for n > 0 {
-		result = string(rune('0'+n%10)) + result
-		n /= 10
-	}
-	return result
 }

@@ -31,6 +31,12 @@
     "configuration": {
       "title": "Baft",
       "properties": {
+        "baft.binaryPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "Absolute path to the `baft` executable. Leave empty to use `baft` from `PATH`. Machine-scoped, so a workspace cannot point Baft at a binary it ships."
+        },
         "baft.format.colorPalette": {
           "type": "string",
           "enum": [

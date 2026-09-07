@@ -36,8 +36,8 @@ type Catalog struct {
 
 func NewCatalog(cliVersion string) *Catalog {
 	items := []Installer{
-		newVSCodeInstaller(cliVersion),
-		newJetBrainsInstaller(cliVersion),
+		newVSCodeInstaller(),
+		newJetBrainsInstaller(),
 	}
 	installers := make(map[string]Installer, len(items))
 	for _, installer := range items {

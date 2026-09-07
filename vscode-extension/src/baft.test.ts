@@ -15,10 +15,11 @@ vi.mock("vscode", () => ({
   workspace: {
     textDocuments: [],
     getWorkspaceFolder: () => undefined,
+    getConfiguration: () => ({ get: (_key: string, fallback: string) => fallback }),
   },
 }));
 
-import { verifyCompatibility, runCheck, runRestyle } from "./baft";
+import { binaryPath, isScanned, runCheck, runRestyle, verifyCompatibility } from "./baft";
 
 function createMockProcess({
   exitCode = 0,
@@ -69,8 +70,7 @@ describe("verifyCompatibility", () => {
     };
     mockSpawn.mockReturnValue(createMockProcess({ stdout: JSON.stringify(report) }));
 
-    const outputChannel = { appendLine: vi.fn() };
-    const result = await verifyCompatibility("vscode", "0.2.1", outputChannel as any);
+    const result = await verifyCompatibility("vscode", "0.2.1");
 
     expect(result).toBeDefined();
     expect(result?.compatible).toBe(true);
@@ -92,8 +92,7 @@ describe("verifyCompatibility", () => {
       createMockProcess({ exitCode: 1, stdout: JSON.stringify(report) })
     );
 
-    const outputChannel = { appendLine: vi.fn() };
-    const result = await verifyCompatibility("vscode", "0.1.2", outputChannel as any);
+    const result = await verifyCompatibility("vscode", "0.1.2");
 
     expect(result).toBeDefined();
     expect(result?.compatible).toBe(false);
@@ -102,20 +101,19 @@ describe("verifyCompatibility", () => {
     expect(result?.message).toContain("version mismatch");
   });
 
-  it("resolves with report containing warning", async () => {
+  it("surfaces the stable classification code", async () => {
     const report = {
-      compatible: true,
-      message: "compatible",
-      warning: "CLI version is a development build; semantic version checks were skipped",
+      compatible: false,
+      code: "version_mismatch",
+      message: "Baft plugin version mismatch: expected 0.2.1, got 0.1.2",
     };
-    mockSpawn.mockReturnValue(createMockProcess({ stdout: JSON.stringify(report) }));
+    mockSpawn.mockReturnValue(
+      createMockProcess({ exitCode: 1, stdout: JSON.stringify(report) })
+    );
 
-    const appendLine = vi.fn();
-    const outputChannel = { appendLine };
-    const result = await verifyCompatibility("vscode", "0.2.1", outputChannel as any);
+    const result = await verifyCompatibility("vscode", "0.1.2");
 
-    expect(result?.compatible).toBe(true);
-    expect(appendLine).toHaveBeenCalledWith("Baft: CLI version is a development build; semantic version checks were skipped");
+    expect(result.code).toBe("version_mismatch");
   });
 
   it("rejects when spawn fails with ENOENT", async () => {
@@ -126,9 +124,8 @@ describe("verifyCompatibility", () => {
     });
     mockSpawn.mockReturnValue(ee);
 
-    const outputChannel = { appendLine: vi.fn() };
     await expect(
-      verifyCompatibility("vscode", "0.2.1", outputChannel as any)
+      verifyCompatibility("vscode", "0.2.1")
     ).rejects.toThrow();
   });
 
@@ -142,21 +139,19 @@ describe("verifyCompatibility", () => {
     ee.stderr = new EventEmitter();
     mockSpawn.mockReturnValue(ee);
 
-    const outputChannel = { appendLine: vi.fn() };
     await expect(
-      verifyCompatibility("vscode", "0.2.1", outputChannel as any)
+      verifyCompatibility("vscode", "0.2.1")
     ).rejects.toThrow("Baft compatibility check was interrupted");
   });
 
-  it("resolves with fallback message when JSON is invalid", async () => {
+  it("rejects with the stderr text when JSON is invalid", async () => {
     mockSpawn.mockReturnValue(
       createMockProcess({ exitCode: 1, stderr: "some error output" })
     );
 
-    const outputChannel = { appendLine: vi.fn() };
-    const result = await verifyCompatibility("vscode", "0.2.1", outputChannel as any);
-
-    expect(result).toBeUndefined();
+    await expect(verifyCompatibility("vscode", "0.2.1")).rejects.toThrow(
+      "some error output"
+    );
   });
 });
 
@@ -170,7 +165,7 @@ describe("runCheck", () => {
     vi.useRealTimers();
   });
 
-  it("returns parsed violations array", async () => {
+  it("returns parsed violations and errors", async () => {
     const violations = [
       {
         rule: "capsule-purity",
@@ -182,14 +177,16 @@ describe("runCheck", () => {
         column: 5,
       },
     ];
-    const mockProc = createMockProcess({ stdout: JSON.stringify(violations) });
+    const mockProc = createMockProcess({
+      stdout: JSON.stringify({ violations, errors: ["discovery: boom"] }),
+    });
     mockProc.stdin = { end: vi.fn() };
     mockSpawn.mockReturnValue(mockProc);
 
     const outputChannel = { appendLine: vi.fn() };
     const result = await runCheck("/project/root", outputChannel as any);
 
-    expect(result).toEqual(violations);
+    expect(result).toEqual({ violations, errors: ["discovery: boom"] });
     expect(mockSpawn).toHaveBeenCalledWith(
       "baft",
       ["check", "--reporter=vsce", "."],
@@ -197,16 +194,16 @@ describe("runCheck", () => {
     );
   });
 
-  it("returns empty array when output is not valid JSON", async () => {
+  it("rejects when output is not valid JSON so diagnostics are kept", async () => {
     const appendLine = vi.fn();
     const outputChannel = { appendLine };
     const mockProc = createMockProcess({ stdout: "not json" });
     mockProc.stdin = { end: vi.fn() };
     mockSpawn.mockReturnValue(mockProc);
 
-    const result = await runCheck("/project/root", outputChannel as any);
-
-    expect(result).toEqual([]);
+    await expect(
+      runCheck("/project/root", outputChannel as any)
+    ).rejects.toThrow("could not parse check output");
     expect(appendLine).toHaveBeenCalled();
   });
 
@@ -281,5 +278,22 @@ describe("runRestyle", () => {
     await expect(
       runRestyle("BAFT.md", "# Original", "vibrant", outputChannel as any)
     ).rejects.toThrow("Baft restyle was interrupted");
+  });
+});
+
+describe("isScanned", () => {
+  it("matches files baft scans and the contract, nothing else", () => {
+    for (const path of ["/repo/a.go", "/repo/a.tsx", "/repo/a.pyi", "/repo/BAFT.md"]) {
+      expect(isScanned(path)).toBe(true);
+    }
+    for (const path of ["/repo/CHANGELOG.md", "/repo/a.json", "/repo/NOTBAFT.md"]) {
+      expect(isScanned(path)).toBe(false);
+    }
+  });
+});
+
+describe("binaryPath", () => {
+  it("falls back to the PATH lookup when unset", () => {
+    expect(binaryPath()).toBe("baft");
   });
 });

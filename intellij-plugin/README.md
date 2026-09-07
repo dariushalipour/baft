@@ -70,14 +70,14 @@ Open a project that contains a supported module and a `BAFT.md`. Violations appe
 
 To restyle a contract, run `Code | Reformat Code` while a `BAFT.md` is active.
 
-To change the formatter palette, open `Settings | Tools | 🧶 Baft` and choose one of `vibrant`, `muted`, `mono`, or `none`.
+To change the formatter palette, open `Settings | Tools | 🧶 Baft` and choose one of `vibrant`, `muted`, `mono`, or `none`. The same page sets the path to the `baft` executable when it is not on `PATH`; that setting is stored with the IDE, not in the project, so a checked-out repository cannot point the plugin at its own binary.
 
 ## Troubleshooting
 
-**"Baft: binary not found in PATH"**
+**"Baft: binary not found"**
 
-The plugin cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`.
+The plugin cannot find `baft`. Install it with `go install` and make sure the directory containing the binary is in `PATH`, or set the Baft executable in `Settings | Tools | 🧶 Baft`.
 
 **"Baft plugin version mismatch"**
 
-This happens when you upgrade the `baft` CLI but haven't re-run `baft integrate`. The plugin detects the mismatch and shows a **Reinstall** button in the notification. Clicking it runs `baft integrate --integration=jetbrains --yes` to install the matching plugin, then prompts you to restart the IDE.
+This happens when you upgrade the `baft` CLI but haven't re-run `baft integrate`. The plugin detects the mismatch and shows a **Reinstall** button in the notification. Clicking it runs `baft integrate --integration=<this IDE> --yes` to install the matching plugin into the IDE you are running, then prompts you to restart the IDE.

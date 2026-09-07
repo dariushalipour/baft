@@ -17,9 +17,7 @@ import (
 	"time"
 )
 
-type jetbrainsInstaller struct {
-	cliVersion string
-}
+type jetbrainsInstaller struct{}
 
 type jetbrainsProductInfo struct {
 	Name              string `json:"name"`
@@ -37,8 +35,8 @@ type jetbrainsPluginDescriptor struct {
 	Version string   `xml:"version"`
 }
 
-func newJetBrainsInstaller(cliVersion string) Installer {
-	return &jetbrainsInstaller{cliVersion: cliVersion}
+func newJetBrainsInstaller() Installer {
+	return &jetbrainsInstaller{}
 }
 
 func (i *jetbrainsInstaller) Family() string {
@@ -97,10 +95,6 @@ func (i *jetbrainsInstaller) Verify(ctx context.Context, ide IDEInstallation) er
 	jetbrainsVersion, err := expectedPluginVersion(FamilyJetBrains)
 	if err != nil {
 		return fmt.Errorf("could not determine embedded JetBrains plugin version: %w", err)
-	}
-	report := VerifyCompatibility(i.cliVersion, ide.ID, jetbrainsVersion, expectedProtocol(FamilyJetBrains))
-	if !report.Compatible {
-		return fmt.Errorf(report.Message)
 	}
 	if err := ctx.Err(); err != nil {
 		return err

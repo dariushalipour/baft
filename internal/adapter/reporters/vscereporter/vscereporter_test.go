@@ -2,22 +2,41 @@ package vscereporter
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/port"
 )
 
+func render(t *testing.T, result *port.CheckResult) payloadJSON {
+	t.Helper()
+	var parsed payloadJSON
+	out := (&VSCERenderer{}).Render(result)
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("expected valid JSON, got error: %v (%q)", err, out)
+	}
+	return parsed
+}
+
+type payloadJSON struct {
+	Violations []map[string]interface{} `json:"violations"`
+	Errors     []string                 `json:"errors"`
+}
+
 func TestRenderEmpty(t *testing.T) {
-	r := &VSCERenderer{}
-	out := r.Render(&port.CheckResult{})
-	if strings.TrimSpace(out) != "[]" {
-		t.Errorf("expected [], got: %q", out)
+	parsed := render(t, &port.CheckResult{})
+	if len(parsed.Violations) != 0 || len(parsed.Errors) != 0 {
+		t.Errorf("expected empty payload, got: %+v", parsed)
+	}
+}
+
+func TestRenderIncludesTopLevelErrors(t *testing.T) {
+	parsed := render(t, &port.CheckResult{Errors: []string{"discovery: boom"}})
+	if len(parsed.Errors) != 1 || parsed.Errors[0] != "discovery: boom" {
+		t.Errorf("expected top-level errors to be reported, got: %+v", parsed.Errors)
 	}
 }
 
 func TestRenderWithViolations(t *testing.T) {
-	r := &VSCERenderer{}
 	result := &port.CheckResult{
 		Capsules: []port.CapsuleResult{
 			{
@@ -37,12 +56,7 @@ func TestRenderWithViolations(t *testing.T) {
 			},
 		},
 	}
-	out := r.Render(result)
-
-	var parsed []map[string]interface{}
-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatalf("expected valid JSON array, got error: %v", err)
-	}
+	parsed := render(t, result).Violations
 	if len(parsed) != 1 {
 		t.Fatalf("expected 1 violation, got %d", len(parsed))
 	}
@@ -71,44 +85,31 @@ func TestRenderWithViolations(t *testing.T) {
 }
 
 func TestRenderMultipleCapsules(t *testing.T) {
-	r := &VSCERenderer{}
 	result := &port.CheckResult{
 		Capsules: []port.CapsuleResult{
 			{Label: "auth", Violations: []port.Violation{{Message: "v1"}}},
 			{Label: "billing", Violations: []port.Violation{{Message: "v2"}, {Message: "v3"}}},
 		},
 	}
-	out := r.Render(result)
-
-	var parsed []map[string]interface{}
-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatalf("expected valid JSON array, got error: %v", err)
-	}
+	parsed := render(t, result).Violations
 	if len(parsed) != 3 {
 		t.Errorf("expected 3 violations flattened, got %d", len(parsed))
 	}
 }
 
 func TestRenderColumnEndOmittedWhenZero(t *testing.T) {
-	r := &VSCERenderer{}
 	result := &port.CheckResult{
 		Capsules: []port.CapsuleResult{
 			{Violations: []port.Violation{{Message: "v1", Column: 3}}},
 		},
 	}
-	out := r.Render(result)
-
-	var parsed []map[string]interface{}
-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatalf("expected valid JSON, got error: %v", err)
-	}
+	parsed := render(t, result).Violations
 	if _, present := parsed[0]["columnEnd"]; present {
 		t.Errorf("expected columnEnd to be absent when zero, but it was present")
 	}
 }
 
 func TestRenderIncludesErrors(t *testing.T) {
-	r := &VSCERenderer{}
 	result := &port.CheckResult{
 		Capsules: []port.CapsuleResult{
 			{
@@ -118,12 +119,7 @@ func TestRenderIncludesErrors(t *testing.T) {
 			},
 		},
 	}
-	out := r.Render(result)
-
-	var parsed []map[string]interface{}
-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatalf("expected valid JSON array, got error: %v", err)
-	}
+	parsed := render(t, result).Violations
 	if len(parsed) != 2 {
 		t.Errorf("expected 2 diagnostics (1 violation + 1 error), got %d", len(parsed))
 	}

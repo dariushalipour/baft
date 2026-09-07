@@ -89,7 +89,7 @@ func TestJetBrainsVerifyRejectsStaleInstalledVersion(t *testing.T) {
 		t.Fatalf("WriteFile stale jar: %v", err)
 	}
 
-	installer := &jetbrainsInstaller{cliVersion: "v0.1.0"}
+	installer := &jetbrainsInstaller{}
 	err := installer.Verify(context.Background(), IDEInstallation{
 		ID:          "goland",
 		DisplayName: "GoLand",
