@@ -14,19 +14,16 @@ const (
 	colorYellow = "\033[0;33m"
 )
 
-func red(msg string) string {
-	return colorRed + msg + colorReset
-}
+// TextRenderer renders human-readable output. Color must be enabled by the
+// caller: it stays off when stdout is not a terminal or NO_COLOR is set.
+type TextRenderer struct{ Color bool }
 
-func green(msg string) string {
-	return colorGreen + msg + colorReset
+func (r *TextRenderer) paint(color, msg string) string {
+	if !r.Color {
+		return msg
+	}
+	return color + msg + colorReset
 }
-
-func yellow(msg string) string {
-	return colorYellow + msg + colorReset
-}
-
-type TextRenderer struct{}
 
 func (r *TextRenderer) Render(result *port.CheckResult) string {
 	var out strings.Builder
@@ -41,17 +38,17 @@ func (r *TextRenderer) Render(result *port.CheckResult) string {
 		if capsuleErrors[e] {
 			continue
 		}
-		writeLine(&out, red("✗ "+e))
+		writeLine(&out, r.paint(colorRed, "✗ "+e))
 	}
 
 	for _, w := range result.Warnings {
-		writeLine(&out, yellow("⚠ "+w))
+		writeLine(&out, r.paint(colorYellow, "⚠ "+w))
 	}
 
 	for _, c := range result.Capsules {
 		line := c.Label + formatCapsuleStats(c)
 		if len(c.Violations) > 0 || len(c.Errors) > 0 {
-			writeLine(&out, red("✗ "+line))
+			writeLine(&out, r.paint(colorRed, "✗ "+line))
 			for _, v := range c.Violations {
 				writeLine(&out, formatDetail("violation", v))
 			}
@@ -59,7 +56,7 @@ func (r *TextRenderer) Render(result *port.CheckResult) string {
 				writeLine(&out, formatDetail("error", e))
 			}
 		} else {
-			writeLine(&out, green("✓ "+line))
+			writeLine(&out, r.paint(colorGreen, "✓ "+line))
 		}
 	}
 

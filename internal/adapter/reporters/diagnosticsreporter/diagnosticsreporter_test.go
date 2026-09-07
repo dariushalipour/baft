@@ -1,4 +1,4 @@
-package vscereporter
+package diagnosticsreporter
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 func render(t *testing.T, result *port.CheckResult) payloadJSON {
 	t.Helper()
 	var parsed payloadJSON
-	out := (&VSCERenderer{}).Render(result)
+	out := (&Renderer{}).Render(result)
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("expected valid JSON, got error: %v (%q)", err, out)
 	}

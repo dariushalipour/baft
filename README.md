@@ -124,7 +124,7 @@ Violation output:
     violation [import-not-allowed]: internal/api/handler.go:12:2 (api) → internal/domain (domain) — relation not allowed (add edge in contract file or move the file)
 ```
 
-Exit code `0` means clean. Exit code `1` means violations or an error.
+Exit code `0` means clean, `1` means violations or an error, and `2` means a usage error.
 
 ### Bootstrap an existing repo
 

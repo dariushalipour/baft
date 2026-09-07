@@ -1,0 +1,197 @@
+package cli
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+type run struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+func exec(t *testing.T, stdin string, args ...string) run {
+	t.Helper()
+	var out, errOut strings.Builder
+	a := &app{
+		in:      strings.NewReader(stdin),
+		out:     &out,
+		errOut:  &errOut,
+		docs:    os.DirFS("../.."),
+		version: "1.2.3",
+	}
+	return run{a.run(args), out.String(), errOut.String()}
+}
+
+// capsule writes a Go capsule whose contract forbids a -> b.
+func capsule(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	files := map[string]string{
+		"go.mod":  "module example.com/x\n",
+		"BAFT.md": "```mermaid\nflowchart TD\n    a[\"a\"]\n    b[\"b\"]\n```\n",
+		"a/a.go":  "package a\n\nimport \"example.com/x/b\"\n\nvar _ = b.V\n",
+		"b/b.go":  "package b\n\nvar V = 1\n",
+	}
+	for name, content := range files {
+		path := filepath.Join(root, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func TestLangFlagAcceptsBothSyntaxes(t *testing.T) {
+	root := t.TempDir()
+	for _, args := range [][]string{
+		{"check", "--lang=go", root},
+		{"check", "--lang", "go", root},
+		{"check", "-lang=go", root},
+		{"check", root, "--lang=go"},
+	} {
+		if got := exec(t, "", args...); got.code != exitOK {
+			t.Errorf("%v: want exit %d, got %d (%s)", args, exitOK, got.code, got.stderr)
+		}
+	}
+}
+
+func TestUsageErrors(t *testing.T) {
+	cases := [][]string{
+		{"nope"},
+		{"check", "--lang=klingon"},
+		{"check", "--reporter=yaml"},
+		{"check", "--langgo"},
+		{"check", "--nope"},
+		{"check", "one", "two"},
+		{"dump", "--color-palette=neon"},
+		{"restyle", "--stdin"},
+		{"restyle", "--path=BAFT.md"},
+		{"restyle", "--stdin", "--path=BAFT.md", "."},
+		{"integrate", "--verify-compatible"},
+		{"integrate", "extra"},
+		{"manual", "extra"},
+	}
+	for _, args := range cases {
+		got := exec(t, "", args...)
+		if got.code != exitUsage {
+			t.Errorf("%v: want exit %d, got %d (%s)", args, exitUsage, got.code, got.stderr)
+		}
+		if got.stderr == "" {
+			t.Errorf("%v: want an error on stderr", args)
+		}
+	}
+}
+
+func TestHelpIsDocumentedForEveryCommand(t *testing.T) {
+	for _, cmd := range []string{"check", "dump", "restyle", "integrate"} {
+		got := exec(t, "", cmd, "--help")
+		if got.code != exitOK {
+			t.Fatalf("%s --help: want exit 0, got %d", cmd, got.code)
+		}
+		if !strings.HasPrefix(got.stdout, "Usage: baft "+cmd) {
+			t.Fatalf("%s --help: unexpected help text %q", cmd, got.stdout)
+		}
+		// Every documented flag must be defined, or parsing rejects it.
+		for _, flagName := range regexp.MustCompile(`--[a-z-]+`).FindAllString(got.stdout, -1) {
+			if flagName == "--help" {
+				continue
+			}
+			probe := exec(t, "", cmd, flagName+"=x")
+			if strings.Contains(probe.stderr, "not defined") {
+				t.Errorf("%s: %s is documented but not defined", cmd, flagName)
+			}
+		}
+	}
+}
+
+func TestRootHelpAndVersion(t *testing.T) {
+	if got := exec(t, ""); got.code != exitOK || !strings.Contains(got.stdout, "Usage: baft <command>") {
+		t.Errorf("bare invocation: %+v", got)
+	}
+	if got := exec(t, "", "--version"); got.code != exitOK || strings.TrimSpace(got.stdout) != "1.2.3" {
+		t.Errorf("--version: %+v", got)
+	}
+	if got := exec(t, "", "manual"); got.code != exitOK || got.stdout == "" {
+		t.Errorf("manual: %+v", got)
+	}
+}
+
+func TestZeroCapsulesWarnsAndSucceeds(t *testing.T) {
+	got := exec(t, "", "check", t.TempDir())
+	if got.code != exitOK {
+		t.Fatalf("want exit 0, got %d", got.code)
+	}
+	if !strings.Contains(got.stderr, "nothing was checked") {
+		t.Fatalf("want a zero-capsule warning, got %q", got.stderr)
+	}
+}
+
+func TestViolationsExitOne(t *testing.T) {
+	got := exec(t, "", "check", "--lang=go", capsule(t))
+	if got.code != exitFail {
+		t.Fatalf("want exit %d, got %d (%s)", exitFail, got.code, got.stdout)
+	}
+	if strings.Contains(got.stdout, "\033") {
+		t.Fatalf("want no ANSI escapes when stdout is not a terminal: %q", got.stdout)
+	}
+}
+
+func TestReporters(t *testing.T) {
+	root := capsule(t)
+
+	var doc struct {
+		SchemaVersion int `json:"schemaVersion"`
+		Capsules      []struct {
+			Label      string `json:"label"`
+			Violations []struct {
+				Rule string `json:"rule"`
+			} `json:"violations"`
+		} `json:"capsules"`
+	}
+	got := exec(t, "", "check", "--reporter=json", root)
+	if err := json.Unmarshal([]byte(got.stdout), &doc); err != nil {
+		t.Fatalf("json reporter: %v (%s)", err, got.stdout)
+	}
+	if doc.SchemaVersion == 0 || len(doc.Capsules) != 1 || doc.Capsules[0].Label == "" {
+		t.Fatalf("json reporter: unexpected document %+v", doc)
+	}
+	if len(doc.Capsules[0].Violations) == 0 || doc.Capsules[0].Violations[0].Rule == "" {
+		t.Fatalf("json reporter: missing violations %+v", doc)
+	}
+
+	diagnostics := exec(t, "", "check", "--reporter=diagnostics", root).stdout
+	for _, alias := range []string{"vsce", "intellij"} {
+		if out := exec(t, "", "check", "--reporter="+alias, root).stdout; out != diagnostics {
+			t.Errorf("reporter %s: want the diagnostics output, got %q", alias, out)
+		}
+	}
+	var payload struct {
+		Violations []struct {
+			Rule string `json:"rule"`
+		} `json:"violations"`
+		Errors []string `json:"errors"`
+	}
+	if err := json.Unmarshal([]byte(diagnostics), &payload); err != nil {
+		t.Fatalf("diagnostics reporter: %v (%s)", err, diagnostics)
+	}
+	if len(payload.Violations) == 0 || payload.Violations[0].Rule == "" {
+		t.Errorf("diagnostics reporter: missing violations in %q", diagnostics)
+	}
+}
+
+func TestRestyleStdin(t *testing.T) {
+	contract := "```mermaid\nflowchart TD\n    a[\"a\"]\n```\n"
+	got := exec(t, contract, "restyle", "--stdin", "--path", "BAFT.md")
+	if got.code != exitOK || !strings.Contains(got.stdout, "flowchart TD") {
+		t.Fatalf("restyle --stdin: %+v", got)
+	}
+}

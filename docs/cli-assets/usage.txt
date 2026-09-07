@@ -25,7 +25,9 @@ Flags:
   --help, -h                  Show this help
 
 Run 'baft <command> --help' for more information about a command.
+Every flag accepts both space-separated and `=`-separated values.
 
 Exit codes:
   0  No violations
   1  Violations found or error
+  2  Usage error

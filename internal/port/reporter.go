@@ -28,12 +28,12 @@ type CheckResult struct {
 }
 
 type CapsuleResult struct {
-	Label            string
-	FilesEncountered int
-	FilesScanned     int
-	Nodes            int
-	Edges            int
-	Relations        int
-	Violations       []Violation
-	Errors           []Violation
+	Label            string      `json:"label"`
+	FilesEncountered int         `json:"filesEncountered"`
+	FilesScanned     int         `json:"filesScanned"`
+	Nodes            int         `json:"nodes"`
+	Edges            int         `json:"edges"`
+	Relations        int         `json:"relations"`
+	Violations       []Violation `json:"violations,omitempty"`
+	Errors           []Violation `json:"errors,omitempty"`
 }

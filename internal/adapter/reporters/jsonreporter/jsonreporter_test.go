@@ -14,6 +14,9 @@ func TestRenderEmpty(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
 		t.Fatalf("expected valid JSON, got error: %v", err)
 	}
+	if parsed["schemaVersion"] != float64(SchemaVersion) {
+		t.Errorf("expected schemaVersion %d, got %v", SchemaVersion, parsed["schemaVersion"])
+	}
 }
 
 func TestRenderWithCapsules(t *testing.T) {

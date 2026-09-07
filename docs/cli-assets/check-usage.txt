@@ -4,12 +4,17 @@ Check packages for architecture violations.
 
 Flags:
   --lang <name>       Language filter (can be repeated): go, typescript, dart, java, kotlin, python, rust, csharp
-  --reporter=<name>   Output reporter format. Options:
-                        text    Human-readable, colorized terminal output (default)
-                        json    Pretty-printed JSON of the full check result (capsules, violations, warnings, errors)
-                        vsce, intellij  Compact JSON `{"violations":[...],"errors":[...]}` for the editor plugins (identical format); the difference is which editor extension consumes it
+  --reporter <name>   Output reporter format. Options:
+                        text          Human-readable terminal output (default); colorized only on a terminal, and never when NO_COLOR is set
+                        json          Pretty-printed JSON of the full check result (schemaVersion, capsules, violations, warnings, errors)
+                        diagnostics   Compact JSON `{"violations":[...],"errors":[...]}` for the editor plugins (aliases: vsce, intellij)
   --overlay-stdin     Read an unsaved-file overlay payload from stdin before checking.
                       The payload is a JSON object of the form `{"files":[{"path":"...","content":"..."}]}`.
                       Baft uses an in-memory overlay filesystem so that checks are performed against the unsaved (dirty) buffer contents rather than the on-disk version.
                       This flag is used by the VS Code and IntelliJ editor integrations to pass live file contents.
   --help, -h          Show this help
+
+Exit codes:
+  0  No violations
+  1  Violations found or error
+  2  Usage error

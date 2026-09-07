@@ -14,7 +14,11 @@ Examples:
 Flags:
   --help, -h                  Show this help
   --yes, -y                   Auto-select first detected IDE (non-interactive)
-  --integration=<family>      Target a specific family (vscode, jetbrains)
+  --integration <family>      Target a specific family (vscode, jetbrains)
+  --verify-compatible         Print a JSON compatibility report instead of installing;
+                              requires --integration, --plugin-version and --protocol
+  --plugin-version <version>  Installed plugin version, for --verify-compatible
+  --protocol <number>         Plugin protocol version, for --verify-compatible
 
 Notes:
   Supported integration families in this build:

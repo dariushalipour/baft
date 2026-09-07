@@ -1,4 +1,6 @@
-package vscereporter
+// Package diagnosticsreporter renders a check result as compact JSON
+// diagnostics, consumed by the VS Code and IntelliJ integrations.
+package diagnosticsreporter
 
 import (
 	"encoding/json"
@@ -14,9 +16,9 @@ type payload struct {
 	Errors     []string         `json:"errors"`
 }
 
-type VSCERenderer struct{}
+type Renderer struct{}
 
-func (r *VSCERenderer) Render(result *port.CheckResult) string {
+func (r *Renderer) Render(result *port.CheckResult) string {
 	out := payload{Violations: []port.Violation{}, Errors: result.Errors}
 	if out.Errors == nil {
 		out.Errors = []string{}

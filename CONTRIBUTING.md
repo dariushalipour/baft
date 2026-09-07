@@ -15,10 +15,11 @@ Baft follows a hexagonal (ports and adapters) architecture:
 
 ```
 baft/
-├── main.go                                          # CLI: subcommands, version, reporters
+├── main.go                                          # Entry point: embeds docs/, calls internal/cli
 ├── go.mod                                           # Zero external dependencies
 ├── pkg/treeview/                                    # Public utility: tree view rendering
 └── internal/
+    ├── cli/                                         # Flag parsing, exit codes, use-case wiring
     ├── port/                                        # Interfaces (ports)
     │   ├── language.go                              # Language, CapsuleDiscovery, Capsule, ImportSpec
     │   ├── fs.go                                    # FileSystem interface
@@ -49,10 +50,9 @@ baft/
         │   └── gitignore/                           # Gitignore pattern parser
         ├── graph_repositories/mermaid/              # Mermaid parser/renderer
         └── reporters/                               # Output formatters
-            ├── textreporter/                        # Colored terminal output
-            ├── jsonreporter/                        # JSON output
-            ├── vscereporter/                        # VS Code diagnostics format
-            └── intellijreporter/                    # IntelliJ inspection format
+            ├── textreporter/                        # Terminal output (colorized on a TTY)
+            ├── jsonreporter/                        # Full check result as JSON
+            └── diagnosticsreporter/                 # Editor diagnostics (--reporter=vsce/intellij)
 ```
 
 The domain layer (`domain/graph/`) knows nothing about any language. Language-specific logic lives in `adapter/languages/`, plugged in via the `Language` interface in `port/`.

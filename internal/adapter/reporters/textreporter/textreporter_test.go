@@ -7,12 +7,6 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-func stripANSI(s string) string {
-	s = strings.ReplaceAll(s, colorRed, "")
-	s = strings.ReplaceAll(s, colorGreen, "")
-	return strings.ReplaceAll(s, colorReset, "")
-}
-
 func TestRenderEmpty(t *testing.T) {
 	r := &TextRenderer{}
 	out := r.Render(&port.CheckResult{})
@@ -26,7 +20,7 @@ func TestRenderNoViolations(t *testing.T) {
 	result := &port.CheckResult{
 		Capsules: []port.CapsuleResult{{Label: "mypkg", FilesEncountered: 7, FilesScanned: 5, Nodes: 3, Edges: 4, Relations: 9}},
 	}
-	out := stripANSI(r.Render(result))
+	out := r.Render(result)
 	expected := "✓ mypkg (5 of 7 files scanned, 9 internal imports checked, graph: 3 nodes, 4 edges)\n"
 	if out != expected {
 		t.Fatalf("expected %q, got %q", expected, out)
@@ -38,7 +32,7 @@ func TestRenderPluralizesStats(t *testing.T) {
 	result := &port.CheckResult{
 		Capsules: []port.CapsuleResult{{Label: "mypkg", FilesEncountered: 1, FilesScanned: 1, Nodes: 1, Edges: 1, Relations: 1}},
 	}
-	out := stripANSI(r.Render(result))
+	out := r.Render(result)
 	expected := "✓ mypkg (1 file scanned, 1 internal import checked, graph: 1 node, 1 edge)\n"
 	if out != expected {
 		t.Fatalf("expected %q, got %q", expected, out)
@@ -54,7 +48,7 @@ func TestRenderWithViolations(t *testing.T) {
 			Errors:     []port.Violation{{Rule: "contract-load-error", Message: "parse failed"}},
 		}},
 	}
-	out := stripANSI(r.Render(result))
+	out := r.Render(result)
 	expected := strings.Join([]string{
 		"✗ mypkg",
 		"    violation [import-not-allowed]: violation 1",
@@ -72,7 +66,7 @@ func TestRenderWithErrors(t *testing.T) {
 	result := &port.CheckResult{
 		Errors: []string{"mypkg: parse failed"},
 	}
-	out := stripANSI(r.Render(result))
+	out := r.Render(result)
 	expected := "✗ mypkg: parse failed\n"
 	if out != expected {
 		t.Fatalf("expected %q, got %q", expected, out)
@@ -88,7 +82,7 @@ func TestRenderDoesNotDuplicateCapsuleErrors(t *testing.T) {
 			Errors: []port.Violation{{Rule: "contract-load-error", Message: "parse failed"}},
 		}},
 	}
-	out := stripANSI(r.Render(result))
+	out := r.Render(result)
 	expected := strings.Join([]string{
 		"✗ mypkg",
 		"    error [contract-load-error]: parse failed",
@@ -96,5 +90,21 @@ func TestRenderDoesNotDuplicateCapsuleErrors(t *testing.T) {
 	}, "\n")
 	if out != expected {
 		t.Fatalf("expected %q, got %q", expected, out)
+	}
+}
+
+func TestRenderColorized(t *testing.T) {
+	r := &TextRenderer{Color: true}
+	result := &port.CheckResult{Capsules: []port.CapsuleResult{{Label: "mypkg"}}}
+	if out := r.Render(result); out != colorGreen+"✓ mypkg"+colorReset+"\n" {
+		t.Fatalf("expected colorized output, got %q", out)
+	}
+}
+
+func TestRenderPlainByDefault(t *testing.T) {
+	r := &TextRenderer{}
+	result := &port.CheckResult{Capsules: []port.CapsuleResult{{Label: "mypkg"}}}
+	if out := r.Render(result); strings.Contains(out, "\033") {
+		t.Fatalf("expected no ANSI escapes, got %q", out)
 	}
 }
