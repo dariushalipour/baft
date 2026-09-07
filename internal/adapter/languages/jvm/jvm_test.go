@@ -161,6 +161,40 @@ func TestResolveInternalTarget(t *testing.T) {
 	}
 }
 
+func TestResolveInternalTargetAcrossSourceSets(t *testing.T) {
+	fs := memfs.New()
+	for _, f := range []string{
+		"/app/src/main/java/com/example/api/Controller.java",
+		"/app/src/main/java/com/example/domain/Order.java",
+		"/app/src/main/kotlin/com/example/infra/Repo.kt",
+		"/app/src/main/kotlin/com/example/ui/Screen.kt",
+	} {
+		fs.WriteFile(f, nil, 0o644)
+	}
+	c := port.Capsule{Dir: "/app", CapsuleID: "com.example"}
+
+	cases := []struct {
+		spec, fileRel, want string
+	}{
+		{"com.example.infra.Repo", "src/main/java/com/example/api/Controller.java", "src/main/kotlin/com/example/infra/Repo"},
+		{"com.example.domain.Order", "src/main/kotlin/com/example/ui/Screen.kt", "src/main/java/com/example/domain/Order"},
+		// A package import resolves to the root holding the package.
+		{"com.example.infra", "src/main/java/com/example/api/Controller.java", "src/main/kotlin/com/example/infra"},
+		// A class declared in a differently named file resolves via its package.
+		{"com.example.infra.Helper", "src/main/java/com/example/api/Controller.java", "src/main/kotlin/com/example/infra/Helper"},
+		// Same-root imports keep the importing file's root.
+		{"com.example.domain.Order", "src/main/java/com/example/api/Controller.java", "src/main/java/com/example/domain/Order"},
+		// Nothing holds the target: the importing file's root is the fallback.
+		{"com.example.missing.Gone", "src/main/kotlin/com/example/ui/Screen.kt", "src/main/kotlin/com/example/missing/Gone"},
+	}
+	for _, tc := range cases {
+		got, intl := (Language{}).ResolveInternalTarget(fs, port.ImportSpec{Path: tc.spec}, c, tc.fileRel)
+		if !intl || got != tc.want {
+			t.Errorf("ResolveInternalTarget(%q, file=%q) = (%q, %v), want (%q, true)", tc.spec, tc.fileRel, got, intl, tc.want)
+		}
+	}
+}
+
 func TestDiscover_ManifestTypes(t *testing.T) {
 	for _, manifest := range []string{"build.gradle.kts", "build.gradle", "pom.xml"} {
 		t.Run(manifest, func(t *testing.T) {
@@ -200,7 +234,9 @@ func TestFindBaseCapsule(t *testing.T) {
 		{"kotlin sources under src/main/java", []string{"/src/main/java/com/example/domain/Model.kt", "/src/main/java/com/example/api/Controller.kt"}, "com.example", false},
 		{"java and kotlin source sets combined", []string{"/src/main/java/com/example/domain/Model.java", "/src/main/kotlin/com/example/api/Controller.kt"}, "com.example", false},
 		{"multiplatform source sets", []string{"/src/commonMain/kotlin/com/example/core/Model.kt", "/src/jvmMain/kotlin/com/example/core/jvm/Impl.kt"}, "com.example.core", false},
-		{"test source sets ignored", []string{"/src/main/kotlin/com/example/api/Controller.kt", "/src/test/kotlin/org/other/ControllerTest.kt"}, "com.example.api", false},
+		{"test source set ignored", []string{"/src/main/kotlin/com/example/api/Controller.kt", "/src/test/kotlin/org/other/ControllerTest.kt"}, "com.example.api", false},
+		{"test source sets ignored", []string{"/src/main/kotlin/com/example/api/Controller.kt", "/src/androidUnitTest/kotlin/org/other/Case.kt", "/src/testFixtures/kotlin/org/other/Fixture.kt"}, "com.example.api", false},
+		{"production source set whose name merely contains test", []string{"/src/attestation/java/com/example/a/Model.java", "/src/main/kotlin/com/example/b/Service.kt"}, "com.example", false},
 		{"sibling package is not a prefix", []string{"/src/main/java/com/example/app/Main.java", "/src/main/java/com/example/application/Service.java"}, "com.example", false},
 		{"no source dir returns empty", nil, "", false},
 		{"no source files", []string{"/src/main/java/com/example/Model.kts"}, "", true},

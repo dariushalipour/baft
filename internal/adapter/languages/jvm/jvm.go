@@ -3,6 +3,7 @@
 package jvm
 
 import (
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -57,21 +58,37 @@ func (Language) GetFileNamespace(fsys port.FileSystem, absPath string) (string, 
 	return string(m[1]), nil
 }
 
-func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
+func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
 	basePkg := c.CapsuleID
 	if basePkg == "" || !namespaces.IsInternal(spec.Path, basePkg) {
 		return "", false
 	}
-	srcPrefix := resolveSourcePrefix(fileRel)
-	basePath := strings.Replace(basePkg, ".", "/", -1)
-	rest := strings.TrimPrefix(strings.TrimPrefix(spec.Path, basePkg), ".")
-	if rest == "" {
-		return filepath.ToSlash(filepath.Join(srcPrefix, basePath)), true
-	}
-	return filepath.ToSlash(filepath.Join(srcPrefix, basePath, strings.Replace(rest, ".", "/", -1))), true
+	rel := strings.Replace(spec.Path, ".", "/", -1)
+	return filepath.ToSlash(filepath.Join(sourcePrefix(fsys, c.Dir, fileRel, rel), rel)), true
 }
 
-func resolveSourcePrefix(fileRel string) string {
+// sourcePrefix returns the src/<set>/<lang> root that holds rel. One capsule
+// compiles every source set together, so a Java file may import a class living
+// under src/main/kotlin and vice versa: the importing file's own root wins,
+// then any root holding the target, then any root holding its package.
+func sourcePrefix(fsys port.FileSystem, capsuleDir, fileRel, rel string) string {
+	own := declaredPrefix(fileRel)
+	if holds(fsys, filepath.Join(capsuleDir, own), rel) {
+		return own
+	}
+	roots := append([]string{own}, otherPrefixes(fsys, capsuleDir, own)...)
+	for _, probe := range []string{rel, path.Dir(rel)} {
+		for _, root := range roots {
+			if holds(fsys, filepath.Join(capsuleDir, root), probe) {
+				return root
+			}
+		}
+	}
+	return own
+}
+
+// declaredPrefix is the source root the importing file itself sits in.
+func declaredPrefix(fileRel string) string {
 	parts := strings.Split(fileRel, "/")
 	if len(parts) >= 3 && parts[0] == "src" {
 		return strings.Join(parts[:3], "/")
@@ -82,13 +99,38 @@ func resolveSourcePrefix(fileRel string) string {
 	return "src/main/java"
 }
 
+func otherPrefixes(fsys port.FileSystem, capsuleDir, own string) []string {
+	var out []string
+	for _, dir := range sourceDirs(fsys, capsuleDir) {
+		rel, err := filepath.Rel(capsuleDir, dir)
+		if err == nil && filepath.ToSlash(rel) != own {
+			out = append(out, filepath.ToSlash(rel))
+		}
+	}
+	return out
+}
+
+// holds reports whether dir contains rel as a directory or as a source file.
+func holds(fsys port.FileSystem, dir, rel string) bool {
+	target := filepath.Join(dir, rel)
+	if _, err := fsys.Stat(target); err == nil {
+		return true
+	}
+	for _, ext := range exts {
+		if _, err := fsys.Stat(target + ext); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
 func (Language) SupportsFileGlobs() bool { return false }
 
 func (Language) Register(d port.CapsuleDiscovery) {
 	d.Register(Name, port.ManifestInfo{
 		Names: []string{"build.gradle.kts", "build.gradle", "pom.xml"},
-		ParseFunc: func(fsys port.FileSystem, path string) (string, error) {
-			return findBaseCapsule(fsys, filepath.Dir(path))
+		ParseFunc: func(fsys port.FileSystem, manifest string) (string, error) {
+			return findBaseCapsule(fsys, filepath.Dir(manifest))
 		},
 		BaseIgnoreEntries: []string{"*Test.java", "*Tests.java", "*TestCase.java", "*Test.kt", "*_test.kt"},
 	})
@@ -102,6 +144,10 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 	return namespaces.CommonPrefix(fsys, srcDirs, exts)
 }
 
+// testSetRe matches source-set names whose "test" is a whole word — test,
+// androidUnitTest, testFixtures — sparing production names like "attestation".
+var testSetRe = regexp.MustCompile(`(^test|Test)([A-Z]|s?$)`)
+
 // sourceDirs returns the existing src/<sourceSet>/{java,kotlin} directories,
 // covering plain Gradle/Maven layouts and Kotlin multiplatform source sets.
 func sourceDirs(fsys port.FileSystem, projectRoot string) []string {
@@ -112,7 +158,7 @@ func sourceDirs(fsys port.FileSystem, projectRoot string) []string {
 	}
 	var out []string
 	for _, set := range sets {
-		if !set.IsDir() || strings.Contains(strings.ToLower(set.Name()), "test") {
+		if !set.IsDir() || testSetRe.MatchString(set.Name()) {
 			continue
 		}
 		for _, lang := range []string{"java", "kotlin"} {

@@ -252,17 +252,26 @@ func expectLines(kind string, actual []string, doc *godog.DocString) error {
 	return nil
 }
 
-func addLanguage(w *workspace, langName string) error {
+func newLanguage(langName string) (port.Language, error) {
 	switch langName {
 	case "go":
-		w.Langs = append(w.Langs, golang.Language{})
+		return golang.Language{}, nil
 	case "typescript":
-		w.Langs = append(w.Langs, &typescript.Language{})
-	case "kotlin":
-		w.Langs = append(w.Langs, jvm.Language{})
+		return &typescript.Language{}, nil
+	case "jvm", "java", "kotlin":
+		return jvm.Language{}, nil
 	case "csharp":
-		w.Langs = append(w.Langs, &csharp.Language{})
+		return &csharp.Language{}, nil
 	}
+	return nil, fmt.Errorf("unknown language adapter %q", langName)
+}
+
+func addLanguage(w *workspace, langName string) error {
+	lang, err := newLanguage(langName)
+	if err != nil {
+		return err
+	}
+	w.Langs = append(w.Langs, lang)
 	return nil
 }
 
@@ -616,23 +625,14 @@ func initializeDumpScenario(sc *godog.ScenarioContext) {
 	sc.Step(`^the dump uses the "([^"]*)" language adapter$`,
 		func(ctx context.Context, langName string) error {
 			w := dw(ctx)
-			var lang port.Language
-			switch langName {
-			case "go":
-				lang = golang.Language{}
-				if len(w.readErrors) > 0 {
-					lang = wrapLangWithMissingFiles(lang, w.readErrors)
-				}
-			case "typescript":
-				lang = &typescript.Language{}
-			case "kotlin":
-				lang = jvm.Language{}
-			case "csharp":
-				lang = &csharp.Language{}
+			lang, err := newLanguage(langName)
+			if err != nil {
+				return err
 			}
-			if lang != nil {
-				w.ws.Langs = append(w.ws.Langs, lang)
+			if len(w.readErrors) > 0 {
+				lang = wrapLangWithMissingFiles(lang, w.readErrors)
 			}
+			w.ws.Langs = append(w.ws.Langs, lang)
 			return nil
 		})
 

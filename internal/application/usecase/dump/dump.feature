@@ -2068,3 +2068,42 @@ Feature: Dump BAFT.md from actual imports
         usecases --> internal_slash_domain
       ```
       """
+
+  Scenario: Dump links a Java file to the Kotlin source set it imports from
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            ├─ java/
+            │  └─ com/
+            │     └─ example/
+            │        └─ api/
+            │           └─ Controller.java
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     └─ infra/
+                        └─ Repo.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        api["src/main/java/com/example/api"]
+      ```
+      """
+    Given file "src/main/kotlin/com/example/infra/Repo.kt" has content "package com.example.infra"
+    Given file "src/main/java/com/example/api/Controller.java" has content:
+      """java
+      package com.example.api;
+      
+      import com.example.infra.Repo;
+      """
+    Given the dump uses the "java" language adapter
+    When the dump runs from "/Users/jane/baft"
+    And Contract at "BAFT.md" is an amendment
+    And Contract at "BAFT.md" added 1 nodes and 1 edges
+    Then Contract at "BAFT.md" added the edge "src/main/java/com/example/api --> src/main/kotlin/com/example/infra"

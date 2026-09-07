@@ -19,7 +19,7 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-var languageNames = []string{"go", "csharp", "dart", "java", "kotlin", "python", "rust", "typescript"}
+var languageNames = []string{"go", "csharp", "dart", "jvm", "python", "rust", "typescript"}
 
 func newLanguage(name string) port.Language {
 	switch name {
@@ -29,7 +29,7 @@ func newLanguage(name string) port.Language {
 		return csharp.Language{}
 	case "dart":
 		return dart.Language{}
-	case "java", "kotlin":
+	case "jvm", "java", "kotlin":
 		return jvm.Language{}
 	case "python":
 		return python.Language{}

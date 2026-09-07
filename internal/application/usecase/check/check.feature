@@ -2386,3 +2386,105 @@ Feature: Architecture rule checking
       """warnings
       /Users/jane/baft: internal/domain/order.go:3:8 (domain) → internal/application (app) — relation tolerated (dotted edge in /Users/jane/baft/BAFT.md); refactor it away or make the edge solid
       """
+
+  Scenario: A Java capsule is checked and its imports resolve
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ pom.xml
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            └─ java/
+               └─ com/
+                  └─ example/
+                     ├─ api/
+                     │  └─ Controller.java
+                     └─ domain/
+                        └─ Model.java
+      """
+    Given file "pom.xml" has content "<project/>"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        api["src/main/java/com/example/api/&ast;&ast;"]
+        domain["src/main/java/com/example/domain/&ast;&ast;"]
+      ```
+      """
+    Given file "src/main/java/com/example/domain/Model.java" has content "package com.example.domain;"
+    Given file "src/main/java/com/example/api/Controller.java" has content:
+      """java
+      package com.example.api;
+      
+      import com.example.domain.Model;
+      """
+    Given the check uses the "java" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 relations are examined
+    And 2 files are encountered and 2 files are scanned
+    And 0 errors and 1 violation is reported
+    And the violation is:
+      """violations
+      /Users/jane/baft: src/main/java/com/example/api/Controller.java:3:8 (api) → src/main/java/com/example/domain/Model (domain) — relation not allowed (add edge in /Users/jane/baft/BAFT.md or move the file)
+      """
+
+  Scenario: One capsule spans the Java and Kotlin source sets and imports resolve across both
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ build.gradle.kts
+      ├─ BAFT.md
+      └─ src/
+         └─ main/
+            ├─ java/
+            │  └─ com/
+            │     └─ example/
+            │        ├─ api/
+            │        │  └─ Controller.java
+            │        └─ domain/
+            │           └─ Order.java
+            └─ kotlin/
+               └─ com/
+                  └─ example/
+                     ├─ infra/
+                     │  └─ Repo.kt
+                     └─ ui/
+                        └─ Screen.kt
+      """
+    Given file "build.gradle.kts" has content "rootProject.name = 'app'"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        api["src/main/java/com/example/api/&ast;&ast;"]
+        infra["src/main/kotlin/com/example/infra/&ast;&ast;"]
+        ui["src/main/kotlin/com/example/ui/&ast;&ast;"]
+        domain["src/main/java/com/example/domain/&ast;&ast;"]
+      
+        api --> infra
+      ```
+      """
+    Given file "src/main/java/com/example/domain/Order.java" has content "package com.example.domain;"
+    Given file "src/main/kotlin/com/example/infra/Repo.kt" has content "package com.example.infra"
+    Given file "src/main/java/com/example/api/Controller.java" has content:
+      """java
+      package com.example.api;
+      
+      import com.example.infra.Repo;
+      """
+    Given file "src/main/kotlin/com/example/ui/Screen.kt" has content:
+      """kotlin
+      package com.example.ui
+      
+      import com.example.domain.Order
+      """
+    Given the check uses the "kotlin" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 2 relations are examined
+    And 4 files are encountered and 4 files are scanned
+    And 0 errors and 1 violation is reported
+    And the violation is:
+      """violations
+      /Users/jane/baft: src/main/kotlin/com/example/ui/Screen.kt:3:8 (ui) → src/main/java/com/example/domain/Order (domain) — relation not allowed (add edge in /Users/jane/baft/BAFT.md or move the file)
+      """

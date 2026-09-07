@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/dariushalipour/baft/internal/adapter/languages/jvm"
 )
 
 type run struct {
@@ -61,6 +63,21 @@ func TestLangFlagAcceptsBothSyntaxes(t *testing.T) {
 		if got := exec(t, "", args...); got.code != exitOK {
 			t.Errorf("%v: want exit %d, got %d (%s)", args, exitOK, got.code, got.stderr)
 		}
+	}
+}
+
+func TestJVMAliases(t *testing.T) {
+	for _, names := range [][]string{{"jvm"}, {"java"}, {"kotlin"}, {"java", "kotlin", "jvm"}} {
+		langs, err := resolveLangs(names)
+		if err != nil {
+			t.Fatalf("%v: %v", names, err)
+		}
+		if len(langs) != 1 || langs[0].Name() != jvm.Name {
+			t.Errorf("%v: got %d adapters (%v), want one %q", names, len(langs), langs, jvm.Name)
+		}
+	}
+	if langs, err := resolveLangs(nil); err != nil || len(langs) != len(languageNames) {
+		t.Errorf("default set: got %d adapters, %v", len(langs), err)
 	}
 }
 

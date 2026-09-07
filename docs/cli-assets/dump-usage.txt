@@ -7,7 +7,7 @@ is amended: every import it currently forbids becomes an allowed edge. Each
 added node and edge is listed. Use --dry-run to see them without writing.
 
 Flags:
-  --lang <name>             Language filter (can be repeated): go, typescript, dart, java, kotlin, python, rust, csharp
+  --lang <name>             Language filter (can be repeated): go, typescript, dart, jvm (or java, kotlin), python, rust, csharp
   --color-palette <name>    Styling palette: vibrant, muted, mono, none
   --dry-run                 Report what would change without writing
   --help, -h                Show this help

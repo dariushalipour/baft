@@ -34,8 +34,8 @@ be meaningfully shared across languages.
 ## 1. `Name()`
 
 Returns a short identifier used in diagnostics and CLI flags (e.g. `"go"`,
-`"dart"`, `"jvm"`). `--lang java` and `--lang kotlin` both select the `jvm`
-adapter, which scans `.java` and `.kt` files in the same capsule.
+`"dart"`, `"jvm"`). `--lang jvm`, `--lang java` and `--lang kotlin` all select the
+`jvm` adapter, which scans `.java` and `.kt` files in the same capsule.
 
 ---
 
@@ -99,7 +99,7 @@ The resolution semantics are language-specific:
 | Go         | Prefix match against `CapsuleID`                            | Strip `CapsuleID/` prefix                              |
 | Dart       | `package:` URI name matches `CapsuleID`                     | Map `package:<name>/<path>` to `lib/<path>`            |
 | TypeScript | `tsconfig.json` paths alias, `baseUrl`, package name match  | Resolve extensions (`.js` -> `.ts`), `index.ts`        |
-| JVM        | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
+| JVM        | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend the source set holding the target |
 | Python     | Prefix match against base capsule (dot-separated)           | Convert dots to slashes, prepend source prefix         |
 | Rust       | `crate::` prefix, `super::`/`self::` hops, crate name match | Resolve multi-hop `super::` paths, `crate::` from root |
 | C#         | Prefix match against assembly/capsule name (dot-separated) | Convert dots to slashes, resolve from source root |
@@ -109,6 +109,7 @@ Each language also handles its own special cases:
 - TypeScript resolves `tsconfig.json` path aliases and `extends` chains
 - Rust handles aliased imports (`use X as Y`) and visibility modifiers
 - Dart handles `dart:` built-in imports (always external)
+- JVM resolves across source sets: a `src/main/java` file importing a class under `src/main/kotlin` targets the Kotlin path, and vice versa
 
 The core receives only the result: a path string and a boolean. It has no
 knowledge of how that path was computed.
