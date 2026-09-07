@@ -78,7 +78,7 @@ type capsuleChecker struct {
 	strategy          ResolutionStrategy
 	scopeMemo         sync.Map // dir -> tracking scope
 	visibleMemo       sync.Map // abs -> target visibility
-	files             []fileWork
+	walked            []string
 	scoped            bool
 	contractContext
 }

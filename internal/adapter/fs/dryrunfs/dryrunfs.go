@@ -31,6 +31,13 @@ func (f *dryRunFS) ReadFile(path string) ([]byte, error) {
 	return f.FileSystem.ReadFile(path)
 }
 
+// IsIgnored forwards the wrapped filesystem's ignore rules, which embedding
+// the port.FileSystem interface alone would drop.
+func (f *dryRunFS) IsIgnored(path string) bool {
+	ig, ok := f.FileSystem.(port.IgnoreLookup)
+	return ok && ig.IsIgnored(path)
+}
+
 func (f *dryRunFS) Stat(path string) (os.FileInfo, error) {
 	if info, err := f.mem.Stat(path); err == nil {
 		return info, nil

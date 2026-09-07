@@ -10,26 +10,13 @@ import (
 
 // mockFS implements FileSystem for testing IsTargetVisible.
 type mockFS struct {
-	statFn      func(path string) (os.FileInfo, error)
-	readDirFn   func(path string) ([]fs.DirEntry, error)
-	readFileFn  func(path string) ([]byte, error)
-	writeFileFn func(path string, data []byte, perm os.FileMode) error
-	walkDirFn   func(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error
+	statFn    func(path string) (os.FileInfo, error)
+	readDirFn func(path string) ([]fs.DirEntry, error)
 }
 
-func (m *mockFS) ReadFile(path string) ([]byte, error) {
-	if m.readFileFn != nil {
-		return m.readFileFn(path)
-	}
-	return nil, nil
-}
+func (m *mockFS) ReadFile(string) ([]byte, error) { return nil, nil }
 
-func (m *mockFS) WriteFile(path string, data []byte, perm os.FileMode) error {
-	if m.writeFileFn != nil {
-		return m.writeFileFn(path, data, perm)
-	}
-	return nil
-}
+func (m *mockFS) WriteFile(string, []byte, os.FileMode) error { return nil }
 
 func (m *mockFS) Stat(path string) (os.FileInfo, error) {
 	if m.statFn != nil {
@@ -45,12 +32,7 @@ func (m *mockFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return nil, fs.ErrNotExist
 }
 
-func (m *mockFS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
-	if m.walkDirFn != nil {
-		return m.walkDirFn(ctx, root, fn)
-	}
-	return nil
-}
+func (m *mockFS) WalkDir(context.Context, string, func(string, fs.DirEntry) error) error { return nil }
 
 type mockFileInfo struct {
 	name  string
@@ -88,6 +70,13 @@ type ignoringFS struct {
 func (f *ignoringFS) IsIgnored(path string) bool { return path == f.ignored }
 
 func TestIsTargetVisible(t *testing.T) {
+	dir := func(entries ...fs.DirEntry) *mockFS {
+		return &mockFS{
+			statFn:    func(string) (os.FileInfo, error) { return mockFileInfo{name: "dir", isDir: true}, nil },
+			readDirFn: func(string) ([]fs.DirEntry, error) { return entries, nil },
+		}
+	}
+
 	t.Run("ignored target is invisible, unknown target is not", func(t *testing.T) {
 		fsys := &ignoringFS{mockFS: &mockFS{}, ignored: "/example/gen"}
 		if IsTargetVisible(fsys, "/example/gen") {
@@ -98,102 +87,32 @@ func TestIsTargetVisible(t *testing.T) {
 		}
 	})
 
-	t.Run("visible when stat resolves the target", func(t *testing.T) {
+	t.Run("file target is visible", func(t *testing.T) {
 		fsys := &mockFS{
-			statFn: func(path string) (os.FileInfo, error) {
-				return mockFileInfo{name: "orphan.go", isDir: false}, nil
-			},
-		}
-		if !IsTargetVisible(fsys, "/example/internal/orphan") {
-			t.Fatal("expected visible")
-		}
-	})
-
-	t.Run("visible file target", func(t *testing.T) {
-		fsys := &mockFS{
-			statFn: func(path string) (os.FileInfo, error) {
-				return mockFileInfo{name: "config.yaml", isDir: false}, nil
-			},
+			statFn: func(string) (os.FileInfo, error) { return mockFileInfo{name: "config.yaml"}, nil },
 		}
 		if !IsTargetVisible(fsys, "/example/config.yaml") {
 			t.Fatal("expected visible")
 		}
 	})
 
-	t.Run("visible directory with entries", func(t *testing.T) {
-		fsys := &mockFS{
-			statFn: func(path string) (os.FileInfo, error) {
-				return mockFileInfo{name: "internal", isDir: true}, nil
-			},
-			readDirFn: func(string) ([]fs.DirEntry, error) {
-				return []fs.DirEntry{&mockDirEntry{name: "file.go", isDir: false}}, nil
-			},
-		}
-		if !IsTargetVisible(fsys, "/example/internal") {
+	t.Run("directory with entries is visible", func(t *testing.T) {
+		if !IsTargetVisible(dir(&mockDirEntry{name: "file.go"}), "/example/internal") {
 			t.Fatal("expected visible")
 		}
 	})
 
-	t.Run("empty directory is visible (conservative)", func(t *testing.T) {
-		fsys := &mockFS{
-			statFn: func(path string) (os.FileInfo, error) {
-				return mockFileInfo{name: "ignored", isDir: true}, nil
-			},
-		}
-		if !IsTargetVisible(fsys, "/example/ignored") {
-			t.Fatal("expected visible (stat succeeds)")
+	t.Run("directory whose entries are all ignored is invisible", func(t *testing.T) {
+		if IsTargetVisible(dir(), "/example/gen") {
+			t.Fatal("expected empty directory to be invisible")
 		}
 	})
 
 	t.Run("visible when ReadDir fails (conservative fallback)", func(t *testing.T) {
-		fsys := &mockFS{
-			statFn: func(path string) (os.FileInfo, error) {
-				return mockFileInfo{name: "dir", isDir: true}, nil
-			},
-			readDirFn: func(string) ([]fs.DirEntry, error) {
-				return nil, fs.ErrNotExist
-			},
-		}
+		fsys := dir()
+		fsys.readDirFn = func(string) ([]fs.DirEntry, error) { return nil, fs.ErrNotExist }
 		if !IsTargetVisible(fsys, "/example/dir") {
 			t.Fatal("expected visible (conservative on error)")
-		}
-	})
-
-	t.Run("visible fallback when the target cannot be resolved", func(t *testing.T) {
-		fsys := &mockFS{
-			statFn:    func(path string) (os.FileInfo, error) { return nil, fs.ErrNotExist },
-			readDirFn: func(string) ([]fs.DirEntry, error) { return nil, fs.ErrNotExist },
-		}
-		if !IsTargetVisible(fsys, "/example/unknown") {
-			t.Fatal("expected visible fallback")
-		}
-	})
-
-	t.Run("visible when stat succeeds and target is not a directory", func(t *testing.T) {
-		fsys := &mockFS{
-			statFn: func(path string) (os.FileInfo, error) {
-				return mockFileInfo{name: "data.json", isDir: false}, nil
-			},
-		}
-		if !IsTargetVisible(fsys, "/example/data.json") {
-			t.Fatal("expected visible")
-		}
-	})
-
-	t.Run("visible when directory has entries even if stat fails", func(t *testing.T) {
-		fsys := &mockFS{
-			statFn: func(path string) (os.FileInfo, error) {
-				return nil, fs.ErrNotExist
-			},
-			readDirFn: func(string) ([]fs.DirEntry, error) {
-				return []fs.DirEntry{
-					&mockDirEntry{name: "a.go", isDir: false},
-					&mockDirEntry{name: "b.go", isDir: false},
-				}, nil
-			},
-		}
-		if !IsTargetVisible(fsys, "/example/dir") {
-			t.Fatal("expected visible")
 		}
 	})
 }

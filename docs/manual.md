@@ -134,16 +134,17 @@ An import along a tolerated (`-.->`) edge is reported as an `import-tolerated` w
 
 Contract-level errors — the contract itself is wrong. These are reported against `BAFT.md`, not against source files:
 
-| Rule                    | Meaning                                                                    |
-| ----------------------- | --------------------------------------------------------------------------- |
-| `contract-load-error`   | The contract could not be read or parsed into a usable graph                |
-| `empty-node-glob`       | A node declares an empty glob                                               |
-| `invalid-node-glob`     | A node glob is malformed — escaping the capsule with `..`, and so on        |
-| `duplicate-node-glob`   | Two nodes claim the same glob                                               |
-| `node-overlap`          | Two node globs both match the same file                                     |
-| `undefined-edge-node`   | An edge names a node that is never declared                                 |
-| `circular-dependency`   | The declared edges form a cycle                                             |
-| `file-glob-unsupported` | A file-shaped node in a language that only supports directory nodes         |
+| Rule                           | Meaning                                                              |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `contract-load-error`          | The contract could not be read or parsed into a usable graph         |
+| `empty-node-glob`              | A node declares an empty glob                                        |
+| `invalid-node-glob`            | A node glob is malformed — escaping the capsule with `..`, and so on |
+| `duplicate-node-glob`          | Two nodes claim the same glob                                        |
+| `node-overlap`                 | Two node globs both match the same file                              |
+| `undefined-edge-node`          | An edge names a node that is never declared                          |
+| `circular-dependency`          | The declared edges form a cycle                                      |
+| `file-glob-unsupported`        | A file-shaped node in a language that only supports directory nodes  |
+| `namespace-mode-no-namespaces` | `namespaceMode` is on but no scanned file declares a namespace       |
 
 **Exit codes:** `0` no violations, `1` violations or a run error, `2` a usage error such as an unknown flag or language.
 

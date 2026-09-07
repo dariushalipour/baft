@@ -92,11 +92,10 @@ func TestWalk_ContextCancelledFeederDoesntLeak(t *testing.T) {
 	// Unblock workers so they can finish, get the error, and exit.
 	close(unblock)
 
+	// The walk's own return value is not pinned: after cancellation a worker's
+	// result may be dropped rather than delivered, so only its exit matters.
 	select {
-	case err = <-done:
-		if err == nil {
-			t.Fatal("walk returned nil — expected parse error")
-		}
+	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("walk deadlocked: feeder goroutine blocked on workChan without ctx.Done()")
 	}

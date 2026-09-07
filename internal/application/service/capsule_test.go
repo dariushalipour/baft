@@ -50,3 +50,23 @@ func TestFindContractClimbsWithinCapsule(t *testing.T) {
 		t.Errorf("FindOrCreateContractDir(%q) = (%q, %v), want (%q, true)", startDir, dir, exists, capsuleDir)
 	}
 }
+
+// The climb from a start directory deep inside the capsule stops at the
+// capsule root: a contract above it is never adopted.
+func TestFindContractStopsAtCapsuleRoot(t *testing.T) {
+	fsys := memfs.New()
+	capsuleDir := filepath.FromSlash("/parent/repo")
+	stray := filepath.Join(filepath.Dir(capsuleDir), port.ContractFile)
+	if err := fsys.WriteFile(stray, []byte("stray"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	startDir := filepath.Join(capsuleDir, "internal", "app")
+	want := filepath.Join(capsuleDir, port.ContractFile)
+	if got := FindContract(fsys, startDir, capsuleDir); got != want {
+		t.Errorf("FindContract(%q) = %q, want %q", startDir, got, want)
+	}
+	if dir, exists := FindOrCreateContractDir(fsys, startDir, capsuleDir); exists || dir != startDir {
+		t.Errorf("FindOrCreateContractDir(%q) = (%q, %v), want (%q, false)", startDir, dir, exists, startDir)
+	}
+}

@@ -281,6 +281,7 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 	var filesToCheck []fileWork
 
 	err := service.WalkAllFiles(ctx, fsys, capsuleDir, ch.lang, func(abs, rel string) error {
+		ch.walked = append(ch.walked, abs)
 		if abs != ch.contractDirAbs && !strings.HasPrefix(abs, contractDirSep) {
 			return nil
 		}
@@ -304,7 +305,6 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 		return err
 	}
 
-	ch.files = filesToCheck
 	if len(filesToCheck) == 0 || (!ch.hasRootContract && !ch.scoped) {
 		return nil
 	}
@@ -545,14 +545,14 @@ func (ch *capsuleChecker) validateAll() {
 	})
 }
 
-// witnessKeys returns the walked files as paths relative to the contract at
-// cfgPath, the candidates for a node-overlap witness. It reuses the walk's own
-// file list, so no extra tree traversal is needed.
+// witnessKeys returns every file the walk saw as a path relative to the
+// contract at cfgPath, the candidates for a node-overlap witness. It reuses the
+// walk's own file list, so no extra tree traversal is needed.
 func (ch *capsuleChecker) witnessKeys(cfgPath string) []string {
 	baseDir := filepath.Dir(cfgPath)
-	keys := make([]string, 0, len(ch.files))
-	for _, fw := range ch.files {
-		if rel := relToSlash(baseDir, fw.abs); !escapesScope(rel) {
+	keys := make([]string, 0, len(ch.walked))
+	for _, abs := range ch.walked {
+		if rel := relToSlash(baseDir, abs); !escapesScope(rel) {
 			keys = append(keys, rel)
 		}
 	}

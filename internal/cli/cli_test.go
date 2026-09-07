@@ -263,3 +263,21 @@ func TestDumpDryRunOnUntrackedRepoCreatesNothing(t *testing.T) {
 		t.Fatalf("dry run created a contract (%v)", err)
 	}
 }
+
+// The dry-run wrapper must not hide the filesystem's ignore rules: an ignored
+// import target is external to `dump --dry-run` exactly as it is to `dump`.
+func TestDumpDryRunHonoursIgnoreRules(t *testing.T) {
+	root := writeFiles(t, t.TempDir(), map[string]string{
+		"go.mod":      "module example.com/x\n",
+		".baftignore": "gen/\n",
+		"gen/g.go":    "package gen\n\nvar V = 1\n",
+		"a/a.go":      "package a\n\nimport \"example.com/x/gen\"\n\nvar _ = gen.V\n",
+	})
+
+	counts := regexp.MustCompile(`\(\d+ files.*\)`)
+	dry := counts.FindString(exec(t, "", "dump", "--lang=go", "--dry-run", root).stdout)
+	wet := counts.FindString(exec(t, "", "dump", "--lang=go", root).stdout)
+	if dry == "" || dry != wet {
+		t.Fatalf("dump --dry-run reported %q, dump reported %q", dry, wet)
+	}
+}
