@@ -11,6 +11,8 @@ import (
 
 // Wrap returns fsys with every write kept in memory. Reads and stats see the
 // buffered writes first, so a later pass still observes what it just wrote.
+// Directory listings are deliberately left alone: a dry run reports the writes
+// it buffered, so nothing has to discover them by walking the tree.
 func Wrap(fsys port.FileSystem) port.FileSystem {
 	return &dryRunFS{FileSystem: fsys, mem: memfs.New()}
 }

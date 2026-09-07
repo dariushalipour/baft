@@ -86,22 +86,36 @@ func TestDirAdaptersAgree(t *testing.T) {
 	}
 }
 
-// SkipDir on a file skips the rest of its directory, not the whole walk.
+// SkipDir on a file skips the rest of its directory, not the whole walk, and
+// never escapes as an error — not even for a file directly under the root,
+// where no parent frame is left to absorb it. "aa.txt" sorts between the two
+// top-level directories, so the skip's effect on the root is visible.
 func TestDirSkipDirOnFile(t *testing.T) {
-	var visited []string
-	err := walk.Dir(context.Background(), memTree(t), memRoot, func(abs string, d fs.DirEntry) error {
-		visited = append(visited, abs)
-		if filepath.Base(abs) == "one.txt" {
-			return fs.SkipDir
+	for _, tc := range []struct {
+		skip string
+		want []string
+	}{
+		{"one.txt", []string{"/root/a", "/root/a/one.txt", "/root/aa.txt", "/root/b", "/root/b/four.txt"}},
+		{"aa.txt", []string{"/root/a", "/root/a/one.txt", "/root/a/sub", "/root/a/sub/three.txt", "/root/a/two.txt", "/root/aa.txt"}},
+	} {
+		fsys := memTree(t)
+		if err := fsys.WriteFile(path.Join(memRoot, "aa.txt"), []byte("top"), 0o644); err != nil {
+			t.Fatal(err)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{"/root/a", "/root/a/one.txt", "/root/b", "/root/b/four.txt"}
-	if !reflect.DeepEqual(visited, want) {
-		t.Errorf("visited %v, want %v", visited, want)
+		var visited []string
+		err := walk.Dir(context.Background(), fsys, memRoot, func(abs string, d fs.DirEntry) error {
+			visited = append(visited, abs)
+			if filepath.Base(abs) == tc.skip {
+				return fs.SkipDir
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("skipping at %s: %v", tc.skip, err)
+		}
+		if !reflect.DeepEqual(visited, tc.want) {
+			t.Errorf("skipping at %s visited %v, want %v", tc.skip, visited, tc.want)
+		}
 	}
 }
 

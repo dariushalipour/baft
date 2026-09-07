@@ -34,7 +34,11 @@ func TestManualDocumentsEveryRuleID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ruleID := regexp.MustCompile(`"([a-z]+(?:-[a-z]+)+)"`)
+	// A rule id is only ever written as a Violation's Rule field, as the rule
+	// half of checkRelation's rule/severity/message triple, or as
+	// makeContractViolation's first argument; every other hyphenated literal in
+	// the package is unrelated.
+	ruleID := regexp.MustCompile(`(?:Rule:\s*|\brule\b[^"\n]*|makeContractViolation\()"([a-z]+(?:-[a-z]+)+)"`)
 	for _, source := range sources {
 		if strings.HasSuffix(source, "_test.go") {
 			continue

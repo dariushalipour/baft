@@ -101,9 +101,9 @@ func absDir(dir string) string {
 }
 
 // contractDirFor returns the nearest directory at or above startDir holding a
-// contract file. The climb never leaves capsuleDir, so a stray contract in an
-// ancestor of the checked root is never adopted. When none is found it returns
-// startDir with false.
+// contract file. The climb never leaves capsuleDir: a contract outside the
+// capsule is never adopted, while one anywhere inside it — including above a
+// checked subdirectory — is. When none is found it returns startDir with false.
 func contractDirFor(fsys port.FileSystem, startDir, capsuleDir string) (string, bool) {
 	start := absDir(startDir)
 	prefix := absDir(capsuleDir) + string(filepath.Separator)

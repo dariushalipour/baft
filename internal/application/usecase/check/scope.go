@@ -178,7 +178,7 @@ func resolveCrossScope(
 		}
 	}
 	if ctx.HasRootContract && ctx.RootGraphIndex != nil && accept(ctx.RootGraphIndex.Graph()) {
-		if v, _ := tier(ctx.RootGraphIndex, ctx.Capsule.Dir, ctx.ContractPathAbs, ""); v != nil {
+		if v, resolved := tier(ctx.RootGraphIndex, ctx.Capsule.Dir, ctx.ContractPathAbs, ""); resolved {
 			return v
 		}
 	}

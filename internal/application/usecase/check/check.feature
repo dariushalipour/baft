@@ -2114,7 +2114,7 @@ Feature: Architecture rule checking
     And 3 files are encountered and 3 files are scanned
     And 0 errors and 0 violations are reported
 
-  Scenario: A contract above the checked root is not adopted
+  Scenario: A contract outside the capsule is not adopted
     Given a fresh workspace at "/Users/jane" with this layout:
       """tree
       ├─ BAFT.md

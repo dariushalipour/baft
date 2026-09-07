@@ -9,9 +9,9 @@ import (
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-// A stray contract above the checked root must never be adopted, and an
-// absolute root must behave exactly like the equivalent relative one.
-func TestFindContractStopsAtRoot(t *testing.T) {
+// A contract outside the capsule must never be adopted, and an absolute root
+// must behave exactly like the equivalent relative one.
+func TestFindContractIgnoresContractOutsideCapsule(t *testing.T) {
 	root, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -52,8 +52,8 @@ func TestFindContractClimbsWithinCapsule(t *testing.T) {
 }
 
 // The climb from a start directory deep inside the capsule stops at the
-// capsule root: a contract above it is never adopted.
-func TestFindContractStopsAtCapsuleRoot(t *testing.T) {
+// capsule directory: a contract above the capsule is never adopted.
+func TestFindContractStopsAtCapsuleDir(t *testing.T) {
 	fsys := memfs.New()
 	capsuleDir := filepath.FromSlash("/parent/repo")
 	stray := filepath.Join(filepath.Dir(capsuleDir), port.ContractFile)
@@ -68,5 +68,28 @@ func TestFindContractStopsAtCapsuleRoot(t *testing.T) {
 	}
 	if dir, exists := FindOrCreateContractDir(fsys, startDir, capsuleDir); exists || dir != startDir {
 		t.Errorf("FindOrCreateContractDir(%q) = (%q, %v), want (%q, false)", startDir, dir, exists, startDir)
+	}
+}
+
+// A contract between the capsule directory and the checked subdirectory is
+// still inside the capsule, so the climb adopts it: checking <capsule>/mid/x is
+// governed by <capsule>/mid/BAFT.md, not by the capsule's own contract.
+func TestFindContractAdoptsContractAboveCheckedDir(t *testing.T) {
+	fsys := memfs.New()
+	capsuleDir := filepath.FromSlash("/repo")
+	want := filepath.Join(capsuleDir, "mid", port.ContractFile)
+	for _, contract := range []string{filepath.Join(capsuleDir, port.ContractFile), want} {
+		if err := fsys.WriteFile(contract, []byte("contract"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	startDir := filepath.Join(capsuleDir, "mid", "checked")
+	if got := FindContract(fsys, startDir, capsuleDir); got != want {
+		t.Errorf("FindContract(%q) = %q, want %q", startDir, got, want)
+	}
+	wantDir := filepath.Dir(want)
+	if dir, exists := FindOrCreateContractDir(fsys, startDir, capsuleDir); !exists || dir != wantDir {
+		t.Errorf("FindOrCreateContractDir(%q) = (%q, %v), want (%q, true)", startDir, dir, exists, wantDir)
 	}
 }
