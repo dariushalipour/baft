@@ -438,7 +438,7 @@ func (ch *capsuleChecker) handleNoNodeResult(abs, fileRel, scopeDir, cfgPath str
 func (ch *capsuleChecker) checkImportResult(spec port.ImportSpec, abs, fileRel, scopeRel, cfgPath string, scopeGraph *graph.GraphIndex, src, scopeDir string) (int, []port.Violation) {
 	targets, err := ch.strategy.ResolveImport(spec, fileRel, scopeDir, ch.fsys, &ch.capsule, ch.lang)
 	if err != nil {
-		return 0, []port.Violation{{Message: err.Error(), Rule: "Internal Error"}}
+		return 0, []port.Violation{{Message: err.Error(), Rule: "import-resolve-error", Severity: "error", Source: "baft"}}
 	}
 	if len(targets) == 0 {
 		return 0, nil

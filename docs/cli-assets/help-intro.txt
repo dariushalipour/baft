@@ -13,6 +13,6 @@ Typical workflow:
 3. Run `baft check .`
 4. Fix violations by adding edges or moving code
 
-Supported languages: Go, TypeScript, Dart, Java, Kotlin, Python, Rust, C#.
+Supported languages (--lang): go, typescript, dart, jvm (or java, kotlin), python, rust, csharp.
 
 Full local manual: `baft manual`

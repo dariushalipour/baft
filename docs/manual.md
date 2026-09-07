@@ -129,6 +129,7 @@ Source-level violations — the code broke the contract:
 | `endophobic`           | Two files in the same `:::endophobic` node import each other           | Extract the shared code into a node both may import        |
 | `no-node`              | A tracked file matches no node glob                                    | Widen a glob or add a node that claims the file            |
 | `import-no-node`       | The import target is tracked but matches no node glob                  | Same, for the target's directory                           |
+| `import-resolve-error` | The language adapter failed while resolving the import target          | Not a contract problem — report it as a Baft bug            |
 
 An import along a tolerated (`-.->`) edge is reported as an `import-tolerated` warning instead: it never fails `check`.
 

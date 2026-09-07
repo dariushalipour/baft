@@ -336,7 +336,7 @@ flowchart TD
   domain["internal/domain/&ast;&ast;"]
 
   api --> domain
-`````
+```
 
 ---
 

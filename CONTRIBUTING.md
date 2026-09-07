@@ -34,7 +34,7 @@ go test -race ./...
 
 ## Architecture
 
-Hexagonal, one direction: `main.go` → `internal/cli/` → `application/usecase/*` → `internal/port/` → `domain/graph`. Everything that touches the outside world (filesystems, Mermaid, languages, reporters) is an adapter under `internal/adapter/`. The domain knows nothing about any language.
+Hexagonal, one direction: `main.go` → `internal/cli/` → `application/usecase/*` → `internal/port/` → `domain/graph`. Everything that touches the outside world (filesystems, Mermaid, languages, reporters) is an adapter under `internal/adapter/`. The domain knows nothing about any language. The root `BAFT.md` is the authority on where a new package goes — `internal/integrations/` (embedded editor plugins) and `internal/treeview/` (`dump` output rendering) are declared there as their own nodes, not as adapters.
 
 The concepts each layer implements are documented in [docs/concepts/](docs/concepts/): [capsule](docs/concepts/capsule.md), [manifest](docs/concepts/manifest.md), [contract](docs/concepts/contract.md), [language](docs/concepts/language.md), [validation](docs/concepts/validation.md), [.baftignore](docs/concepts/baftignore.md).
 
@@ -46,9 +46,9 @@ This layering is not a convention — it is enforced by Baft itself. The root `B
 
 1. Create `internal/adapter/languages/<lang>/` implementing `port.Language`.
 2. In `Register`, declare the manifest `Names`, a `ParseFunc` that extracts the capsule identifier, and `BaseIgnoreEntries` for test and generated files.
-3. Add the adapter to `resolveLangs` in `internal/cli/registry.go` — both the default slice and the `--lang` switch. That function is the language registry.
-4. Add the name to the `--lang` lists in `docs/cli-assets/check-usage.txt` and `docs/cli-assets/dump-usage.txt`, and to the supported list in `docs/cli-assets/help-intro.txt`.
-5. Add `<lang>_test.go` covering `IsScannableFile`, `ParseImports`, `ResolveInternalTarget`, and `GetFileNamespace`, plus a `<lang>.feature` beside it for the end-to-end path.
+3. Register it in `internal/cli/registry.go`: add the name to the `languageNames` default slice and a case to the `newLanguage` switch. Those two together are the registry; `resolveLangs` only dedupes what they return.
+4. Add the name to the language lists in `docs/cli-assets/check-usage.txt`, `docs/cli-assets/dump-usage.txt` and `docs/cli-assets/help-intro.txt`. `TestCLIAssetsListEveryLanguage` fails until you do.
+5. Add `<lang>_test.go` covering `IsScannableFile`, `ParseImports`, `ResolveInternalTarget`, and `GetFileNamespace`, plus a `<lang>.feature` beside it for the end-to-end path. Go, TypeScript and C# have one; Dart, JVM, Python and Rust predate the rule and are still owed theirs.
 6. Update the tables in `README.md` and [docs/concepts/language.md](docs/concepts/language.md).
 
 `SupportsFileGlobs` returns `false` unless nodes may name individual files (only TypeScript and Dart do today).
@@ -60,6 +60,8 @@ See [docs/concepts/contract.md](docs/concepts/contract.md) for the format and [d
 ## Testing
 
 `go test ./...` runs Go unit tests plus the godog suites: `internal/features/features_test.go` and the `*.feature` files sitting next to the code they cover. Filesystem-dependent tests run against `internal/adapter/fs/memfs`, so they need no fixtures on disk.
+
+`internal/cli/docs_test.go` guards the hand-written docs against the code: every language in `languageNames` must appear in all three CLI assets, and every rule id in `internal/application/usecase/check` must appear in `docs/manual.md`.
 
 ## Pitfalls worth knowing
 
