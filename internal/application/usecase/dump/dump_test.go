@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/dryrunfs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
@@ -457,7 +458,7 @@ func TestRunWithOptions_DryRunReportsWithoutWriting(t *testing.T) {
 	lang := &typescript.Language{}
 	lang.Register(discovery)
 
-	result, err := RunWithOptions(fsys, rootDir, []port.Language{lang}, &mermaid.MermaidRepository{}, discovery, Options{DryRun: true, Log: io.Discard})
+	result, err := RunWithOptions(dryrunfs.Wrap(fsys), rootDir, []port.Language{lang}, &mermaid.MermaidRepository{}, discovery, Options{Log: io.Discard})
 	if err != nil {
 		t.Fatalf("RunWithOptions: %v", err)
 	}

@@ -2,7 +2,6 @@ package dump
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -10,8 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
-	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/domain/graph"
 	"github.com/dariushalipour/baft/internal/port"
@@ -49,9 +46,8 @@ type AmendDiff struct {
 }
 
 type Options struct {
-	Save   port.GraphSaveOptions
-	DryRun bool
-	Log    io.Writer
+	Save port.GraphSaveOptions
+	Log  io.Writer
 }
 
 type draftMode int
@@ -94,39 +90,13 @@ func (e *contractError) Error() string {
 	return e.kind + ": " + e.message
 }
 
-// dryRunFS keeps every write in memory so a dump can report what it would
-// change without touching the working tree. Reads and stats see the buffered
-// writes first, so the amend pass still observes the draft it just produced.
-type dryRunFS struct {
-	port.FileSystem
-	mem *memfs.FS
-}
-
-func (f *dryRunFS) WriteFile(path string, data []byte, perm os.FileMode) error {
-	return f.mem.WriteFile(path, data, perm)
-}
-
-func (f *dryRunFS) ReadFile(path string) ([]byte, error) {
-	if data, err := f.mem.ReadFile(path); err == nil {
-		return data, nil
-	}
-	return f.FileSystem.ReadFile(path)
-}
-
-func (f *dryRunFS) Stat(path string) (os.FileInfo, error) {
-	if info, err := f.mem.Stat(path); err == nil {
-		return info, nil
-	}
-	return f.FileSystem.Stat(path)
-}
-
 // Run walks all capsules for every supplied language, parses every
 // import in every scannable file, and writes a comprehensive contract file
 // that reflects the current dependency reality at maximum granularity.
 //
 // When a contract already exists it is amended, not overwritten: every import
-// the current contract forbids becomes an allowed edge. Options.DryRun reports
-// those additions without writing anything.
+// the current contract forbids becomes an allowed edge. Wrapping fsys in
+// dryrunfs reports those additions without writing anything.
 func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) (*DumpResult, error) {
 	return RunWith(fsys, rootDir, languages, repo, discovery, os.Stderr)
 }
@@ -143,27 +113,12 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 	if err != nil {
 		return nil, err
 	}
-	if opts.DryRun {
-		fsys = &dryRunFS{FileSystem: fsys, mem: memfs.New()}
-	}
-
-	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
-		RootDir:           absRootDir,
-		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
-	})
-	if err != nil {
-		if !errors.Is(err, ignorefs.ErrRepoRootUnreachable) {
-			return nil, fmt.Errorf("ignorefs: %w", err)
-		}
-		fmt.Fprintln(opts.Log, "warning: not inside a git repository — .gitignore/.baftignore rules from parent directories will not apply")
-	}
-
 	type entry struct {
 		capsule port.Capsule
 		lang    port.Language
 	}
 	var all []entry
-	entries, err := discovery.Discover(context.Background(), wrapped, absRootDir)
+	entries, err := discovery.Discover(context.Background(), fsys, absRootDir)
 	if err != nil {
 		return nil, err
 	}
@@ -200,17 +155,17 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 				nested = append(nested, other.capsule.Dir)
 			}
 		}
-		cc := capsuleCtx{fsys: wrapped, rootDir: absRootDir, capsule: e.capsule, lang: e.lang, repo: repo, nestedDirs: nested}
+		cc := capsuleCtx{fsys: fsys, rootDir: absRootDir, capsule: e.capsule, lang: e.lang, repo: repo, nestedDirs: nested}
 
 		startDir := e.capsule.Dir
 		if strings.HasPrefix(absRootDir, e.capsule.Dir+string(filepath.Separator)) || absRootDir == e.capsule.Dir {
 			startDir = absRootDir
 		}
 		label := port.Label(e.capsule)
-		contractDir, rootExists := service.FindOrCreateContractDir(wrapped, startDir, e.capsule.Dir)
+		contractDir, rootExists := service.FindOrCreateContractDir(fsys, startDir, e.capsule.Dir)
 		rootContractPath := filepath.Join(contractDir, port.ContractFile)
 
-		contracts, err := discoverScopedContracts(wrapped, e.capsule.Dir)
+		contracts, err := discoverScopedContracts(fsys, e.capsule.Dir)
 		if err != nil {
 			de := DumpError{Label: label, Err: err}
 			result.Errors = append(result.Errors, de)

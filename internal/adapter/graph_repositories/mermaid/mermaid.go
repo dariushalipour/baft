@@ -1,7 +1,6 @@
 package mermaid
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -64,43 +63,6 @@ var generatedStyleCommentLines = func() map[string]bool {
 }()
 
 type MermaidRepository struct{}
-
-// ParseError reports a contract line the parser could not make sense of. File
-// is empty when the parser is handed bare content; callers that know which
-// contract it came from set it so the message reads "… (file:line)".
-type ParseError struct {
-	File string
-	Line int
-	Raw  string
-	Msg  string
-}
-
-func (e *ParseError) Error() string {
-	msg := e.Msg
-	if msg == "" {
-		msg = "unrecognized mermaid line: " + strings.TrimSpace(e.Raw)
-	}
-	switch {
-	case e.File != "" && e.Line > 0:
-		return fmt.Sprintf("%s (%s:%d)", msg, e.File, e.Line)
-	case e.File != "":
-		return fmt.Sprintf("%s (%s)", msg, e.File)
-	case e.Line > 0:
-		return fmt.Sprintf("%s (line %d)", msg, e.Line)
-	}
-	return msg
-}
-
-// At returns err with the contract path folded into its message.
-func At(file string, err error) error {
-	var pe *ParseError
-	if !errors.As(err, &pe) {
-		return err
-	}
-	located := *pe
-	located.File = file
-	return &located
-}
 
 type graphEdge struct {
 	src    string
@@ -447,11 +409,11 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 			}
 			continue
 		}
-		return nil, &ParseError{Line: absLine, Raw: raw}
+		return nil, &port.ParseError{Line: absLine, Raw: raw}
 	}
 
 	if len(g.Nodes) == 0 {
-		return nil, &ParseError{Msg: "mermaid block declared no nodes"}
+		return nil, &port.ParseError{Msg: "mermaid block declared no nodes"}
 	}
 	g.NormalizeGlobs()
 	return g, nil
@@ -530,7 +492,7 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 		rawGlob = m[3]
 	}
 	if strings.Contains(rawGlob, "*") {
-		return &ParseError{
+		return &port.ParseError{
 			Line: lineNum,
 			Msg:  fmt.Sprintf("node %q uses raw \"*\" in glob %q; write &ast; instead", id, rawGlob),
 		}
@@ -538,7 +500,7 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 	glob := decodeNodeGlob(rawGlob)
 
 	if existing, ok := g.Nodes[id]; ok && existing != glob {
-		return &ParseError{
+		return &port.ParseError{
 			Line: lineNum,
 			Msg:  fmt.Sprintf("node %q redefined with a different glob (%q vs %q)", id, existing, glob),
 		}
@@ -570,7 +532,7 @@ func registerNode(g *graph.Graph, m []string, lineNum int) error {
 // bare or wrapped in single or double quotes.
 func parseConfigLine(line string, g *graph.Graph, lineNum int) error {
 	fail := func(format string, args ...any) error {
-		return &ParseError{Line: lineNum, Msg: fmt.Sprintf(format, args...)}
+		return &port.ParseError{Line: lineNum, Msg: fmt.Sprintf(format, args...)}
 	}
 	rest := strings.TrimSpace(strings.TrimPrefix(line, "config"))
 	key, value := rest, ""
@@ -653,7 +615,7 @@ func parseNodeGroup(segment, line string, g *graph.Graph, lineNum int) ([]string
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return nil, &ParseError{
+			return nil, &port.ParseError{
 				Line: lineNum,
 				Msg:  fmt.Sprintf("edge has an empty node reference in %q", line),
 			}
@@ -666,7 +628,7 @@ func parseNodeGroup(segment, line string, g *graph.Graph, lineNum int) ([]string
 			continue
 		}
 		if !isIdentifier(part) {
-			return nil, &ParseError{
+			return nil, &port.ParseError{
 				Line: lineNum,
 				Msg:  fmt.Sprintf("invalid node reference %q in edge %q", part, line),
 			}
@@ -695,7 +657,7 @@ func skipEdgeLabel(line string, pos int) int {
 // is dotted: a solid one promotes an edge declared dotted elsewhere.
 func addEdge(g *graph.Graph, src, dst string, dotted bool, lineNum int) error {
 	if src == dst {
-		return &ParseError{
+		return &port.ParseError{
 			Line: lineNum,
 			Msg:  fmt.Sprintf("edge references same node on both sides: %s → %s", src, dst),
 		}
@@ -755,7 +717,7 @@ func extractMermaidBlock(md string) (string, int, error) {
 		if strings.HasPrefix(trim, "```") {
 			for j := i + 1; j < len(lines); j++ {
 				if strings.HasPrefix(strings.TrimSpace(lines[j]), "```mermaid") {
-					return "", 0, &ParseError{Line: j + 1, Msg: "multiple ```mermaid blocks found"}
+					return "", 0, &port.ParseError{Line: j + 1, Msg: "multiple ```mermaid blocks found"}
 				}
 			}
 			return buf.String(), blockStartLine, nil
@@ -764,9 +726,9 @@ func extractMermaidBlock(md string) (string, int, error) {
 		buf.WriteByte('\n')
 	}
 	if inside {
-		return "", 0, &ParseError{Msg: "unclosed ```mermaid block"}
+		return "", 0, &port.ParseError{Msg: "unclosed ```mermaid block"}
 	}
-	return "", 0, &ParseError{Msg: "no ```mermaid block found"}
+	return "", 0, &port.ParseError{Msg: "no ```mermaid block found"}
 }
 
 func encodeNodeGlob(s string) string {

@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/adapter/languages/csharp"
 	"github.com/dariushalipour/baft/internal/adapter/languages/dart"
 	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
@@ -79,4 +81,20 @@ func newRenderer(name string, color bool) port.CheckResultRenderer {
 		return &diagnosticsreporter.Renderer{}
 	}
 	return nil
+}
+
+// ignoreAware wraps fsys so use cases only ever see a filesystem that already
+// obeys .gitignore/.baftignore. Adapters are wired here, not in the use cases.
+func ignoreAware(fsys port.FileSystem, root string, discovery *service.CapsuleDiscovery) (port.FileSystem, []string, error) {
+	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           root,
+		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
+	})
+	if err != nil {
+		if !errors.Is(err, ignorefs.ErrRepoRootUnreachable) {
+			return nil, nil, fmt.Errorf("ignorefs: %w", err)
+		}
+		return wrapped, []string{"not inside a git repository — .gitignore/.baftignore rules from parent directories will not apply"}, nil
+	}
+	return wrapped, nil, nil
 }

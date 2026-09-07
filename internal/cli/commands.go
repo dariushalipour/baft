@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/dryrunfs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/realfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
@@ -52,7 +53,14 @@ func (a *app) check(args []string) int {
 		fsys = overlayfs.NewFromPayload(fsys, payload)
 	}
 
-	result := check.Run(fsys, root, languages, &mermaid.MermaidRepository{}, newDiscovery(languages))
+	discovery := newDiscovery(languages)
+	var result *port.CheckResult
+	if scoped, warnings, wrapErr := ignoreAware(fsys, root, discovery); wrapErr != nil {
+		result = &port.CheckResult{Errors: []string{wrapErr.Error()}}
+	} else {
+		result = check.Run(scoped, root, languages, &mermaid.MermaidRepository{}, discovery)
+		result.Warnings = append(warnings, result.Warnings...)
+	}
 	fmt.Fprint(a.out, renderer.Render(result))
 
 	if len(result.Capsules) == 0 {
@@ -88,8 +96,19 @@ func (a *app) dump(args []string) int {
 		return a.usageErr("dump", err)
 	}
 
-	opts := dump.Options{Save: saveOpts, DryRun: *dryRun, Log: a.errOut}
-	result, err := dump.RunWithOptions(realfs.New(), root, languages, &mermaid.MermaidRepository{}, newDiscovery(languages), opts)
+	discovery := newDiscovery(languages)
+	fsys, warnings, err := ignoreAware(realfs.New(), root, discovery)
+	if err != nil {
+		return a.fail("error: %v", err)
+	}
+	for _, w := range warnings {
+		fmt.Fprintln(a.errOut, "warning: "+w)
+	}
+	if *dryRun {
+		fsys = dryrunfs.Wrap(fsys)
+	}
+
+	result, err := dump.RunWithOptions(fsys, root, languages, &mermaid.MermaidRepository{}, discovery, dump.Options{Save: saveOpts, Log: a.errOut})
 	if err != nil {
 		return a.fail("error: %v", err)
 	}

@@ -46,6 +46,7 @@ baft/
         │   ├── realfs/                              # OS-backed filesystem
         │   ├── ignorefs/                            # Gitignore-aware wrapper
         │   ├── overlayfs/                           # Stdin-overlay filesystem
+        │   ├── dryrunfs/                            # Write-buffering wrapper (`--dry-run`)
         │   ├── memfs/                               # In-memory filesystem (testing)
         │   └── gitignore/                           # Gitignore pattern parser
         ├── graph_repositories/mermaid/              # Mermaid parser/renderer
@@ -56,6 +57,8 @@ baft/
 ```
 
 The domain layer (`domain/graph/`) knows nothing about any language. Language-specific logic lives in `adapter/languages/`, plugged in via the `Language` interface in `port/`.
+
+This layering is not a convention — it is enforced by Baft itself. The root `BAFT.md` is Baft's own contract, and `scripts/ci.sh` runs `baft check .` against it. Adapters are wired only in `internal/cli/`, the composition root; the application layer talks to them through `port/`.
 
 ## Adding a language adapter
 

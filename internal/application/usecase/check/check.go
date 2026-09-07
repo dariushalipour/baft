@@ -23,8 +23,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
-	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/domain/graph"
 	"github.com/dariushalipour/baft/internal/port"
@@ -174,26 +172,14 @@ func RunCapsule(fsys port.FileSystem, rootDir string, capsule port.Capsule, lang
 }
 
 func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) *port.CheckResult {
-	wrapped, err := ignorefs.Wrap(fsys, ignorefs.Options{
-		RootDir:           rootDir,
-		BaseIgnoreEntries: discovery.BaseIgnoreEntries(),
-	})
-	var warnings []string
-	if err != nil {
-		if !errors.Is(err, ignorefs.ErrRepoRootUnreachable) {
-			return &port.CheckResult{Errors: []string{"ignorefs: " + err.Error()}}
-		}
-		warnings = []string{"not inside a git repository — .gitignore/.baftignore rules from parent directories will not apply"}
-	}
-
-	entries, err := discovery.Discover(ctx, wrapped, rootDir)
+	entries, err := discovery.Discover(ctx, fsys, rootDir)
 	if err != nil {
 		return &port.CheckResult{Errors: []string{"discovery: " + err.Error()}}
 	}
 
 	capsules := matchCapsulesToLanguages(entries, languages)
 	if len(capsules) == 0 {
-		return &port.CheckResult{Warnings: warnings}
+		return &port.CheckResult{}
 	}
 
 	sort.Slice(capsules, func(i, j int) bool {
@@ -215,7 +201,7 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 
 	results := runParallel(ctx, workItems, func(in <-chan capsuleWork, emit func(capsuleResultItem) bool) {
 		for work := range in {
-			capsuleRes, err := checkCapsule(ctx, wrapped, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
+			capsuleRes, err := checkCapsule(ctx, fsys, work.capsule, work.lang, repo, rootDir, work.nestedDirs)
 			if !emit(capsuleResultItem{index: work.index, label: work.label, result: capsuleRes, err: err}) {
 				return
 			}
@@ -232,7 +218,6 @@ func RunWithContext(ctx context.Context, fsys port.FileSystem, rootDir string, l
 	})
 
 	var result port.CheckResult
-	result.Warnings = warnings
 	result.Errors = make([]string, 0, len(collected)*2)
 	result.Capsules = make([]port.CapsuleResult, 0, len(collected))
 	result.Violations = make([]string, 0, len(collected)*5)
@@ -354,11 +339,13 @@ func makeContractLoadErrors(contractPath string, err error) []port.Violation {
 		Severity: "error",
 		Source:   "baft",
 		File:     contractPath,
-		Message:  mermaid.At(contractPath, err).Error(),
+		Message:  err.Error(),
 	}
-	var pe *mermaid.ParseError
+	var pe *port.ParseError
 	if errors.As(err, &pe) {
-		v.Line = pe.Line
+		located := *pe
+		located.File = contractPath
+		v.Message, v.Line = located.Error(), pe.Line
 	} else if !strings.Contains(v.Message, contractPath) {
 		v.Message = fmt.Sprintf("%s (%s)", v.Message, contractPath)
 	}

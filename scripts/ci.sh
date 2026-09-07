@@ -45,6 +45,13 @@ else
     fail "go test"
 fi
 
+header "baft check (dogfood)"
+if go run . check . 2>&1; then
+    pass "baft check"
+else
+    fail "baft check"
+fi
+
 # ── VSCode Extension ──────────────────────────────────────────────────
 if [ -d "$VSCODE_DIR" ]; then
     cd "$VSCODE_DIR"
