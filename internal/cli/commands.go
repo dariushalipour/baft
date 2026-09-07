@@ -63,7 +63,7 @@ func (a *app) check(args []string) int {
 	}
 	fmt.Fprint(a.out, renderer.Render(result))
 
-	if len(result.Capsules) == 0 {
+	if len(result.Capsules) == 0 && len(result.Errors) == 0 {
 		fmt.Fprintf(a.errOut, "warning: nothing was checked under %s — no capsule with a BAFT.md contract was found\n", root)
 	}
 	if result.Failed() {
@@ -137,9 +137,6 @@ func (a *app) dump(args []string) int {
 	}
 	if len(result.Errors) > 0 {
 		return exitFail
-	}
-	if len(result.Contracts) == 0 {
-		fmt.Fprintf(a.errOut, "warning: nothing was dumped under %s — no capsule was found\n", root)
 	}
 	return exitOK
 }

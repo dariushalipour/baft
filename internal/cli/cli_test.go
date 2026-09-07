@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/overlayfs"
 	"github.com/dariushalipour/baft/internal/adapter/languages/jvm"
 )
 
@@ -152,6 +153,66 @@ func TestZeroCapsulesWarnsAndSucceeds(t *testing.T) {
 	}
 	if !strings.Contains(got.stderr, "nothing was checked") {
 		t.Fatalf("want a zero-capsule warning, got %q", got.stderr)
+	}
+}
+
+// A failed run reports its error only: the zero-capsule warning would blame the
+// tree for what is really an unreadable root.
+func TestFailedRunDoesNotWarnAboutZeroCapsules(t *testing.T) {
+	got := exec(t, "", "check", filepath.Join(t.TempDir(), "missing"))
+	if got.code != exitFail {
+		t.Fatalf("want exit %d, got %+v", exitFail, got)
+	}
+	if strings.Contains(got.stderr, "nothing was checked") {
+		t.Fatalf("want no zero-capsule warning, got %q", got.stderr)
+	}
+}
+
+// --overlay-stdin is the IDE surface: unsaved buffers are checked instead of
+// the files on disk.
+func TestCheckOverlayStdin(t *testing.T) {
+	root := writeFiles(t, capsule(t), map[string]string{"a/a.go": "package a\n"})
+	if got := exec(t, "", "check", "--lang=go", root); got.code != exitOK {
+		t.Fatalf("saved tree: want exit %d, got %+v", exitOK, got)
+	}
+
+	overlay, err := json.Marshal(overlayfs.Payload{Files: []overlayfs.File{{
+		Path:    filepath.Join(root, "a", "a.go"),
+		Content: "package a\n\nimport \"example.com/x/b\"\n\nvar _ = b.V\n",
+	}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := exec(t, string(overlay), "check", "--lang=go", "--overlay-stdin", root); got.code != exitFail {
+		t.Fatalf("unsaved violation: want exit %d, got %+v", exitFail, got)
+	}
+	got := exec(t, "{", "check", "--lang=go", "--overlay-stdin", root)
+	if got.code != exitFail || !strings.Contains(got.stderr, "invalid overlay stdin") {
+		t.Fatalf("malformed overlay: %+v", got)
+	}
+}
+
+func TestColorEnabled(t *testing.T) {
+	pipe, _, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pipe.Close()
+	if colorEnabled(pipe) {
+		t.Error("want no color when stdout is a pipe")
+	}
+
+	tty, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tty.Close()
+	if !colorEnabled(tty) {
+		t.Error("want color when stdout is a character device")
+	}
+	t.Setenv("NO_COLOR", "1")
+	if colorEnabled(tty) {
+		t.Error("want no color when NO_COLOR is set")
 	}
 }
 
