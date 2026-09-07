@@ -351,7 +351,7 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 			}
 
 		}
-		scopeDir := service.TrackingScope(fsys, abs, ch.capsule.Dir)
+		scopeDir := ch.trackingScope(abs)
 		filesToCheck = append(filesToCheck, fileWork{abs: abs, rel: rel, scopeDir: scopeDir})
 		return nil
 	})
@@ -504,7 +504,7 @@ func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel,
 			continue
 		}
 		targetAbs := absPath(ch.capsule.Dir, targetPath)
-		if !port.IsTargetVisible(ch.fsys, targetAbs) {
+		if !ch.targetVisible(targetAbs) {
 			continue
 		}
 		violations = append(violations, makeImportNoNodeViolation(abs, scopeRel, spec, cfgPath))
@@ -527,11 +527,11 @@ func (ch *capsuleChecker) checkImportResult(spec port.ImportSpec, abs, fileRel, 
 	seenCrossScope := false
 
 	for _, t := range targets {
-		if !port.IsTargetVisible(ch.fsys, t.abs) {
+		if !ch.targetVisible(t.abs) {
 			continue
 		}
 		relations++
-		targetScope := service.TrackingScope(ch.fsys, t.abs, ch.capsule.Dir)
+		targetScope := ch.trackingScope(t.abs)
 		if scopeDir == targetScope {
 			if seenInScope {
 				continue

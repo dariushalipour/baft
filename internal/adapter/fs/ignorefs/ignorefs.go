@@ -65,8 +65,8 @@ func (w *ignoreWrapper) loadIgnoreRules() error {
 		return err
 	}
 
-	localPatterns, err := w.loadLocalPatterns(w.baseMatcher)
-	if err != nil {
+	var localPatterns []gitignore.Pattern
+	if err := w.collectIgnoreFiles(w.rootDir, nil, &localPatterns); err != nil {
 		return err
 	}
 
@@ -188,49 +188,43 @@ func (w *ignoreWrapper) findRepoRoot() (string, error) {
 	}
 }
 
-func (w *ignoreWrapper) loadLocalPatterns(baseMatcher gitignore.Matcher) ([]gitignore.Pattern, error) {
-	return w.readIgnoreFiles(w.rootDir, nil, baseMatcher)
-}
-
-func (w *ignoreWrapper) readIgnoreFiles(root string, domain []string, baseMatcher gitignore.Matcher) ([]gitignore.Pattern, error) {
-	var patterns []gitignore.Pattern
-
+// collectIgnoreFiles appends the ignore patterns of dir to acc and descends
+// into the subdirectories the rules gathered so far do not exclude. Like git,
+// an excluded directory is never entered, so gitignored trees are not read.
+func (w *ignoreWrapper) collectIgnoreFiles(dir string, domain []string, acc *[]gitignore.Pattern) error {
 	for _, filename := range [...]string{".gitignore", ".baftignore"} {
-		ps, err := w.readIgnoreFile(filepath.Join(root, filename), domain)
+		ps, err := w.readIgnoreFile(filepath.Join(dir, filename), domain)
 		if err != nil {
 			continue
 		}
-		patterns = append(patterns, ps...)
+		*acc = append(*acc, ps...)
 	}
 
-	entries, err := w.lower.ReadDir(root)
+	entries, err := w.lower.ReadDir(dir)
 	if err != nil {
-		return patterns, nil
+		return nil
 	}
 
+	local := gitignore.NewMatcher(*acc)
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
-		name := entry.Name()
+		sub := make([]string, len(domain)+1)
+		copy(sub, domain)
+		sub[len(domain)] = entry.Name()
 
-		testPath := make([]string, len(domain)+1)
-		copy(testPath, domain)
-		testPath[len(domain)] = name
-
-		if baseMatcher != nil && baseMatcher.Match(testPath, true) {
+		if w.ignored(sub, true, local) {
 			continue
 		}
 
-		subps, err := w.readIgnoreFiles(filepath.Join(root, name), testPath, baseMatcher)
-		if err != nil {
-			return patterns, err
+		if err := w.collectIgnoreFiles(filepath.Join(dir, entry.Name()), sub, acc); err != nil {
+			return err
 		}
-		patterns = append(patterns, subps...)
 	}
 
-	return patterns, nil
+	return nil
 }
 
 func (w *ignoreWrapper) readIgnoreFile(path string, domain []string) ([]gitignore.Pattern, error) {
@@ -245,11 +239,13 @@ func (w *ignoreWrapper) readIgnoreFile(path string, domain []string) ([]gitignor
 	var patterns []gitignore.Pattern
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	for scanner.Scan() {
-		trimmed := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(trimmed, "#") || trimmed == "" {
+		// Only line terminators are stripped: git keeps leading whitespace and
+		// lets ParsePattern handle (escaped) trailing spaces.
+		line := strings.TrimRight(scanner.Text(), "\r")
+		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		patterns = append(patterns, gitignore.ParsePattern(trimmed, domain))
+		patterns = append(patterns, gitignore.ParsePattern(line, domain))
 	}
 
 	return patterns, scanner.Err()
@@ -284,12 +280,19 @@ func (w *ignoreWrapper) isIgnoredWithDir(path string, hint dirHint) bool {
 		}
 	}
 
-	pathParts := strings.Split(rel, "/")
+	return w.ignored(strings.Split(rel, "/"), isDir, w.localMatcher)
+}
 
-	// Check base patterns first (lowest priority).
+// ignored applies base (lowest priority), ancestor and local patterns to a
+// rootDir-relative path split into parts. The local matcher is a parameter so
+// rule loading can prune with the patterns accumulated so far.
+func (w *ignoreWrapper) ignored(parts []string, isDir bool, local gitignore.Matcher) bool {
 	ignored := false
-	if w.baseMatcher != nil {
-		switch w.baseMatcher.MatchResult(pathParts, isDir) {
+	apply := func(m gitignore.Matcher, path []string) {
+		if m == nil {
+			return
+		}
+		switch m.MatchResult(path, isDir) {
 		case gitignore.Exclude:
 			ignored = true
 		case gitignore.Include:
@@ -297,28 +300,13 @@ func (w *ignoreWrapper) isIgnoredWithDir(path string, hint dirHint) bool {
 		}
 	}
 
-	// Check ancestor patterns second — can override base.
+	apply(w.baseMatcher, parts)
 	if w.ancestorMatcher != nil {
-		repoRel := make([]string, len(w.ancestorOffset)+len(pathParts))
-		copy(repoRel, w.ancestorOffset)
-		copy(repoRel[len(w.ancestorOffset):], pathParts)
-		switch w.ancestorMatcher.MatchResult(repoRel, isDir) {
-		case gitignore.Exclude:
-			ignored = true
-		case gitignore.Include:
-			ignored = false
-		}
+		repoRel := make([]string, 0, len(w.ancestorOffset)+len(parts))
+		repoRel = append(append(repoRel, w.ancestorOffset...), parts...)
+		apply(w.ancestorMatcher, repoRel)
 	}
-
-	// Check local patterns last (highest priority).
-	if w.localMatcher != nil {
-		switch w.localMatcher.MatchResult(pathParts, isDir) {
-		case gitignore.Exclude:
-			ignored = true
-		case gitignore.Include:
-			ignored = false
-		}
-	}
+	apply(local, parts)
 
 	return ignored
 }
@@ -373,10 +361,6 @@ func (w *ignoreWrapper) WalkDir(ctx context.Context, root string, fn func(abs st
 	}
 
 	return w.lower.WalkDir(ctx, root, func(abs string, d fs.DirEntry) error {
-		if abs == root {
-			return nil
-		}
-
 		if w.isIgnoredWithDir(abs, dirFromBool(d.IsDir())) {
 			if d.IsDir() {
 				return fs.SkipDir

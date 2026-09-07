@@ -252,7 +252,7 @@ func (l *Language) Register(d port.CapsuleDiscovery) {
 	d.Register("typescript", port.ManifestInfo{
 		Names:             []string{"package.json"},
 		ParseFunc:         readCapsuleName,
-		BaseIgnoreEntries: []string{"*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"},
+		BaseIgnoreEntries: []string{"node_modules", "*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"},
 	})
 }
 

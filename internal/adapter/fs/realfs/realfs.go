@@ -2,10 +2,10 @@ package realfs
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"os"
-	"path/filepath"
+
+	"github.com/dariushalipour/baft/internal/adapter/fs/internal/walk"
 )
 
 type FS struct{}
@@ -31,39 +31,5 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 }
 
 func (f *FS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
-	return walkDirCtx(ctx, root, fn)
-}
-
-func walkDirCtx(ctx context.Context, dir string, fn func(abs string, d fs.DirEntry) error) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		abs := filepath.Join(dir, entry.Name())
-		if entry.IsDir() {
-			if err := fn(abs, entry); err != nil {
-				if errors.Is(err, fs.SkipDir) {
-					continue
-				}
-				return err
-			}
-			if err := walkDirCtx(ctx, abs, fn); err != nil {
-				if errors.Is(err, fs.SkipDir) {
-					continue
-				}
-				return err
-			}
-		} else {
-			if err := fn(abs, entry); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	return walk.Dir(ctx, f, root, fn)
 }

@@ -103,14 +103,6 @@ func TestOverlayFS_WalkDir_SortedOutput(t *testing.T) {
 			}
 			return nil, nil
 		},
-		walkDirFn: func(ctx context.Context, root string, fn func(string, fs.DirEntry) error) error {
-			if root == "/root" {
-				_ = fn("/root/a.txt", &mockEntry{name: "a.txt", isDir: false})
-				_ = fn("/root/z.txt", &mockEntry{name: "z.txt", isDir: false})
-				return nil
-			}
-			return nil
-		},
 	}
 	fsys := New(lower, map[string][]byte{
 		"/root/m.txt": []byte("middle"),
@@ -158,7 +150,6 @@ func TestOverlayFS_Stat_MemoryFile(t *testing.T) {
 type mockLower struct {
 	readFileFn func(path string) ([]byte, error)
 	readDirFn  func(path string) ([]fs.DirEntry, error)
-	walkDirFn  func(ctx context.Context, root string, fn func(string, fs.DirEntry) error) error
 }
 
 func (m *mockLower) ReadFile(path string) ([]byte, error) {
@@ -184,9 +175,6 @@ func (m *mockLower) ReadDir(path string) ([]fs.DirEntry, error) {
 }
 
 func (m *mockLower) WalkDir(ctx context.Context, root string, fn func(string, fs.DirEntry) error) error {
-	if m.walkDirFn != nil {
-		return m.walkDirFn(ctx, root, fn)
-	}
 	return nil
 }
 
@@ -213,3 +201,63 @@ func (i *mockInfo) Mode() fs.FileMode  { return 0 }
 func (i *mockInfo) ModTime() time.Time { return time.Time{} }
 func (i *mockInfo) IsDir() bool        { return i.isDir }
 func (i *mockInfo) Sys() interface{}   { return nil }
+
+func TestOverlayFS_WalkDir_SkipDirPrunesOverlayFiles(t *testing.T) {
+	lower := &mockLower{
+		readDirFn: func(path string) ([]fs.DirEntry, error) {
+			switch path {
+			case "/root":
+				return []fs.DirEntry{&mockEntry{name: "skipme", isDir: true}}, nil
+			case "/root/skipme":
+				return []fs.DirEntry{&mockEntry{name: "inner.txt"}}, nil
+			}
+			return nil, nil
+		},
+	}
+	fsys := New(lower, map[string][]byte{"/root/skipme/over.txt": []byte("over")})
+
+	var paths []string
+	err := fsys.WalkDir(context.Background(), "/root", func(abs string, d fs.DirEntry) error {
+		paths = append(paths, abs)
+		if d.IsDir() {
+			return fs.SkipDir
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 1 || paths[0] != "/root/skipme" {
+		t.Fatalf("expected the skipped directory only, got %v", paths)
+	}
+}
+
+func TestOverlayFS_OverlayOnlyDirectories(t *testing.T) {
+	fsys := New(&mockLower{}, map[string][]byte{"/root/new/nested/file.ts": []byte("x")})
+
+	var paths []string
+	err := fsys.WalkDir(context.Background(), "/root", func(abs string, d fs.DirEntry) error {
+		paths = append(paths, abs)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"/root/new", "/root/new/nested", "/root/new/nested/file.ts"}
+	if len(paths) != len(want) {
+		t.Fatalf("expected %v, got %v", want, paths)
+	}
+	for i := range want {
+		if paths[i] != want[i] {
+			t.Fatalf("expected %v, got %v", want, paths)
+		}
+	}
+
+	info, err := fsys.Stat("/root/new/nested")
+	if err != nil {
+		t.Fatalf("overlay-only directory not statable: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatal("expected overlay-only directory to report IsDir")
+	}
+}

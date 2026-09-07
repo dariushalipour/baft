@@ -8,9 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"time"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/internal/walk"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -26,13 +26,11 @@ type Payload struct {
 type FS struct {
 	lower port.FileSystem
 	files map[string][]byte
-	// parentIndex maps parent directory -> sorted overlay entries for O(1) ReadDir.
-	parentIndex map[string][]overlayEntry
-}
-
-type overlayEntry struct {
-	name string
-	data []byte
+	// index maps a directory to its sorted overlay entries: the overlay files
+	// it holds plus the directories they imply, so overlay-only directories
+	// are visible to ReadDir and therefore to the walker.
+	index map[string][]fs.DirEntry
+	dirs  map[string]bool
 }
 
 func Decode(r io.Reader) (Payload, error) {
@@ -42,20 +40,48 @@ func Decode(r io.Reader) (Payload, error) {
 }
 
 func New(lower port.FileSystem, files map[string][]byte) *FS {
-	cloned := make(map[string][]byte, len(files))
-	index := make(map[string][]overlayEntry)
+	f := &FS{
+		lower: lower,
+		files: make(map[string][]byte, len(files)),
+		index: make(map[string][]fs.DirEntry),
+		dirs:  make(map[string]bool),
+	}
+	byDir := make(map[string]map[string]fs.DirEntry)
+	add := func(dir string, entry fs.DirEntry) bool {
+		if byDir[dir] == nil {
+			byDir[dir] = make(map[string]fs.DirEntry)
+		}
+		if _, ok := byDir[dir][entry.Name()]; ok {
+			return false
+		}
+		byDir[dir][entry.Name()] = entry
+		return true
+	}
 	for path, content := range files {
 		clean := filepath.Clean(path)
-		cloned[clean] = append([]byte(nil), content...)
-		parent := filepath.Dir(clean)
-		index[parent] = append(index[parent], overlayEntry{name: filepath.Base(clean), data: content})
+		f.files[clean] = append([]byte(nil), content...)
+		add(filepath.Dir(clean), &syntheticEntry{name: filepath.Base(clean), size: len(content)})
+		for dir := filepath.Dir(clean); ; {
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			f.dirs[dir] = true
+			if !add(parent, &syntheticEntry{name: filepath.Base(dir), dir: true}) {
+				break
+			}
+			dir = parent
+		}
 	}
-	for k := range index {
-		sort.Slice(index[k], func(i, j int) bool {
-			return index[k][i].name < index[k][j].name
-		})
+	for dir, entries := range byDir {
+		list := make([]fs.DirEntry, 0, len(entries))
+		for _, e := range entries {
+			list = append(list, e)
+		}
+		sortEntries(list)
+		f.index[dir] = list
 	}
-	return &FS{lower: lower, files: cloned, parentIndex: index}
+	return f
 }
 
 func NewFromPayload(lower port.FileSystem, payload Payload) *FS {
@@ -78,13 +104,18 @@ func (f *FS) WriteFile(path string, data []byte, perm os.FileMode) error {
 }
 
 func (f *FS) Stat(path string) (os.FileInfo, error) {
-	if data, ok := f.files[filepath.Clean(path)]; ok {
-		if info, err := f.lower.Stat(path); err == nil {
-			return info, nil
-		}
-		return syntheticInfo{name: filepath.Base(path), size: int64(len(data)), mode: 0o644}, nil
+	info, err := f.lower.Stat(path)
+	if err == nil {
+		return info, nil
 	}
-	return f.lower.Stat(path)
+	clean := filepath.Clean(path)
+	if data, ok := f.files[clean]; ok {
+		return syntheticInfo{name: filepath.Base(clean), size: int64(len(data)), mode: 0o644}, nil
+	}
+	if f.dirs[clean] {
+		return syntheticInfo{name: filepath.Base(clean), mode: 0o755 | os.ModeDir}, nil
+	}
+	return nil, err
 }
 
 func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
@@ -96,153 +127,34 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 		lowerEntries = nil
 	}
 
-	dir := filepath.Clean(name)
-	memEntries := f.parentIndex[dir]
+	overlay := f.index[filepath.Clean(name)]
+	if len(overlay) == 0 {
+		return lowerEntries, nil
+	}
 
 	lowerNames := make(map[string]bool, len(lowerEntries))
-	for i := range lowerEntries {
-		lowerNames[lowerEntries[i].Name()] = true
+	for _, e := range lowerEntries {
+		lowerNames[e.Name()] = true
 	}
 
-	result := make([]fs.DirEntry, 0, len(lowerEntries)+len(memEntries))
+	result := make([]fs.DirEntry, 0, len(lowerEntries)+len(overlay))
 	result = append(result, lowerEntries...)
-	for _, me := range memEntries {
-		if !lowerNames[me.name] {
-			result = append(result, &syntheticEntry{name: me.name, size: len(me.data)})
+	for _, e := range overlay {
+		if !lowerNames[e.Name()] {
+			result = append(result, e)
 		}
 	}
-
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Name() < result[j].Name()
-	})
+	sortEntries(result)
 
 	return result, nil
 }
 
 func (f *FS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
-	rootClean := filepath.Clean(root)
-	rootSep := rootClean + string(filepath.Separator)
-
-	// Collect overlay files under root, grouped by parent dir.
-	overlayByDir := make(map[string][]overlayEntry)
-	for p, data := range f.files {
-		pClean := filepath.Clean(p)
-		if pClean == rootClean || strings.HasPrefix(pClean, rootSep) {
-			parent := filepath.Dir(pClean)
-			overlayByDir[parent] = append(overlayByDir[parent], overlayEntry{name: filepath.Base(pClean), data: data})
-		}
-	}
-
-	// Per-directory buffering: collect lower entries, merge with overlay,
-	// sort, then emit. This keeps memory proportional to max directory size,
-	// not total tree size (audit #1: O(N²) → O(N)).
-	type dirBuf struct {
-		entries []fs.DirEntry
-		hasDir  bool // lower walk emitted a directory entry
-	}
-	bufByDir := make(map[string]*dirBuf)
-
-	lowerEmitted := make(map[string]bool)
-
-	err := f.lower.WalkDir(ctx, rootClean, func(abs string, d fs.DirEntry) error {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		lowerEmitted[abs] = true
-		if d.IsDir() {
-			bufByDir[abs] = &dirBuf{hasDir: true}
-			return fn(abs, d)
-		}
-
-		parent := filepath.Dir(abs)
-		buf, ok := bufByDir[parent]
-		if !ok {
-			buf = &dirBuf{}
-			bufByDir[parent] = buf
-		}
-		buf.entries = append(buf.entries, d)
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	// If lower emitted nothing, walk overlay-only content.
-	if len(lowerEmitted) == 0 {
-		return f.walkOverlayOnlyCtx(ctx, rootClean, overlayByDir, fn)
-	}
-
-	// Collect all directories that had content, sorted for deterministic output.
-	var dirs []string
-	for dir := range bufByDir {
-		dirs = append(dirs, dir)
-	}
-	sort.Strings(dirs)
-
-	// Emit buffered entries per directory: merge lower + overlay, sort, emit.
-	for _, dir := range dirs {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		buf := bufByDir[dir]
-		if buf == nil {
-			continue
-		}
-
-		// Merge with overlay entries.
-		overlayEntries := overlayByDir[dir]
-		merged := make([]fs.DirEntry, 0, len(buf.entries)+len(overlayEntries))
-		merged = append(merged, buf.entries...)
-		lowerNames := make(map[string]bool, len(buf.entries))
-		for _, e := range buf.entries {
-			lowerNames[e.Name()] = true
-		}
-		for _, oe := range overlayEntries {
-			if !lowerNames[oe.name] {
-				merged = append(merged, &syntheticEntry{name: oe.name, size: len(oe.data)})
-			}
-		}
-
-		sort.Slice(merged, func(i, j int) bool {
-			return merged[i].Name() < merged[j].Name()
-		})
-
-		for _, e := range merged {
-			if err := fn(filepath.Join(dir, e.Name()), e); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return walk.Dir(ctx, f, root, fn)
 }
 
-func (f *FS) walkOverlayOnlyCtx(ctx context.Context, root string, overlayByDir map[string][]overlayEntry, fn func(abs string, d fs.DirEntry) error) error {
-	var dirs []string
-	for dir := range overlayByDir {
-		dirs = append(dirs, dir)
-	}
-	sort.Strings(dirs)
-
-	for _, dir := range dirs {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		entries := overlayByDir[dir]
-		for _, entry := range entries {
-			over := &syntheticEntry{name: entry.name, size: len(entry.data)}
-			if err := fn(filepath.Join(dir, entry.name), over); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+func sortEntries(entries []fs.DirEntry) {
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
 }
 
 type syntheticInfo struct {
@@ -261,11 +173,20 @@ func (s syntheticInfo) Sys() any           { return nil }
 type syntheticEntry struct {
 	name string
 	size int
+	dir  bool
 }
 
-func (e *syntheticEntry) Name() string      { return e.name }
-func (e *syntheticEntry) IsDir() bool       { return false }
-func (e *syntheticEntry) Type() fs.FileMode { return 0 }
+func (e *syntheticEntry) Name() string { return e.name }
+func (e *syntheticEntry) IsDir() bool  { return e.dir }
+func (e *syntheticEntry) Type() fs.FileMode {
+	if e.dir {
+		return fs.ModeDir
+	}
+	return 0
+}
 func (e *syntheticEntry) Info() (os.FileInfo, error) {
+	if e.dir {
+		return &syntheticInfo{name: e.name, mode: 0o755 | fs.ModeDir}, nil
+	}
 	return &syntheticInfo{name: e.name, size: int64(e.size), mode: 0o644}, nil
 }

@@ -1046,3 +1046,59 @@ func TestWrap_RelativeRootDir(t *testing.T) {
 
 // Ensure ignoreWrapper implements port.FileSystem.
 var _ port.FileSystem = (*ignoreWrapper)(nil)
+
+// countingFS records the directories rule loading reads.
+type countingFS struct {
+	port.FileSystem
+	readDirs []string
+}
+
+func (c *countingFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	c.readDirs = append(c.readDirs, name)
+	return c.FileSystem.ReadDir(name)
+}
+
+func TestWrap_DoesNotDescendIntoIgnoredTree(t *testing.T) {
+	counting := &countingFS{FileSystem: makeTestFS(t, map[string]string{
+		"/repo/.gitignore":                     "node_modules/\n",
+		"/repo/src/app.ts":                     "export {}",
+		"/repo/node_modules/pkg/.gitignore":    "*.map\n",
+		"/repo/node_modules/pkg/index.js":      "module",
+		"/repo/node_modules/pkg/deep/index.js": "module",
+	})}
+
+	if _, err := Wrap(counting, Options{RootDir: "/repo", BaseIgnoreEntries: map[string]bool{}}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, dir := range counting.readDirs {
+		if strings.HasPrefix(dir, "/repo/node_modules") {
+			t.Fatalf("rule loading descended into an ignored tree: %v", counting.readDirs)
+		}
+	}
+}
+
+func TestWrap_IgnoreLineWhitespace(t *testing.T) {
+	fsys := makeTestFS(t, map[string]string{
+		// Git strips unescaped trailing spaces but honours an escaped one.
+		"/repo/.baftignore": "temp.log \nkeep.log\\ \n",
+		"/repo/temp.log":    "x",
+		"/repo/keep.log":    "x",
+		"/repo/keep.log ":   "x",
+	})
+
+	ignored, err := Wrap(fsys, Options{RootDir: "/repo", BaseIgnoreEntries: map[string]bool{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := ignored.ReadFile("/repo/temp.log"); err == nil {
+		t.Fatal("expected temp.log to be ignored")
+	}
+	if _, err := ignored.ReadFile("/repo/keep.log "); err == nil {
+		t.Fatal(`expected "keep.log " to be ignored by the escaped-space pattern`)
+	}
+	if _, err := ignored.ReadFile("/repo/keep.log"); err != nil {
+		t.Fatalf("expected keep.log to stay visible: %v", err)
+	}
+}

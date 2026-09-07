@@ -18,7 +18,9 @@ type FileSystem interface {
 
 	// WalkDir walks the file tree rooted at root, calling fn for each
 	// file or directory. It respects context cancellation at every directory
-	// boundary, allowing long walks to be aborted promptly.
+	// boundary, allowing long walks to be aborted promptly. Symlinks are not
+	// followed: a symlinked directory is reported as a non-directory entry
+	// and is never descended into.
 	WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error
 }
 

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dariushalipour/baft/internal/adapter/fs/internal/walk"
 )
 
 type FS struct {
@@ -197,106 +199,12 @@ func (f *FS) ReadDir(name string) ([]fs.DirEntry, error) {
 
 func (f *FS) WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error {
 	f.mu.RLock()
-	defer f.mu.RUnlock()
-	if err, ok := f.walkErrors[root]; ok {
+	err, failing := f.walkErrors[root]
+	f.mu.RUnlock()
+	if failing {
 		return err
 	}
-
-	root = path.Clean("/" + root)
-	if !strings.HasPrefix(root, "/") {
-		root = "/" + root
-	}
-	if root != "/" {
-		root = root + "/"
-	}
-
-	var fileEntries []string
-	for p := range f.files {
-		if p == root || strings.HasPrefix(p, root) {
-			fileEntries = append(fileEntries, p)
-		}
-	}
-	sort.Strings(fileEntries)
-
-	dirSet := make(map[string]bool)
-	for _, fe := range fileEntries {
-		for {
-			fe = path.Dir(fe)
-			if fe == "/" || !strings.HasPrefix(fe, root) {
-				break
-			}
-			if fe != root {
-				dirSet[fe] = true
-			}
-		}
-	}
-
-	for d := range f.dirs {
-		if d == root || strings.HasPrefix(d, root) {
-			dirSet[d] = true
-		}
-	}
-
-	var allEntries []string
-	for de := range dirSet {
-		allEntries = append(allEntries, de)
-	}
-	allEntries = append(allEntries, fileEntries...)
-	sort.Strings(allEntries)
-
-	visited := make(map[string]bool)
-	var skipped []string
-
-	for _, entry := range allEntries {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-
-		rel := strings.TrimPrefix(entry, root)
-		abs := root + rel
-
-		if rel == "" {
-			continue
-		}
-
-		underSkipped := false
-		for _, skip := range skipped {
-			if strings.HasPrefix(abs, skip+"/") {
-				underSkipped = true
-				break
-			}
-		}
-		if underSkipped {
-			continue
-		}
-
-		_, isDir := dirSet[entry]
-
-		if isDir {
-			if visited[abs] {
-				continue
-			}
-			visited[abs] = true
-
-			err := fn(abs, &dirEntry{name: filepath.Base(abs), isDir: true})
-			if err == fs.SkipDir {
-				skipped = append(skipped, abs)
-				continue
-			}
-			if err != nil {
-				return err
-			}
-		} else {
-			err := fn(abs, &dirEntry{name: filepath.Base(abs), isDir: false})
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return walk.Dir(ctx, f, root, fn)
 }
 
 type stat struct {

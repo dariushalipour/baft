@@ -79,7 +79,33 @@ type capsuleChecker struct {
 	nestedCapsuleDirs []string
 	strategyFactory   *StrategyFactory
 	strategy          ResolutionStrategy
+	scopeMemo         sync.Map // dir -> tracking scope
+	visibleMemo       sync.Map // abs -> target visibility
 	contractContext
+}
+
+// trackingScope memoizes service.TrackingScope per directory: every file and
+// import target in a directory shares the same answer, which costs a stat
+// chain to compute.
+func (ch *capsuleChecker) trackingScope(abs string) string {
+	dir := filepath.Dir(abs)
+	if v, ok := ch.scopeMemo.Load(dir); ok {
+		return v.(string)
+	}
+	scope := service.TrackingScope(ch.fsys, abs, ch.capsule.Dir)
+	ch.scopeMemo.Store(dir, scope)
+	return scope
+}
+
+// targetVisible memoizes port.IsTargetVisible, which stats and reads
+// directories and is asked about the same targets by every importer.
+func (ch *capsuleChecker) targetVisible(abs string) bool {
+	if v, ok := ch.visibleMemo.Load(abs); ok {
+		return v.(bool)
+	}
+	visible := port.IsTargetVisible(ch.fsys, abs)
+	ch.visibleMemo.Store(abs, visible)
+	return visible
 }
 
 func newCapsuleChecker(
