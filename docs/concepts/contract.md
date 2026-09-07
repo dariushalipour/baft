@@ -293,6 +293,8 @@ Use `baft dump --dry-run` to see those additions without writing anything. If an
 - **C#, Go, Java, Kotlin, Python, Rust:** Dumps prefer bare directory nodes such as `internal/domain`. Use `/**` only when you want one node to own a whole subtree.
 - **TypeScript, Dart:** Root-level dumps start with merged same-directory `/*.*` nodes and retry with file-shaped nodes only when the merged draft creates a cycle. Scoped or bounded-context dumps still keep root files as file-shaped nodes.
 
+When the cycle is in the code rather than in the node granularity, no draft can avoid it. Dump writes the cyclic draft anyway — it mirrors the imports you have — and warns on stderr that `baft check` will report the cycle.
+
 ---
 
 ## The check command
@@ -323,7 +325,7 @@ If a contract cannot be parsed into a usable graph, `check` cannot enforce that 
 
 ## Comments
 
-Inside the Mermaid block, `%%` introduces a comment. Comments are ignored by the parser but preserved in the file.
+Inside the Mermaid block, `%%` introduces a comment. Comments are ignored by the parser, and `check` and `restyle` leave them alone. `dump`'s amendment does not: it rewrites the file from the graph, so comments — and any prose around the block — are lost.
 
 ```mermaid
 flowchart TD

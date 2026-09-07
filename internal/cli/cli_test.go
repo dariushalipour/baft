@@ -30,16 +30,8 @@ func exec(t *testing.T, stdin string, args ...string) run {
 	return run{a.run(args), out.String(), errOut.String()}
 }
 
-// capsule writes a Go capsule whose contract forbids a -> b.
-func capsule(t *testing.T) string {
+func writeFiles(t *testing.T, root string, files map[string]string) string {
 	t.Helper()
-	root := t.TempDir()
-	files := map[string]string{
-		"go.mod":  "module example.com/x\n",
-		"BAFT.md": "```mermaid\nflowchart TD\n    a[\"a\"]\n    b[\"b\"]\n```\n",
-		"a/a.go":  "package a\n\nimport \"example.com/x/b\"\n\nvar _ = b.V\n",
-		"b/b.go":  "package b\n\nvar V = 1\n",
-	}
 	for name, content := range files {
 		path := filepath.Join(root, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -50,6 +42,17 @@ func capsule(t *testing.T) string {
 		}
 	}
 	return root
+}
+
+// capsule writes a Go capsule whose contract forbids a -> b.
+func capsule(t *testing.T) string {
+	t.Helper()
+	return writeFiles(t, t.TempDir(), map[string]string{
+		"go.mod":  "module example.com/x\n",
+		"BAFT.md": "```mermaid\nflowchart TD\n    a[\"a\"]\n    b[\"b\"]\n```\n",
+		"a/a.go":  "package a\n\nimport \"example.com/x/b\"\n\nvar _ = b.V\n",
+		"b/b.go":  "package b\n\nvar V = 1\n",
+	})
 }
 
 func TestLangFlagAcceptsBothSyntaxes(t *testing.T) {
@@ -210,5 +213,53 @@ func TestRestyleStdin(t *testing.T) {
 	got := exec(t, contract, "restyle", "--stdin", "--path", "BAFT.md")
 	if got.code != exitOK || !strings.Contains(got.stdout, "flowchart TD") {
 		t.Fatalf("restyle --stdin: %+v", got)
+	}
+}
+
+// dump's stdout is the review surface for an amendment: it names every node and
+// edge it adds, and --dry-run reports them without touching the tree.
+func TestDumpNamesAdditionsAndDryRunWritesNothing(t *testing.T) {
+	root := writeFiles(t, capsule(t), map[string]string{
+		"a/a.go": "package a\n\nimport (\n\t\"example.com/x/b\"\n\t\"example.com/x/c\"\n)\n\nvar _ = b.V\nvar _ = c.V\n",
+		"c/c.go": "package c\n\nvar V = 1\n",
+	})
+	contract := filepath.Join(root, "BAFT.md")
+	before, err := os.ReadFile(contract)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dry := exec(t, "", "dump", "--lang=go", "--dry-run", root)
+	for _, want := range []string{"[would amend]", "(+1 nodes, +2 edges)", "+ node c", "+ edge a --> b", "+ edge a --> c"} {
+		if dry.code != exitOK || !strings.Contains(dry.stdout, want) {
+			t.Fatalf("dry run: want %q, got %+v", want, dry)
+		}
+	}
+	if after, err := os.ReadFile(contract); err != nil || string(after) != string(before) {
+		t.Fatalf("dry run rewrote the contract: %s (%v)", after, err)
+	}
+
+	wet := exec(t, "", "dump", "--lang=go", root)
+	if wet.code != exitOK || !strings.Contains(wet.stdout, "[amended] ") {
+		t.Fatalf("dump: %+v", wet)
+	}
+	if got := exec(t, "", "check", "--lang=go", root); got.code != exitOK {
+		t.Fatalf("check after dump: %+v", got)
+	}
+}
+
+// A repo with no contract yet reports what dump would create, and creates nothing.
+func TestDumpDryRunOnUntrackedRepoCreatesNothing(t *testing.T) {
+	root := writeFiles(t, t.TempDir(), map[string]string{
+		"go.mod": "module example.com/x\n",
+		"b/b.go": "package b\n\nvar V = 1\n",
+	})
+
+	got := exec(t, "", "dump", "--lang=go", "--dry-run", root)
+	if got.code != exitOK || !strings.Contains(got.stdout, "[would create] ") {
+		t.Fatalf("dump --dry-run: %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, "BAFT.md")); !os.IsNotExist(err) {
+		t.Fatalf("dry run created a contract (%v)", err)
 	}
 }

@@ -2,6 +2,7 @@ package check
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -62,6 +63,12 @@ func TestValidateContractGraph_MultipleCycles(t *testing.T) {
 	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if len(result.Errors) != 2 {
 		t.Fatalf("expected 2 cycle errors, got %d", len(result.Errors))
+	}
+	// Callers such as dump expand every reported group, so each cycle must come
+	// back as typed node sequences, not only as a formatted message.
+	want := [][]string{{"a", "b", "a"}, {"c", "d", "c"}}
+	if !reflect.DeepEqual(result.Cycles, want) {
+		t.Fatalf("cycles = %v, want %v", result.Cycles, want)
 	}
 }
 

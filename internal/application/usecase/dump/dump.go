@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/domain/graph"
@@ -113,6 +114,7 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 	if err != nil {
 		return nil, err
 	}
+	repo = &loadCache{GraphRepository: repo}
 	type entry struct {
 		capsule port.Capsule
 		lang    port.Language
@@ -221,6 +223,9 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 						if retryErr == nil && retryDiff != nil {
 							retryRes.AmendDiff = retryDiff
 						}
+						if retryErr != nil {
+							warnCyclicDraft(opts.Log, retryRes.ContractPath)
+						}
 						result.Contracts = append(result.Contracts, *retryRes)
 						continue
 					}
@@ -232,6 +237,7 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 			}
 			if isFreshDraftCycle(err) {
 				capsuleRes.IsNew = true
+				warnCyclicDraft(opts.Log, capsuleRes.ContractPath)
 				result.Contracts = append(result.Contracts, *capsuleRes)
 				continue
 			}
@@ -246,6 +252,32 @@ func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Langu
 	}
 
 	return result, nil
+}
+
+// warnCyclicDraft flags a draft that mirrors a cycle the code itself has: the
+// contract is written as a starting point, but it does not pass `baft check`.
+func warnCyclicDraft(log io.Writer, contractPath string) {
+	fmt.Fprintf(log, "dump: %s: draft keeps a circular dependency the code has; `baft check` will report it\n", contractPath)
+}
+
+// loadCache parses each distinct contract body once per dump run: amending a
+// capsule loads its contract, and the check it runs re-reads the same bytes.
+// Loaded graphs are never mutated, so one parse can serve every reader.
+type loadCache struct {
+	port.GraphRepository
+	graphs sync.Map
+}
+
+func (c *loadCache) Load(content string) (*graph.Graph, error) {
+	if cached, ok := c.graphs.Load(content); ok {
+		return cached.(*graph.Graph), nil
+	}
+	g, err := c.GraphRepository.Load(content)
+	if err != nil {
+		return nil, err
+	}
+	c.graphs.Store(content, g)
+	return g, nil
 }
 
 // amendExisting amends a contract the user already maintains, deriving the
