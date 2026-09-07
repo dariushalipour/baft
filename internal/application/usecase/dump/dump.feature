@@ -146,11 +146,11 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         root["."]
-        internal_slash_domain["internal/domain"]
-        internal_slash_usecase["internal/usecase"]
+        domain["internal/domain"]
+        usecase["internal/usecase"]
       
-        root --> internal_slash_usecase
-        internal_slash_usecase --> internal_slash_domain
+        root --> usecase
+        usecase --> domain
       ```
       """
 
@@ -197,11 +197,11 @@ Feature: Dump BAFT.md from actual imports
       
       ```mermaid
       flowchart TD
-        internal_slash_application["internal/application"]
-        internal_slash_domain["internal/domain"]
+        application["internal/application"]
+        domain["internal/domain"]
       
-        internal_slash_application --> internal_slash_domain
-        internal_slash_domain --> internal_slash_application
+        application --> domain
+        domain --> application
       ```
       """
 
@@ -247,7 +247,7 @@ Feature: Dump BAFT.md from actual imports
       """config
       ```mermaid
       flowchart TD
-        api["internal/nested/api"]
+        api["api"]
       ```
       """
     Given file "internal/domain/model.go" has content:
@@ -281,9 +281,9 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         root["."]
-        internal_slash_domain["internal/domain"]
+        domain["internal/domain"]
       
-        root --> internal_slash_domain
+        root --> domain
       ```
       """
     And file "internal/nested/BAFT.md" should stay the same
@@ -328,7 +328,7 @@ Feature: Dump BAFT.md from actual imports
       
       ```mermaid
       flowchart TD
-        internal_slash_a["internal/a"]
+        a["internal/a"]
       
       ```
       """
@@ -376,7 +376,7 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         internal_slash_domain["internal/domain"]
-        internal_slash_usecase["internal/usecase"]
+        usecase["internal/usecase"]
       
       ```
       """
@@ -529,9 +529,9 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         usecases["internal/usecase"]:::endophobic
-        internal_slash_domain["internal/domain"]
+        domain["internal/domain"]
       
-        usecases --> internal_slash_domain
+        usecases --> domain
       
         %% ------------------------------------------------------------------------------------------
         %% AUTO-GENERATED STYLING: Do not edit manually.
@@ -679,7 +679,7 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         cmd["cmd"]
-        internal_slash_app["internal/app"]
+        app["internal/app"]
       
       ```
       """
@@ -757,9 +757,9 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         root["."]
-        internal_slash_domain["internal/domain"]
+        domain["internal/domain"]
       
-        root --> internal_slash_domain
+        root --> domain
       ```
       """
 
@@ -845,9 +845,9 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         root["."]
-        internal_slash_domain["internal/domain"]
+        domain["internal/domain"]
       
-        root --> internal_slash_domain
+        root --> domain
       ```
       """
 
@@ -985,7 +985,7 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         root["."]
-        internal_slash_domain["internal/domain"]
+        domain["internal/domain"]
       
       ```
       """
@@ -1773,10 +1773,10 @@ Feature: Dump BAFT.md from actual imports
       
       ```mermaid
       flowchart TD
-        internal_slash_application["internal/application"]
-        internal_slash_domain["internal/domain"]
+        application["internal/application"]
+        domain["internal/domain"]
       
-        internal_slash_application --> internal_slash_domain
+        application --> domain
       ```
       """
 
@@ -1933,9 +1933,9 @@ Feature: Dump BAFT.md from actual imports
       ```mermaid
       flowchart TD
         root["."]
-        core_slash_internal["core/internal"]
+        internal["core/internal"]
       
-        root --> core_slash_internal
+        root --> internal
       ```
       """
 
@@ -1978,10 +1978,10 @@ Feature: Dump BAFT.md from actual imports
 
       ```mermaid
       flowchart TD
-        internal_slash_domain["internal/domain"]
-        internal_slash_usecase["internal/usecase"]
+        domain["internal/domain"]
+        usecase["internal/usecase"]
 
-        internal_slash_usecase --> internal_slash_domain
+        usecase --> domain
       ```
       """
 
@@ -2090,10 +2090,10 @@ Feature: Dump BAFT.md from actual imports
       flowchart TD
         usecases["internal/usecase"]
         legacy["internal/legacy"]
-        internal_slash_domain["internal/domain"]
+        domain["internal/domain"]
 
         usecases -.-> legacy
-        usecases --> internal_slash_domain
+        usecases --> domain
       ```
       """
 

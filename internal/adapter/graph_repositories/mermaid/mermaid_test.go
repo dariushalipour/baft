@@ -350,8 +350,7 @@ func TestRoundTrip_RawGraph(t *testing.T) {
 		"src/usecase/create.ts": {"src/domain": true},
 	}
 
-	graph := rawToGraph(nodes, edges)
-	saved := (&MermaidRepository{}).Save(graph, port.GraphSaveOptions{})
+	saved := (&MermaidRepository{}).Save(rawToGraph(nodes, edges), port.GraphSaveOptions{})
 	roundTrip, err := (&MermaidRepository{}).Load(saved)
 	if err != nil {
 		t.Fatalf("load saved analysis: %v\n%s", err, saved)
@@ -364,7 +363,7 @@ func TestRoundTrip_RawGraph(t *testing.T) {
 		"src/usecase/create.ts": "src/usecase/create.ts",
 	}
 	for id, want := range expectedGlobs {
-		encoded := encodeNodeId(id)
+		encoded := graph.NodeID(id)
 		if roundTrip.Nodes[encoded] != want {
 			t.Errorf("node %q: got %q, want %q", encoded, roundTrip.Nodes[encoded], want)
 		}
@@ -443,7 +442,7 @@ func TestRoundTrip_SpecialCharNodeIDs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load after save: %v\nsaved:\n%s", err, saved)
 			}
-			id := encodeNodeId(tc.id)
+			id := graph.NodeID(tc.id)
 			if loaded.Nodes[id] != tc.glob {
 				t.Errorf("round-trip mismatch: got %q, want %q\nsaved:\n%s", loaded.Nodes[id], tc.glob, saved)
 			}
@@ -474,10 +473,10 @@ func TestRoundTrip_SpecialCharEdges(t *testing.T) {
 		t.Fatalf("load after save: %v\nsaved:\n%s", err, saved)
 	}
 
-	if !loaded.Allows(encodeNodeId("@scope/pkg"), encodeNodeId("src/domain")) {
+	if !loaded.Allows(graph.NodeID("@scope/pkg"), graph.NodeID("src/domain")) {
 		t.Error("missing edge @scope/pkg --> src/domain")
 	}
-	if !loaded.Allows(encodeNodeId("my-pkg[ver]"), encodeNodeId("@scope/pkg")) {
+	if !loaded.Allows(graph.NodeID("my-pkg[ver]"), graph.NodeID("@scope/pkg")) {
 		t.Error("missing edge my-pkg[ver] --> @scope/pkg")
 	}
 }
@@ -619,41 +618,6 @@ func TestMermaidRepository_EndophobicClass(t *testing.T) {
 	}
 	if g.IsEndophobic("service") {
 		t.Fatalf("service should not be endophobic")
-	}
-}
-
-func TestEncodeNodeId(t *testing.T) {
-	cases := []struct {
-		raw, encoded string
-	}{
-		{"src/domain", "src_slash_domain"},
-		{"src/model.ts", "src_slash_model_dot_ts"},
-		{"my-pkg", "my_dash_pkg"},
-		{"internal/api/**", "internal_slash_api_slash__asterisk__asterisk_"},
-		{"@scope/pkg", "_atsign_scope_slash_pkg"},
-		{"pkg[name]", "pkg_lsqb_name_rsqb_"},
-		{"pkg{ver}", "pkg_lbrace_ver_rbrace_"},
-		{".", "root"},
-		{"123abc", "n123abc"},
-		{"Already_Lower", "Already_Lower"},
-		{"my+pkg", "my_plus_pkg"},
-		{"a?b", "a_qmark_b"},
-		{"x,y", "x_comma_y"},
-		{"hello world", "hello_space_world"},
-		{"a\tb", "a_tab_b"},
-		{"a\nb", "a_newline_b"},
-		{"a\rb", "a_carriage_return_b"},
-		{"a\x0bb", "a_vertical_tab_b"},
-		{"a\x0cb", "a_form_feed_b"},
-	}
-	for _, tc := range cases {
-		enc := encodeNodeId(tc.raw)
-		if enc != tc.encoded {
-			t.Errorf("encodeNodeId(%q) = %q, want %q", tc.raw, enc, tc.encoded)
-		}
-		if again := encodeNodeId(enc); again != enc {
-			t.Errorf("encodeNodeId(%q) is not idempotent: %q", enc, again)
-		}
 	}
 }
 

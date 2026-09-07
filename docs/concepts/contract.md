@@ -283,11 +283,12 @@ The `dump` command generates a contract file from observed imports:
 That means **`baft dump` on a tracked repo legalizes the imports you have.** An import the contract deliberately forbids becomes an allowed edge, and `check` goes green. Dump names every node and edge it adds so the change is reviewable:
 
 ```text
-[amended] BAFT.md (+0 nodes, +1 edges)
-    + edge api --> infra
+[amended] /repo/BAFT.md (+1 nodes, +1 edges)
+    + node internal/infra
+    + edge internal/api --> internal/infra
 ```
 
-Use `baft dump --dry-run` to see those additions without writing anything. If an added edge is one your architecture forbids, do not keep it — revert the contract and fix the import instead.
+Additions are named by glob, not by node id. Use `baft dump --dry-run` to see them without writing anything — it reports `[would amend]`, or `[would create]` where there is no contract yet. If an added edge is one your architecture forbids, do not keep it — revert the contract and fix the import instead.
 
 **Node granularity:**
 - **C#, Go, Java, Kotlin, Python, Rust:** Dumps prefer bare directory nodes such as `internal/domain`. Use `/**` only when you want one node to own a whole subtree.
@@ -351,7 +352,7 @@ What the parser accepts and what it refuses:
 - **Generated styling** — the `style`/`linkStyle` tail written by `dump --color-palette` and `restyle` is machine-managed. Regenerate it with `baft restyle`; do not hand-edit it.
 - **Undirected, invisible and bidirectional links** — `A --- B`, `A === B`, `A ~~~ B`, `A --o B`, `A --x B` and `A <--> B` are rejected by name; an edge must point one way.
 - **Raw `*` in a node glob** — a parse error. Escape every wildcard as `&ast;` (`&#42;` is also read): `api["internal/api/&ast;&ast;"]`.
-- **Node ids** — must match `[A-Za-z_][A-Za-z0-9_]*`. They are kept verbatim, so they are also what diagnostics report.
+- **Node ids** — must match `[A-Za-z_][A-Za-z0-9_]*`. They are kept verbatim, so they are also what diagnostics report. `dump` names a node it adds after the last segment of its glob (`internal/api` → `api`) when that is free and unambiguous, and falls back to the escaped full path (`pkg_slash_api`) otherwise.
 
 ---
 

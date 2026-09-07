@@ -76,6 +76,7 @@ func applyCheckAmendments(cc capsuleCtx, contractPath string, current *graph.Gra
 			}
 		}
 	}
+	nameGraphNodes(updated, keySet(current.Nodes))
 	return updated, diff, nil
 }
 
@@ -189,6 +190,14 @@ func appendOrder(existing []string, keys []string) []string {
 	}
 	sort.Strings(added)
 	return append(order, added...)
+}
+
+func keySet(nodes map[string]string) map[string]bool {
+	keys := make(map[string]bool, len(nodes))
+	for id := range nodes {
+		keys[id] = true
+	}
+	return keys
 }
 
 func nodeKeys(nodes map[string]string) []string {

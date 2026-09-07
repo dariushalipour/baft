@@ -12,6 +12,7 @@ import (
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/adapter/graph_repositories/mermaid"
 	csharpLang "github.com/dariushalipour/baft/internal/adapter/languages/csharp"
+	"github.com/dariushalipour/baft/internal/adapter/languages/golang"
 	"github.com/dariushalipour/baft/internal/adapter/languages/typescript"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/application/usecase/check"
@@ -600,5 +601,86 @@ func TestRunWithOptions_WarnsWhenDraftKeepsCycle(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "circular dependency") {
 		t.Fatalf("expected a cyclic-draft warning, got %q", log.String())
+	}
+}
+
+// dumpGoWorkspace dumps a Go workspace and returns the contract it wrote.
+func dumpGoWorkspace(t *testing.T, rootDir string, files map[string]string) string {
+	t.Helper()
+	fsys := memfs.New()
+	for path, content := range files {
+		if err := fsys.WriteFile(rootDir+"/"+path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	discovery := service.NewCapsuleDiscovery()
+	lang := golang.Language{}
+	lang.Register(discovery)
+	if _, err := RunWithOptions(fsys, rootDir, []port.Language{lang}, &mermaid.MermaidRepository{}, discovery, Options{Log: io.Discard}); err != nil {
+		t.Fatalf("RunWithOptions: %v", err)
+	}
+	content, err := fsys.ReadFile(rootDir + "/BAFT.md")
+	if err != nil {
+		t.Fatalf("read BAFT.md: %v", err)
+	}
+	return string(content)
+}
+
+// A dump names new nodes after the last segment of their glob.
+func TestRunWithOptions_NamesNewNodesAfterTheirLastPathSegment(t *testing.T) {
+	got := dumpGoWorkspace(t, "/Users/jane/baft", map[string]string{
+		"go.mod":                   "module example.com/app",
+		"internal/api/handler.go":  "package api\n\nimport \"example.com/app/internal/domain\"\n\nfunc Handle() domain.User { return domain.User{} }\n",
+		"internal/domain/model.go": "package domain\n\ntype User struct{}\n",
+	})
+	for _, want := range []string{`api["internal/api"]`, `domain["internal/domain"]`, "api --> domain"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("contract is missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// Two globs ending in the same segment cannot both be named after it, so both
+// fall back to the encoded form of their full path.
+func TestRunWithOptions_FallsBackToEncodedIdsOnAmbiguousSegments(t *testing.T) {
+	got := dumpGoWorkspace(t, "/Users/jane/baft", map[string]string{
+		"go.mod":                  "module example.com/app",
+		"internal/api/handler.go": "package api\n\nimport \"example.com/app/pkg/api\"\n\nfunc Handle() { api.Call() }\n",
+		"pkg/api/client.go":       "package api\n\nfunc Call() {}\n",
+	})
+	for _, want := range []string{`internal_slash_api["internal/api"]`, `pkg_slash_api["pkg/api"]`, "internal_slash_api --> pkg_slash_api"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("contract is missing %q:\n%s", want, got)
+		}
+	}
+}
+
+// Regression: a node the amendment adds must never encode onto an id the
+// contract already uses for a different glob, which would write a contract that
+// no longer parses.
+func TestRunWithOptions_AmendmentNeverCollidesWithAnExistingId(t *testing.T) {
+	got := dumpGoWorkspace(t, "/Users/jane/baft", map[string]string{
+		"go.mod":            "module example.com/app",
+		"BAFT.md":           "```mermaid\nflowchart TD\n  internal_slash_api[\"legacy\"]\n  other[\"other\"]\n\n  internal_slash_api --> other\n```\n",
+		"legacy/legacy.go":  "package legacy\n",
+		"other/other.go":    "package other\n\nfunc Do() {}\n",
+		"internal/api/a.go": "package api\n\nimport \"example.com/app/other\"\n\nfunc Call() { other.Do() }\n",
+	})
+
+	g, err := (&mermaid.MermaidRepository{}).Load(got)
+	if err != nil {
+		t.Fatalf("amended contract no longer parses: %v\n%s", err, got)
+	}
+	if g.Nodes["internal_slash_api"] != "legacy" {
+		t.Errorf("existing node lost its glob: %+v", g.Nodes)
+	}
+	added := ""
+	for id, glob := range g.Nodes {
+		if glob == "internal/api" {
+			added = id
+		}
+	}
+	if added == "" || added == "internal_slash_api" {
+		t.Fatalf("the added node must get an id of its own, got %q in %+v", added, g.Nodes)
 	}
 }

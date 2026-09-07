@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -91,24 +90,13 @@ func (e *contractError) Error() string {
 	return e.kind + ": " + e.message
 }
 
-// Run walks all capsules for every supplied language, parses every
+// RunWithOptions walks all capsules for every supplied language, parses every
 // import in every scannable file, and writes a comprehensive contract file
 // that reflects the current dependency reality at maximum granularity.
 //
 // When a contract already exists it is amended, not overwritten: every import
 // the current contract forbids becomes an allowed edge. Wrapping fsys in
 // dryrunfs reports those additions without writing anything.
-func Run(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery) (*DumpResult, error) {
-	return RunWith(fsys, rootDir, languages, repo, discovery, os.Stderr)
-}
-
-func RunWith(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery, logWriter io.Writer) (*DumpResult, error) {
-	return RunWithOptions(fsys, rootDir, languages, repo, discovery, Options{
-		Save: port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone},
-		Log:  logWriter,
-	})
-}
-
 func RunWithOptions(fsys port.FileSystem, rootDir string, languages []port.Language, repo port.GraphRepository, discovery *service.CapsuleDiscovery, opts Options) (*DumpResult, error) {
 	absRootDir, err := filepath.Abs(rootDir)
 	if err != nil {

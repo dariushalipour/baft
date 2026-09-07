@@ -171,6 +171,7 @@ func dumpCapsule(cc capsuleCtx, contractDir string, cfg draftConfig) (*ContractD
 			g.NodeDisplays = cloneNodes(nodes)
 		}
 	}
+	nameGraphNodes(g, nil)
 
 	contractPath := filepath.Join(contractDir, port.ContractFile)
 	content := cc.repo.Save(g, cfg.saveOpts)

@@ -2,6 +2,9 @@ package dump
 
 import (
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/domain/graph"
@@ -46,15 +49,25 @@ func ensureNodeForFile(nodes map[string]string, cc capsuleCtx, contractDir strin
 	return ensureExactNode(nodes, rel, rel), nil
 }
 
+// ensureExactNode returns the node claiming glob, creating one under a free
+// draft key when the contract has none. Draft keys are path-shaped; finalNodeIDs
+// turns them into the ids the contract file carries.
 func ensureExactNode(nodes map[string]string, id, glob string) string {
-	if _, ok := nodes[id]; ok {
+	if existing, ok := nodes[id]; ok && existing == glob {
 		return id
 	}
 	if existingID := existingNodeIDForGlob(nodes, glob); existingID != "" {
 		return existingID
 	}
-	nodes[id] = glob
-	return id
+	key := id
+	for n := 2; ; n++ {
+		if _, taken := nodes[key]; !taken {
+			break
+		}
+		key = id + "~" + strconv.Itoa(n)
+	}
+	nodes[key] = glob
+	return key
 }
 
 func ensureDirNode(nodes map[string]string, contractDir string, absPath string) (string, error) {
@@ -100,4 +113,114 @@ func existingNodeIDForGlob(nodes map[string]string, glob string) string {
 		}
 	}
 	return best
+}
+
+// nameGraphNodes replaces the draft keys a dump builds nodes under with the ids
+// the contract file carries, everywhere they are referenced.
+func nameGraphNodes(g *graph.Graph, kept map[string]bool) {
+	renames := finalNodeIDs(g.Nodes, kept)
+	if len(renames) == 0 {
+		return
+	}
+	g.Nodes = renamedNodeKeys(g.Nodes, renames)
+	g.NodeDisplays = renamedNodeKeys(g.NodeDisplays, renames)
+	g.Classes = renamedNodeKeys(g.Classes, renames)
+	g.Edges = renamedEdges(g.Edges, renames)
+	g.NodeOrder = renamedIDs(g.NodeOrder, renames)
+	g.EdgeOrder = renamedEdgeKeys(g.EdgeOrder, renames)
+	tolerated := make(map[string]bool, len(g.Tolerated))
+	for key, dotted := range g.Tolerated {
+		tolerated[renamedEdgeKey(key, renames)] = dotted
+	}
+	g.Tolerated = tolerated
+}
+
+// finalNodeIDs maps draft node keys onto the ids the contract file carries. Ids
+// in kept were written by the user and never move. Every other node is named
+// after the last segment of its path when that segment is an unambiguous
+// identifier, and after graph.NodeID of the whole path otherwise — so dumped ids
+// read like the code and no two nodes can ever collide on one id.
+func finalNodeIDs(nodes map[string]string, kept map[string]bool) map[string]string {
+	taken := make(map[string]bool, len(nodes))
+	segments := make(map[string]int, len(nodes))
+	drafts := make([]string, 0, len(nodes))
+	for id := range nodes {
+		if kept[id] {
+			taken[id] = true
+			continue
+		}
+		drafts = append(drafts, id)
+		segments[lastPathSegment(id)]++
+	}
+	sort.Strings(drafts)
+
+	renames := make(map[string]string, len(drafts))
+	for _, draft := range drafts {
+		id := lastPathSegment(draft)
+		if segments[id] > 1 || !graph.IsNodeID(id) {
+			id = graph.NodeID(draft)
+		}
+		for base, n := id, 2; taken[id]; n++ {
+			id = base + "_" + strconv.Itoa(n)
+		}
+		taken[id] = true
+		renames[draft] = id
+	}
+	return renames
+}
+
+func lastPathSegment(id string) string {
+	return id[strings.LastIndexByte(id, '/')+1:]
+}
+
+func finalID(renames map[string]string, id string) string {
+	if final, ok := renames[id]; ok {
+		return final
+	}
+	return id
+}
+
+// renamedNodeKeys re-keys a node-indexed map by the final node ids.
+func renamedNodeKeys[V any](m map[string]V, renames map[string]string) map[string]V {
+	renamed := make(map[string]V, len(m))
+	for id, value := range m {
+		renamed[finalID(renames, id)] = value
+	}
+	return renamed
+}
+
+func renamedIDs(ids []string, renames map[string]string) []string {
+	renamed := make([]string, len(ids))
+	for i, id := range ids {
+		renamed[i] = finalID(renames, id)
+	}
+	return renamed
+}
+
+func renamedEdgeKeys(keys []string, renames map[string]string) []string {
+	renamed := make([]string, len(keys))
+	for i, key := range keys {
+		renamed[i] = renamedEdgeKey(key, renames)
+	}
+	return renamed
+}
+
+func renamedEdgeKey(key string, renames map[string]string) string {
+	src, dst, ok := strings.Cut(key, "\t")
+	if !ok {
+		return key
+	}
+	return graph.EdgeKey(finalID(renames, src), finalID(renames, dst))
+}
+
+func renamedEdges(edges map[string]map[string]bool, renames map[string]string) map[string]map[string]bool {
+	renamed := make(map[string]map[string]bool, len(edges))
+	for src, dsts := range edges {
+		targets := make(map[string]bool, len(dsts))
+		for dst := range dsts {
+			targets[finalID(renames, dst)] = true
+		}
+		renamed[finalID(renames, src)] = targets
+	}
+	return renamed
 }

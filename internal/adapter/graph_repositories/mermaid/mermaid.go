@@ -13,27 +13,6 @@ import (
 var (
 	nodeRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_]*)\[(?:"([^"]*)"|([^\]]*))\](?::::([A-Za-z_][A-Za-z0-9_,]*))?$`)
 
-	nodeIdReplacer = strings.NewReplacer(
-		"/", "_slash_",
-		".", "_dot_",
-		"-", "_dash_",
-		"*", "_asterisk_",
-		"@", "_atsign_",
-		"[", "_lsqb_",
-		"]", "_rsqb_",
-		"{", "_lbrace_",
-		"}", "_rbrace_",
-		"+", "_plus_",
-		"?", "_qmark_",
-		",", "_comma_",
-		" ", "_space_",
-		"\t", "_tab_",
-		"\n", "_newline_",
-		"\r", "_carriage_return_",
-		"\x0b", "_vertical_tab_",
-		"\x0c", "_form_feed_",
-	)
-
 	// arrowRe matches every directed link Baft accepts: solid, thick and dotted,
 	// each optionally carrying an inline `-- text -->` label. Only the direction
 	// and, for dotted links, the toleration it declares are meaningful; the
@@ -140,7 +119,7 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 			display = glob + "/**"
 		}
 		sb.WriteString("  ")
-		sb.WriteString(encodeNodeId(id))
+		sb.WriteString(graph.NodeID(id))
 		sb.WriteString("[")
 		sb.WriteString(quotedEncode(display))
 		sb.WriteString("]")
@@ -153,15 +132,16 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 
 	sb.WriteString("\n")
 
-	for _, edge := range orderedEdges(g) {
+	edges := orderedEdges(g)
+	for _, edge := range edges {
 		sb.WriteString("  ")
-		sb.WriteString(encodeNodeId(edge.src))
+		sb.WriteString(graph.NodeID(edge.src))
 		sb.WriteString(arrowFor(edge.dotted))
-		sb.WriteString(encodeNodeId(edge.dst))
+		sb.WriteString(graph.NodeID(edge.dst))
 		sb.WriteByte('\n')
 	}
 
-	for _, line := range styleBlock(g, orderedEdges(g), opts) {
+	for _, line := range styleBlock(g, edges, opts) {
 		sb.WriteString(line)
 		sb.WriteByte('\n')
 	}
@@ -346,7 +326,7 @@ func buildStyleLines(g *graph.Graph, links []graphEdge, opts port.GraphSaveOptio
 		if attrs == "" {
 			continue
 		}
-		lines = append(lines, "style "+encodeNodeId(id)+" "+attrs)
+		lines = append(lines, "style "+graph.NodeID(id)+" "+attrs)
 	}
 	linkStyleOrder := make([]string, 0)
 	linkStyleGroups := map[string][]string{}
@@ -732,7 +712,7 @@ func parseNodeGroup(segment, line string, g *graph.Graph, lineNum int) ([]string
 			ids = append(ids, m[1])
 			continue
 		}
-		if !isIdentifier(part) {
+		if !graph.IsNodeID(part) {
 			return nil, &port.ParseError{
 				Line: lineNum,
 				Msg:  fmt.Sprintf("invalid node reference %q in edge %q", part, line),
@@ -793,18 +773,6 @@ func arrowFor(dotted bool) string {
 	return " --> "
 }
 
-func isIdentifier(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i, r := range s {
-		if !(r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (i > 0 && r >= '0' && r <= '9')) {
-			return false
-		}
-	}
-	return true
-}
-
 func extractMermaidBlock(md string) (string, int, error) {
 	lines := strings.Split(md, "\n")
 	inside := false
@@ -842,20 +810,6 @@ func encodeNodeGlob(s string) string {
 
 func decodeNodeGlob(s string) string {
 	return globDecodeReplacer.Replace(s)
-}
-
-// encodeNodeId maps a graph node id onto a mermaid-safe identifier. Load keeps
-// ids verbatim, so encoding must be idempotent for a loaded graph to
-// re-serialize unchanged.
-func encodeNodeId(s string) string {
-	if s == "" || s == "." {
-		return "root"
-	}
-	result := nodeIdReplacer.Replace(s)
-	if result[0] >= '0' && result[0] <= '9' {
-		result = "n" + result
-	}
-	return result
 }
 
 func quotedEncode(s string) string {

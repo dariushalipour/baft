@@ -177,7 +177,7 @@ Each language registers with the discovery service by providing:
 - **Module ID parser** — a function that reads a manifest file and extracts
   the module identifier (e.g. the `module` line from `go.mod`)
 
-The use cases (`check.Run`, `dump.Run`) call the discovery service
+The use cases (`check.Run`, `dump.RunWithOptions`) call the discovery service
 directly. The service returns `Capsule` structs with `Dir` and `CapsuleID`
 resolved. The language adapter is then used only for
 `IsScannableFile`, `ParseImports`, `ResolveInternalTarget`,
@@ -215,7 +215,7 @@ Language modules do not:
 - **Discover capsules** — Capsule discovery is handled by the core
   `CapsuleDiscovery` service. Languages only register their manifest names
   and module ID parser.
-- **Build the graph** — The core (`dump.Run`, `check.Run`) assembles
+- **Build the graph** — The core (`dump.RunWithOptions`, `check.Run`) assembles
   nodes and edges from the paths that languages return.
 - **Validate rules** — The core checks whether edges between nodes are allowed
    by the contract file graph.
