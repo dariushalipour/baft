@@ -246,3 +246,36 @@ func TestRestyleDeterministicAcrossMultiplePasses(t *testing.T) {
 		}
 	}
 }
+
+func TestRunPreservesProseDirectionAndComments(t *testing.T) {
+	const rootDir = "/Users/jane/baft"
+
+	fsys := memfs.New()
+	content := "# Payments\n\nStorage is an implementation detail.\n\n```mermaid\nflowchart LR\n  %% API must never touch storage\n  api[\"internal/api\"]\n  storage[\"internal/storage\"]\n\n  api --> storage\n```\n\nSee ADR-7.\n"
+	if err := fsys.WriteFile(rootDir+"/BAFT.md", []byte(content), 0o644); err != nil {
+		t.Fatalf("write BAFT.md: %v", err)
+	}
+
+	if _, err := Run(fsys, rootDir, &mermaid.MermaidRepository{}, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	raw, err := fsys.ReadFile(rootDir + "/BAFT.md")
+	if err != nil {
+		t.Fatalf("read BAFT.md: %v", err)
+	}
+	got := string(raw)
+	head := content[:strings.Index(content, "  api --> storage")+len("  api --> storage")]
+	if !strings.HasPrefix(got, head) {
+		t.Fatalf("everything before the style tail must survive verbatim, got:\n%s", got)
+	}
+	if !strings.HasSuffix(got, "```\n\nSee ADR-7.\n") {
+		t.Fatalf("everything after the mermaid block must survive verbatim, got:\n%s", got)
+	}
+	if !strings.Contains(got, generatedStyleComment) {
+		t.Fatalf("missing generated style comment in:\n%s", got)
+	}
+	if !strings.Contains(got, "style api stroke:#1f1f1f,stroke-width:2px") {
+		t.Fatalf("missing generated style line in:\n%s", got)
+	}
+}

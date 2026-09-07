@@ -142,7 +142,7 @@ When `globSeparator` is set, every dot that appears between path segments is tre
 
 **Normalization rules:** A separator character is replaced with `/` only when it appears between two path segment characters (letters, digits, `_`, `-`) or before a wildcard (`*`). Standalone `.` (current directory) and `..` (parent directory) are never replaced, even when `.` is the configured separator.
 
-**Round-trip behavior:** When Baft re-writes a contract (via `restyle` or `dump` amendment), it converts the internal slash-based paths back to the configured separator. So if you add `globSeparator "."` to an existing contract that uses slashes, the next `restyle` will rewrite all globs to use dots.
+**Round-trip behavior:** When Baft re-writes a contract (via `dump` amendment), it converts the internal slash-based paths back to the configured separator. So if you add `globSeparator "."` to an existing contract that uses slashes, the next `dump` will rewrite all globs to use dots. `restyle` never rewrites globs; it only refreshes the generated styling block.
 
 **Example — migrating a Kotlin contract to dot notation:**
 
@@ -153,7 +153,7 @@ flowchart TD
   api["src/main/kotlin/com/example/api/**"]
 ```
 
-After adding `globSeparator "."` and running `baft restyle`:
+After adding `globSeparator "."` and running `baft dump`:
 ```mermaid
 flowchart TD
   %% config globSeparator "."

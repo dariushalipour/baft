@@ -53,6 +53,14 @@ var generatedStyleComment = strings.Trim(`
   %% ------------------------------------------------------------------------------------------
 `, "\n")
 
+var generatedStyleCommentLines = func() map[string]bool {
+	set := map[string]bool{}
+	for _, line := range strings.Split(generatedStyleComment, "\n") {
+		set[strings.TrimSpace(line)] = true
+	}
+	return set
+}()
+
 type MermaidRepository struct{}
 
 type ParseError struct {
@@ -122,15 +130,7 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 	sb.WriteString("```mermaid\n")
 	sb.WriteString("flowchart TD\n")
 
-	ids := make([]string, 0, len(g.Nodes))
-	if len(g.NodeOrder) == len(g.Nodes) {
-		ids = append(ids, g.NodeOrder...)
-	} else {
-		for id := range g.Nodes {
-			ids = append(ids, id)
-		}
-		sort.Strings(ids)
-	}
+	ids := orderedNodeIds(g)
 
 	if g.GlobSeparator != "" {
 		sb.WriteString("  %% config globSeparator ")
@@ -168,67 +168,131 @@ func (r *MermaidRepository) Save(g *graph.Graph, opts port.GraphSaveOptions) str
 
 	sb.WriteString("\n")
 
-	edgeCount := 0
-	for _, targets := range g.Edges {
-		edgeCount += len(targets)
-	}
-	edges := make([]graphEdge, 0, edgeCount)
-
-	var edgePairs []struct{ src, dst string }
-	if len(g.EdgeOrder) == edgeCount {
-		for _, key := range g.EdgeOrder {
-			parts := strings.Split(key, "\t")
-			if len(parts) == 2 {
-				edgePairs = append(edgePairs, struct{ src, dst string }{parts[0], parts[1]})
-			}
-		}
-	} else {
-		sources := make([]string, 0, len(g.Edges))
-		for src := range g.Edges {
-			sources = append(sources, src)
-		}
-		sort.Strings(sources)
-		for _, src := range sources {
-			targets := make([]string, 0, len(g.Edges[src]))
-			for dst := range g.Edges[src] {
-				targets = append(targets, dst)
-			}
-			sort.Strings(targets)
-			for _, dst := range targets {
-				edgePairs = append(edgePairs, struct{ src, dst string }{src, dst})
-			}
-		}
-	}
-
-	for _, ep := range edgePairs {
-		src, dst := ep.src, ep.dst
+	for _, edge := range orderedEdges(g) {
 		sb.WriteString("  ")
-		sb.WriteString(encodeNodeId(src))
+		sb.WriteString(encodeNodeId(edge.src))
 		sb.WriteString(" --> ")
-		sb.WriteString(encodeNodeId(dst))
+		sb.WriteString(encodeNodeId(edge.dst))
 		sb.WriteByte('\n')
-		edges = append(edges, graphEdge{src: src, dst: dst})
 	}
 
-	styleLines := buildStyleLines(g, ids, edges, opts)
-	if len(styleLines) > 0 {
-		sb.WriteString("\n")
-		for _, line := range strings.Split(generatedStyleComment, "\n") {
-			sb.WriteString(line)
-			sb.WriteByte('\n')
-		}
-		for _, line := range styleLines {
-			sb.WriteString("  ")
-			sb.WriteString(line)
-			sb.WriteByte('\n')
-		}
+	for _, line := range styleBlock(g, opts) {
+		sb.WriteString(line)
+		sb.WriteByte('\n')
 	}
 
 	sb.WriteString("```\n")
 	return sb.String()
 }
 
-func buildStyleLines(g *graph.Graph, ids []string, edges []graphEdge, opts port.GraphSaveOptions) []string {
+// Restyle rewrites only the generated styling tail of the mermaid block, leaving
+// every other byte of the contract — prose, direction, comments, nodes, edges — as written.
+func (r *MermaidRepository) Restyle(md string, opts port.GraphSaveOptions) (string, error) {
+	g, err := r.Load(md)
+	if err != nil {
+		return "", err
+	}
+	block, blockStartLine, err := extractMermaidBlock(md)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(md, "\n")
+	first := blockStartLine - 1
+	last := first + strings.Count(block, "\n")
+
+	out := make([]string, 0, len(lines))
+	out = append(out, lines[:first]...)
+	out = append(out, spliceStyleTail(lines[first:last], g, opts)...)
+	out = append(out, lines[last:]...)
+	return strings.Join(out, "\n"), nil
+}
+
+func spliceStyleTail(blockLines []string, g *graph.Graph, opts port.GraphSaveOptions) []string {
+	body := make([]string, 0, len(blockLines))
+	for _, line := range blockLines {
+		if !isGeneratedStyleLine(line) {
+			body = append(body, line)
+		}
+	}
+	tail := styleBlock(g, opts)
+	if len(body) == len(blockLines) && len(tail) == 0 {
+		return body
+	}
+	for len(body) > 0 && strings.TrimSpace(body[len(body)-1]) == "" {
+		body = body[:len(body)-1]
+	}
+	return append(body, tail...)
+}
+
+func isGeneratedStyleLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return isStyleLine(trimmed) || generatedStyleCommentLines[trimmed]
+}
+
+func isStyleLine(line string) bool {
+	return strings.HasPrefix(line, "classDef ") || strings.HasPrefix(line, "style ") || strings.HasPrefix(line, "linkStyle ")
+}
+
+func orderedNodeIds(g *graph.Graph) []string {
+	if len(g.NodeOrder) == len(g.Nodes) {
+		return g.NodeOrder
+	}
+	ids := make([]string, 0, len(g.Nodes))
+	for id := range g.Nodes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func orderedEdges(g *graph.Graph) []graphEdge {
+	count := 0
+	for _, targets := range g.Edges {
+		count += len(targets)
+	}
+	edges := make([]graphEdge, 0, count)
+	if len(g.EdgeOrder) == count {
+		for _, key := range g.EdgeOrder {
+			if parts := strings.Split(key, "\t"); len(parts) == 2 {
+				edges = append(edges, graphEdge{src: parts[0], dst: parts[1]})
+			}
+		}
+		return edges
+	}
+	sources := make([]string, 0, len(g.Edges))
+	for src := range g.Edges {
+		sources = append(sources, src)
+	}
+	sort.Strings(sources)
+	for _, src := range sources {
+		targets := make([]string, 0, len(g.Edges[src]))
+		for dst := range g.Edges[src] {
+			targets = append(targets, dst)
+		}
+		sort.Strings(targets)
+		for _, dst := range targets {
+			edges = append(edges, graphEdge{src: src, dst: dst})
+		}
+	}
+	return edges
+}
+
+// styleBlock renders the generated styling tail: a blank separator, the notice, then the style lines.
+func styleBlock(g *graph.Graph, opts port.GraphSaveOptions) []string {
+	styleLines := buildStyleLines(g, opts)
+	if len(styleLines) == 0 {
+		return nil
+	}
+	block := append([]string{""}, strings.Split(generatedStyleComment, "\n")...)
+	for _, line := range styleLines {
+		block = append(block, "  "+line)
+	}
+	return block
+}
+
+func buildStyleLines(g *graph.Graph, opts port.GraphSaveOptions) []string {
+	ids, edges := orderedNodeIds(g), orderedEdges(g)
 	palette := normalizedPalette(opts.ColorPalette)
 	nodeColors := map[string]string{}
 	if palette != port.ColorPaletteNone {
@@ -347,7 +411,7 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 			}
 			continue
 		}
-		if hasAnyPrefix(line, "flowchart ", "graph ", "classDef ", "style ", "linkStyle ") {
+		if hasAnyPrefix(line, "flowchart ", "graph ") || isStyleLine(line) {
 			continue
 		}
 		if idx := inlineCommentStart(line); idx >= 0 {

@@ -178,6 +178,10 @@ func (r *recordingRepo) Save(g *graph.Graph, opts port.GraphSaveOptions) string 
 	return r.delegate.Save(g, opts)
 }
 
+func (r *recordingRepo) Restyle(content string, opts port.GraphSaveOptions) (string, error) {
+	return r.delegate.Restyle(content, opts)
+}
+
 func TestCycleExpansionCandidatesOnWrappedMemFS(t *testing.T) {
 	const rootDir = "/Users/jane/baft"
 

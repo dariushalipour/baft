@@ -29,11 +29,10 @@ func (e RestyleError) Error() string {
 }
 
 func RestyleContract(content string, repo port.GraphRepository, saveOpts port.GraphSaveOptions) (string, bool, error) {
-	g, err := repo.Load(content)
+	restyled, err := repo.Restyle(content, saveOpts)
 	if err != nil {
 		return "", false, err
 	}
-	restyled := repo.Save(g, saveOpts)
 	return restyled, restyled != content, nil
 }
 

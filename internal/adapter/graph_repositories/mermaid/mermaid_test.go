@@ -1240,3 +1240,86 @@ func TestParseConfigLine(t *testing.T) {
 		})
 	}
 }
+
+const richContract = "# Payments\n" +
+	"\n" +
+	"Storage is an implementation detail; the API must not reach into it.\n" +
+	"\n" +
+	"```mermaid\n" +
+	"flowchart LR\n" +
+	"  %% API must never touch storage\n" +
+	`  api["internal/api"]` + "\n" +
+	`  storage["internal/storage"]:::endophobic` + "\n" +
+	"\n" +
+	"  api --> storage\n" +
+	"```\n" +
+	"\n" +
+	"See ADR-7 for the rationale.\n"
+
+func TestRestylePreservesEverythingOutsideStyleTail(t *testing.T) {
+	out, err := (&MermaidRepository{}).Restyle(richContract, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("Restyle: %v", err)
+	}
+
+	prefix := richContract[:strings.Index(richContract, "  api --> storage")+len("  api --> storage")]
+	if !strings.HasPrefix(out, prefix) {
+		t.Fatalf("prose, direction, comments and nodes must survive verbatim, got:\n%s", out)
+	}
+	for _, want := range []string{
+		generatedStyleComment,
+		"  style api stroke:#1f1f1f,stroke-width:2px\n",
+		"  style storage stroke:#2a2a2a,stroke-width:2px,stroke-dasharray:5 5\n",
+		"  linkStyle 0 stroke:#1f1f1f,stroke-width:2px\n",
+		"```\n\nSee ADR-7 for the rationale.\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestRestyleReplacesStaleStyleTail(t *testing.T) {
+	repo := &MermaidRepository{}
+	styled, err := repo.Restyle(richContract, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("Restyle: %v", err)
+	}
+
+	again, err := repo.Restyle(styled, port.GraphSaveOptions{ColorPalette: port.ColorPaletteMono})
+	if err != nil {
+		t.Fatalf("Restyle second pass: %v", err)
+	}
+	if again != styled {
+		t.Fatalf("restyle is not idempotent:\n%s", again)
+	}
+
+	dropped, err := repo.Restyle(styled, port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone})
+	if err != nil {
+		t.Fatalf("Restyle none: %v", err)
+	}
+	if strings.Contains(dropped, "linkStyle") || strings.Contains(dropped, "stroke:#") {
+		t.Fatalf("stale palette styling survived:\n%s", dropped)
+	}
+	if !strings.Contains(dropped, "  style storage stroke-width:2px,stroke-dasharray:5 5\n") {
+		t.Fatalf("missing endophobic styling in:\n%s", dropped)
+	}
+}
+
+func TestRestyleWithoutStylingLeavesContractUntouched(t *testing.T) {
+	md := "```mermaid\nflowchart TD\n" + `  api["internal/api"]` + "\n\n```\n"
+
+	out, err := (&MermaidRepository{}).Restyle(md, port.GraphSaveOptions{ColorPalette: port.ColorPaletteNone})
+	if err != nil {
+		t.Fatalf("Restyle: %v", err)
+	}
+	if out != md {
+		t.Fatalf("expected byte-identical output, got:\n%s", out)
+	}
+}
+
+func TestRestyleReturnsParseError(t *testing.T) {
+	if _, err := (&MermaidRepository{}).Restyle("no fence here\n", port.GraphSaveOptions{}); err == nil {
+		t.Fatal("expected parse error")
+	}
+}
