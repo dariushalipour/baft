@@ -50,7 +50,6 @@ func TestCommonPrefix(t *testing.T) {
 		{"shared prefix", []string{"/src/com/example/api/A.java", "/src/com/example/domain/B.kt"}, []string{"/src"}, "com.example", false},
 		{"prefix is not a path segment", []string{"/src/com/example/app/A.java", "/src/com/example/application/B.java"}, []string{"/src"}, "com.example", false},
 		{"across source dirs", []string{"/a/com/example/api/A.java", "/b/com/example/domain/B.kt"}, []string{"/a", "/b"}, "com.example", false},
-		{"relative source dir", []string{"/project/src/pkg/mod.py"}, []string{"project/src"}, "pkg", false},
 		{"no matching files", []string{"/src/com/example/A.txt"}, []string{"/src"}, "", true},
 		{"files in root only", []string{"/src/A.java"}, []string{"/src"}, "", true},
 		{"nothing in common", []string{"/src/com/example/A.java", "/src/org/other/B.java"}, []string{"/src"}, "", true},

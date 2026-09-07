@@ -70,14 +70,16 @@ func TestLangFlagAcceptsBothSyntaxes(t *testing.T) {
 	}
 }
 
-func TestJVMAliases(t *testing.T) {
-	for _, names := range [][]string{{"jvm"}, {"java"}, {"kotlin"}, {"java", "kotlin", "jvm"}} {
-		langs, err := resolveLangs(names)
-		if err != nil {
-			t.Fatalf("%v: %v", names, err)
-		}
-		if len(langs) != 1 || langs[0].Name() != jvm.Name {
-			t.Errorf("%v: got %d adapters (%v), want one %q", names, len(langs), langs, jvm.Name)
+func TestJVMIsTheOnlyNameForJavaAndKotlin(t *testing.T) {
+	langs, err := resolveLangs([]string{"jvm"})
+	if err != nil || len(langs) != 1 || langs[0].Name() != jvm.Name {
+		t.Errorf("jvm: got %d adapters (%v), %v", len(langs), langs, err)
+	}
+	for _, name := range []string{"java", "kotlin"} {
+		_, err := resolveLangs([]string{name})
+		want := "unknown language: " + name + " (Java and Kotlin are scanned together; use --lang jvm)"
+		if err == nil || err.Error() != want {
+			t.Errorf("%s: got %v, want %q", name, err, want)
 		}
 	}
 	if langs, err := resolveLangs(nil); err != nil || len(langs) != len(languageNames) {
@@ -89,6 +91,7 @@ func TestUsageErrors(t *testing.T) {
 	cases := [][]string{
 		{"nope"},
 		{"check", "--lang=klingon"},
+		{"check", "--lang=java"},
 		{"check", "--reporter=yaml"},
 		{"check", "--langgo"},
 		{"check", "--nope"},

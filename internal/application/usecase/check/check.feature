@@ -1793,7 +1793,7 @@ Feature: Architecture rule checking
       
       import com.example.config.Settings
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 relations are examined
@@ -1835,7 +1835,7 @@ Feature: Architecture rule checking
       
       import com.example.core.Model
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 relations are examined
@@ -1875,7 +1875,7 @@ Feature: Architecture rule checking
       
       import com.example.core.Model
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 relations are examined
@@ -1911,7 +1911,7 @@ Feature: Architecture rule checking
         overlap["src.main.kotlin.com.example.&ast;&ast;"]
       ```
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 errors and 0 violations are reported
@@ -1945,7 +1945,7 @@ Feature: Architecture rule checking
         dup["src.main.kotlin.com.example.core.&ast;&ast;"]
       ```
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 errors and 0 violations are reported
@@ -1985,7 +1985,7 @@ Feature: Architecture rule checking
       import com.example.feature.B
       """
     Given file "src/main/kotlin/com/example/feature/B.kt" has content "package com.example.feature"
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 relations are examined
@@ -2018,7 +2018,7 @@ Feature: Architecture rule checking
       ```
       """
     Given file "src/main/kotlin/com/example/core/Model.kt" has content "package com.example.core"
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 0 relations are examined
@@ -2053,7 +2053,7 @@ Feature: Architecture rule checking
         feature --> core
       ```
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 errors and 0 violations are reported
@@ -2107,7 +2107,7 @@ Feature: Architecture rule checking
       
       import com.example.service.OrderService
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 2 relations are examined
@@ -2418,7 +2418,7 @@ Feature: Architecture rule checking
       
       import com.example.domain.Model;
       """
-    Given the check uses the "java" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 1 relations are examined
@@ -2478,7 +2478,7 @@ Feature: Architecture rule checking
       
       import com.example.domain.Order
       """
-    Given the check uses the "kotlin" language adapter
+    Given the check uses the "jvm" language adapter
     When the check runs from "/Users/jane/baft"
     Then 1 capsule is discovered
     And 2 relations are examined

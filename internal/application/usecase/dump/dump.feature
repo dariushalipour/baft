@@ -1815,7 +1815,7 @@ Feature: Dump BAFT.md from actual imports
       
       fun greet() = "hello"
       """
-    Given the dump uses the "kotlin" language adapter
+    Given the dump uses the "jvm" language adapter
     When the dump runs from "/Users/jane/baft/features/mod/src/main/java/com/example/app"
     And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" has 2 nodes and 1 edges
     And Contract at "features/mod/src/main/java/com/example/app/BAFT.md" is new
@@ -1867,7 +1867,7 @@ Feature: Dump BAFT.md from actual imports
       
       fun greet() = "hello"
       """
-    Given the dump uses the "kotlin" language adapter
+    Given the dump uses the "jvm" language adapter
     When the dump runs from "/Users/jane/baft/src/main/kotlin/com/example/app"
     And Contract at "src/main/kotlin/com/example/app/BAFT.md" has 2 nodes and 1 edges
     And Contract at "src/main/kotlin/com/example/app/BAFT.md" is new
@@ -1919,7 +1919,7 @@ Feature: Dump BAFT.md from actual imports
       
       fun run() = "ok"
       """
-    Given the dump uses the "kotlin" language adapter
+    Given the dump uses the "jvm" language adapter
     When the dump runs from "/Users/jane/baft/src/main/kotlin/com/example/app"
     And Contract at "src/main/kotlin/com/example/app/BAFT.md" has 2 nodes and 1 edges
     And Contract at "src/main/kotlin/com/example/app/BAFT.md" is new
@@ -2130,7 +2130,7 @@ Feature: Dump BAFT.md from actual imports
       
       import com.example.infra.Repo;
       """
-    Given the dump uses the "java" language adapter
+    Given the dump uses the "jvm" language adapter
     When the dump runs from "/Users/jane/baft"
     And Contract at "BAFT.md" is an amendment
     And Contract at "BAFT.md" added 1 nodes and 1 edges

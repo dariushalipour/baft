@@ -99,17 +99,25 @@ func maskComments(src []byte) ([]byte, map[int]bool) {
 			}
 		case data[i] == '\'' || data[i] == '"' || data[i] == '`':
 			quote := data[i]
-			literals[i] = true
-			for i++; i < len(data); i++ {
-				if data[i] == '\\' {
-					i++
+			end := i + 1
+			for ; end < len(data); end++ {
+				if data[end] == '\\' {
+					end++
 					continue
 				}
-				if data[i] == quote || (quote != '`' && data[i] == '\n') {
+				if data[end] == quote || (quote != '`' && data[end] == '\n') {
 					break
 				}
 			}
-			i++
+			if end >= len(data) && quote == '`' {
+				// A backtick with no partner is not a delimiter — it is text
+				// inside something else, e.g. a regex literal. Treating it as
+				// one would swallow the rest of the file.
+				i++
+				continue
+			}
+			literals[i] = true
+			i = end + 1
 		default:
 			i++
 		}
@@ -258,9 +266,12 @@ func (l *Language) GetFileNamespace(_ port.FileSystem, _ string) (string, error)
 func (l *Language) SupportsFileGlobs() bool                                      { return true }
 func (l *Language) Register(d port.CapsuleDiscovery) {
 	d.Register("typescript", port.ManifestInfo{
-		Names:             []string{"package.json"},
-		ParseFunc:         readCapsuleName,
-		BaseIgnoreEntries: []string{"node_modules", "*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"},
+		Names:     []string{"package.json"},
+		ParseFunc: readCapsuleName,
+		// node_modules is deliberately absent: base ignores are unioned across
+		// every language, and hiding it would also hide the package tsconfigs
+		// that `extends` resolves path aliases through.
+		BaseIgnoreEntries: []string{"*.test.ts", "*.test.tsx", "*.spec.ts", "*.spec.tsx"},
 	})
 }
 

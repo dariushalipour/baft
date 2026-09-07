@@ -34,8 +34,8 @@ be meaningfully shared across languages.
 ## 1. `Name()`
 
 Returns a short identifier used in diagnostics and CLI flags (e.g. `"go"`,
-`"dart"`, `"jvm"`). `--lang jvm`, `--lang java` and `--lang kotlin` all select the
-`jvm` adapter, which scans `.java` and `.kt` files in the same capsule.
+`"dart"`, `"jvm"`). `--lang jvm` is the only name for Java and Kotlin: one
+Gradle/Maven capsule compiles both, so one adapter scans `.java` and `.kt`.
 
 ---
 

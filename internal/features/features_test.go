@@ -245,8 +245,8 @@ func newLanguage(langName string) (port.Language, error) {
 		return golang.Language{}, nil
 	case "typescript":
 		return &typescript.Language{}, nil
-	case "jvm", "java", "kotlin":
-		return jvm.Language{}, nil
+	case "jvm":
+		return &jvm.Language{}, nil
 	case "csharp":
 		return &csharp.Language{}, nil
 	}

@@ -29,8 +29,8 @@ func newLanguage(name string) port.Language {
 		return csharp.Language{}
 	case "dart":
 		return dart.Language{}
-	case "jvm", "java", "kotlin":
-		return jvm.Language{}
+	case "jvm":
+		return &jvm.Language{}
 	case "python":
 		return python.Language{}
 	case "rust":
@@ -50,7 +50,7 @@ func resolveLangs(names []string) ([]port.Language, error) {
 	for _, name := range names {
 		lang := newLanguage(name)
 		if lang == nil {
-			return nil, fmt.Errorf("unknown language: %s", name)
+			return nil, fmt.Errorf("unknown language: %s%s", name, hint(name))
 		}
 		if seen[lang.Name()] {
 			continue
@@ -59,6 +59,15 @@ func resolveLangs(names []string) ([]port.Language, error) {
 		langs = append(langs, lang)
 	}
 	return langs, nil
+}
+
+// hint points the two names people reach for at the one adapter that scans
+// both: a Gradle/Maven capsule compiles its Java and Kotlin sources together.
+func hint(name string) string {
+	if name == "java" || name == "kotlin" {
+		return " (Java and Kotlin are scanned together; use --lang jvm)"
+	}
+	return ""
 }
 
 func newDiscovery(langs []port.Language) *service.CapsuleDiscovery {

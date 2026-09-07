@@ -209,6 +209,23 @@ export {
 	}
 }
 
+// A lone backtick — here inside a regex literal — used to open a template
+// literal that never closed, masking every import after it to end of file.
+func TestParseImportsUnterminatedBacktick(t *testing.T) {
+	fs := memfs.New()
+	fs.WriteFile("/sample.ts", []byte("const a = /`/;\nimport { X } from './x';\n"), 0o644)
+	got, err := (&Language{}).ParseImports(fs, "/sample.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != "./x" {
+		t.Fatalf("got %v, want one import of ./x", got)
+	}
+	if got[0].Line != 2 {
+		t.Errorf("import reported on line %d, want 2", got[0].Line)
+	}
+}
+
 func TestResolveInternalTarget(t *testing.T) {
 	l := &Language{}
 
@@ -779,15 +796,18 @@ func TestResolveInternalTarget_JSExtensions(t *testing.T) {
 
 // node_modules is excluded by the language's own base ignore entries, so a
 // dependency is never mistaken for a capsule even without a .gitignore.
-func TestDiscoverSkipsNodeModules(t *testing.T) {
+// A tsconfig that `extends` a package reads it from node_modules, so no base
+// ignore entry may hide that directory: the path aliases would be lost and
+// every aliased import would silently turn external.
+func TestExtendsPackageTsconfigUnderNodeModules(t *testing.T) {
 	fsys := memfs.New()
 	fsys.WriteFile("/app/package.json", []byte(`{"name": "@baft/app"}`), 0o644)
-	fsys.WriteFile("/app/BAFT.md", []byte("# App"), 0o644)
-	fsys.WriteFile("/app/node_modules/pkg/package.json", []byte(`{"name": "pkg"}`), 0o644)
-	fsys.WriteFile("/app/node_modules/pkg/BAFT.md", []byte("# Pkg"), 0o644)
+	fsys.WriteFile("/app/tsconfig.json", []byte(`{"extends": "@tsconfig/base"}`), 0o644)
+	fsys.WriteFile("/app/node_modules/@tsconfig/base/tsconfig.json", []byte(`{"compilerOptions":{"paths":{"@app/*":["src/*"]}}}`), 0o644)
 
+	l := &Language{}
 	disco := service.NewCapsuleDiscovery()
-	(&Language{}).Register(disco)
+	l.Register(disco)
 	ignored, err := ignorefs.Wrap(fsys, ignorefs.Options{
 		RootDir:           "/",
 		BaseIgnoreEntries: disco.BaseIgnoreEntries(),
@@ -796,11 +816,9 @@ func TestDiscoverSkipsNodeModules(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := disco.Discover(context.Background(), ignored, "/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].Capsule.CapsuleID != "@baft/app" {
-		t.Fatalf("expected only the app capsule, got %+v", got)
+	capsule := port.Capsule{CapsuleID: "@baft/app", Dir: "/app"}
+	got, internal := l.ResolveInternalTarget(ignored, port.ImportSpec{Path: "@app/lib/utils"}, capsule, "src/app.ts")
+	if got != "src/lib/utils" || !internal {
+		t.Fatalf("got (%q, %v), want (src/lib/utils, true)", got, internal)
 	}
 }

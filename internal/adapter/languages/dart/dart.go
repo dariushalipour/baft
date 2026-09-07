@@ -82,16 +82,24 @@ func (Language) Register(d port.CapsuleDiscovery) {
 	})
 }
 
-var pubspecNameRe = regexp.MustCompile(`(?m)^name\s*:\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?\s*(?:#.*)?$`)
+// One group per quoting style, so a quote only counts when it is matched.
+var pubspecNameRe = regexp.MustCompile(`(?m)^name\s*:\s*(?:'([A-Za-z_]\w*)'|"([A-Za-z_]\w*)"|([A-Za-z_]\w*))\s*(?:#.*)?$`)
 
 func readPubspecName(fsys port.FileSystem, path string) (string, error) {
 	data, err := fsys.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
-	m := pubspecNameRe.FindSubmatch(data)
-	if m == nil {
+	// Exactly one group matches, and every group comes after the full match, so
+	// the last non-empty submatch is the name.
+	name := ""
+	for _, group := range pubspecNameRe.FindSubmatch(data) {
+		if len(group) > 0 {
+			name = string(group)
+		}
+	}
+	if name == "" {
 		return "", fmt.Errorf("no name: line in %s", path)
 	}
-	return string(m[1]), nil
+	return name, nil
 }

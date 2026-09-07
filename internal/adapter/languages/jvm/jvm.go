@@ -7,29 +7,41 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/dariushalipour/baft/internal/adapter/languages/internal/lineoffsets"
 	"github.com/dariushalipour/baft/internal/adapter/languages/internal/namespaces"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
-// Name is the language name both "java" and "kotlin" resolve to.
+// Name is the language name Java and Kotlin sources both resolve to.
 const Name = "jvm"
 
 var exts = []string{".java", ".kt"}
 
-type Language struct{}
+// Language must be used by pointer: resolving an import probes the filesystem
+// for source roots, and the caches below turn that from once per import into
+// once per capsule.
+type Language struct {
+	roots sync.Map // capsule dir -> []string of capsule-relative source roots
+	held  sync.Map // capsule-relative "<dir>\x00<rel>" -> bool
+}
 
-func (Language) Name() string { return Name }
+func (l *Language) Name() string { return Name }
 
-func (Language) IsScannableFile(rel string) bool {
-	return strings.HasSuffix(rel, ".java") || strings.HasSuffix(rel, ".kt")
+func (l *Language) IsScannableFile(rel string) bool {
+	for _, ext := range exts {
+		if strings.HasSuffix(rel, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 var importRe = regexp.MustCompile(`(?m)^\s*import\s+(?:static\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)(?:\.\*)?`)
 var packageRe = regexp.MustCompile(`(?m)^\s*package\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)`)
 
-func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
+func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
 	data, err := fsys.ReadFile(absPath)
 	if err != nil {
 		return nil, err
@@ -46,7 +58,7 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	return out, nil
 }
 
-func (Language) GetFileNamespace(fsys port.FileSystem, absPath string) (string, error) {
+func (l *Language) GetFileNamespace(fsys port.FileSystem, absPath string) (string, error) {
 	data, err := fsys.ReadFile(absPath)
 	if err != nil {
 		return "", err
@@ -58,28 +70,30 @@ func (Language) GetFileNamespace(fsys port.FileSystem, absPath string) (string, 
 	return string(m[1]), nil
 }
 
-func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
+func (l *Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
 	basePkg := c.CapsuleID
 	if basePkg == "" || !namespaces.IsInternal(spec.Path, basePkg) {
 		return "", false
 	}
 	rel := strings.Replace(spec.Path, ".", "/", -1)
-	return filepath.ToSlash(filepath.Join(sourcePrefix(fsys, c.Dir, fileRel, rel), rel)), true
+	return filepath.ToSlash(filepath.Join(l.sourcePrefix(fsys, c.Dir, fileRel, rel), rel)), true
 }
 
 // sourcePrefix returns the src/<set>/<lang> root that holds rel. One capsule
 // compiles every source set together, so a Java file may import a class living
 // under src/main/kotlin and vice versa: the importing file's own root wins,
 // then any root holding the target, then any root holding its package.
-func sourcePrefix(fsys port.FileSystem, capsuleDir, fileRel, rel string) string {
+func (l *Language) sourcePrefix(fsys port.FileSystem, capsuleDir, fileRel, rel string) string {
 	own := declaredPrefix(fileRel)
-	if holds(fsys, filepath.Join(capsuleDir, own), rel) {
-		return own
+	roots := []string{own}
+	for _, root := range l.sourceRoots(fsys, capsuleDir) {
+		if root != own {
+			roots = append(roots, root)
+		}
 	}
-	roots := append([]string{own}, otherPrefixes(fsys, capsuleDir, own)...)
 	for _, probe := range []string{rel, path.Dir(rel)} {
 		for _, root := range roots {
-			if holds(fsys, filepath.Join(capsuleDir, root), probe) {
+			if l.holds(fsys, filepath.Join(capsuleDir, root), probe) {
 				return root
 			}
 		}
@@ -99,20 +113,34 @@ func declaredPrefix(fileRel string) string {
 	return "src/main/java"
 }
 
-func otherPrefixes(fsys port.FileSystem, capsuleDir, own string) []string {
+// sourceRoots lists the capsule-relative source roots, memoised per capsule.
+func (l *Language) sourceRoots(fsys port.FileSystem, capsuleDir string) []string {
+	if cached, ok := l.roots.Load(capsuleDir); ok {
+		return cached.([]string)
+	}
 	var out []string
 	for _, dir := range sourceDirs(fsys, capsuleDir) {
-		rel, err := filepath.Rel(capsuleDir, dir)
-		if err == nil && filepath.ToSlash(rel) != own {
+		if rel, err := filepath.Rel(capsuleDir, dir); err == nil {
 			out = append(out, filepath.ToSlash(rel))
 		}
 	}
-	return out
+	cached, _ := l.roots.LoadOrStore(capsuleDir, out)
+	return cached.([]string)
 }
 
-// holds reports whether dir contains rel as a directory or as a source file.
-func holds(fsys port.FileSystem, dir, rel string) bool {
-	target := filepath.Join(dir, rel)
+// holds reports whether dir contains rel as a directory or as a source file,
+// memoised because every import of the same package asks the same question.
+func (l *Language) holds(fsys port.FileSystem, dir, rel string) bool {
+	key := dir + "\x00" + rel
+	if cached, ok := l.held.Load(key); ok {
+		return cached.(bool)
+	}
+	found := exists(fsys, filepath.Join(dir, rel))
+	l.held.Store(key, found)
+	return found
+}
+
+func exists(fsys port.FileSystem, target string) bool {
 	if _, err := fsys.Stat(target); err == nil {
 		return true
 	}
@@ -124,9 +152,9 @@ func holds(fsys port.FileSystem, dir, rel string) bool {
 	return false
 }
 
-func (Language) SupportsFileGlobs() bool { return false }
+func (l *Language) SupportsFileGlobs() bool { return false }
 
-func (Language) Register(d port.CapsuleDiscovery) {
+func (l *Language) Register(d port.CapsuleDiscovery) {
 	d.Register(Name, port.ManifestInfo{
 		Names: []string{"build.gradle.kts", "build.gradle", "pom.xml"},
 		ParseFunc: func(fsys port.FileSystem, manifest string) (string, error) {
@@ -136,12 +164,29 @@ func (Language) Register(d port.CapsuleDiscovery) {
 	})
 }
 
+// findBaseCapsule prefers the package prefix shared by every source set. Sets
+// that share none — a JVM target next to a JS one, say — must not sink the
+// whole capsule, so it falls back to src/main and then to no base package at
+// all, which still yields a capsule with nothing internal.
 func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 	srcDirs := sourceDirs(fsys, projectRoot)
-	if len(srcDirs) == 0 {
-		return "", nil
+	for _, dirs := range [][]string{srcDirs, mainDirs(srcDirs)} {
+		if prefix, err := namespaces.CommonPrefix(fsys, dirs, exts); err == nil {
+			return prefix, nil
+		}
 	}
-	return namespaces.CommonPrefix(fsys, srcDirs, exts)
+	return "", nil
+}
+
+// mainDirs keeps only the primary source sets, src/main/{java,kotlin}.
+func mainDirs(srcDirs []string) []string {
+	var out []string
+	for _, dir := range srcDirs {
+		if filepath.Base(filepath.Dir(dir)) == "main" {
+			out = append(out, dir)
+		}
+	}
+	return out
 }
 
 // testSetRe matches source-set names whose "test" is a whole word — test,

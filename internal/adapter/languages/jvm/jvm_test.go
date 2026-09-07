@@ -10,19 +10,19 @@ import (
 )
 
 func TestName(t *testing.T) {
-	if got := (Language{}).Name(); got != "jvm" {
+	if got := (&Language{}).Name(); got != "jvm" {
 		t.Errorf("Name() = %q, want %q", got, "jvm")
 	}
 }
 
 func TestSupportsFileGlobs(t *testing.T) {
-	if (Language{}).SupportsFileGlobs() {
+	if (&Language{}).SupportsFileGlobs() {
 		t.Error("SupportsFileGlobs() = true, want false")
 	}
 }
 
 func TestIsScannableFile(t *testing.T) {
-	l := Language{}
+	l := &Language{}
 	cases := map[string]bool{
 		"src/main/java/com/example/domain/Model.java":    true,
 		"src/main/kotlin/com/example/domain/Model.kt":    true,
@@ -63,7 +63,7 @@ class MyController {
 }`
 	fs := memfs.New()
 	fs.WriteFile("/MyController.kt", []byte(src), 0o644)
-	got, err := Language{}.ParseImports(fs, "/MyController.kt")
+	got, err := (&Language{}).ParseImports(fs, "/MyController.kt")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,20 +104,20 @@ func TestGetFileNamespace(t *testing.T) {
 	fs := memfs.New()
 	fs.WriteFile("/Model.java", []byte("package com.example.domain;\n\nclass Model {}"), 0o644)
 	fs.WriteFile("/Empty.kt", []byte("class Empty"), 0o644)
-	got, err := Language{}.GetFileNamespace(fs, "/Model.java")
+	got, err := (&Language{}).GetFileNamespace(fs, "/Model.java")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got != "com.example.domain" {
 		t.Errorf("GetFileNamespace = %q, want %q", got, "com.example.domain")
 	}
-	if got, _ := (Language{}).GetFileNamespace(fs, "/Empty.kt"); got != "" {
+	if got, _ := (&Language{}).GetFileNamespace(fs, "/Empty.kt"); got != "" {
 		t.Errorf("GetFileNamespace without package = %q, want empty", got)
 	}
 }
 
 func TestResolveInternalTarget(t *testing.T) {
-	l := Language{}
+	l := &Language{}
 	capsule := port.Capsule{CapsuleID: "com.example"}
 
 	cases := []struct {
@@ -188,7 +188,7 @@ func TestResolveInternalTargetAcrossSourceSets(t *testing.T) {
 		{"com.example.missing.Gone", "src/main/kotlin/com/example/ui/Screen.kt", "src/main/kotlin/com/example/missing/Gone"},
 	}
 	for _, tc := range cases {
-		got, intl := (Language{}).ResolveInternalTarget(fs, port.ImportSpec{Path: tc.spec}, c, tc.fileRel)
+		got, intl := (&Language{}).ResolveInternalTarget(fs, port.ImportSpec{Path: tc.spec}, c, tc.fileRel)
 		if !intl || got != tc.want {
 			t.Errorf("ResolveInternalTarget(%q, file=%q) = (%q, %v), want (%q, true)", tc.spec, tc.fileRel, got, intl, tc.want)
 		}
@@ -223,24 +223,26 @@ func TestDiscover_ManifestTypes(t *testing.T) {
 
 func TestFindBaseCapsule(t *testing.T) {
 	cases := []struct {
-		name    string
-		files   []string
-		want    string
-		wantErr bool
+		name  string
+		files []string
+		want  string
 	}{
-		{"standard java layout", []string{"/src/main/java/com/example/domain/Model.java", "/src/main/java/com/example/api/Controller.java"}, "com.example", false},
-		{"standard kotlin layout", []string{"/src/main/kotlin/com/example/domain/Model.kt", "/src/main/kotlin/com/example/api/Controller.kt"}, "com.example", false},
-		{"nested base package", []string{"/src/main/kotlin/org/acme/myapp/domain/Model.kt", "/src/main/kotlin/org/acme/myapp/api/Controller.kt"}, "org.acme.myapp", false},
-		{"kotlin sources under src/main/java", []string{"/src/main/java/com/example/domain/Model.kt", "/src/main/java/com/example/api/Controller.kt"}, "com.example", false},
-		{"java and kotlin source sets combined", []string{"/src/main/java/com/example/domain/Model.java", "/src/main/kotlin/com/example/api/Controller.kt"}, "com.example", false},
-		{"multiplatform source sets", []string{"/src/commonMain/kotlin/com/example/core/Model.kt", "/src/jvmMain/kotlin/com/example/core/jvm/Impl.kt"}, "com.example.core", false},
-		{"test source set ignored", []string{"/src/main/kotlin/com/example/api/Controller.kt", "/src/test/kotlin/org/other/ControllerTest.kt"}, "com.example.api", false},
-		{"test source sets ignored", []string{"/src/main/kotlin/com/example/api/Controller.kt", "/src/androidUnitTest/kotlin/org/other/Case.kt", "/src/testFixtures/kotlin/org/other/Fixture.kt"}, "com.example.api", false},
-		{"production source set whose name merely contains test", []string{"/src/attestation/java/com/example/a/Model.java", "/src/main/kotlin/com/example/b/Service.kt"}, "com.example", false},
-		{"sibling package is not a prefix", []string{"/src/main/java/com/example/app/Main.java", "/src/main/java/com/example/application/Service.java"}, "com.example", false},
-		{"no source dir returns empty", nil, "", false},
-		{"no source files", []string{"/src/main/java/com/example/Model.kts"}, "", true},
-		{"divergent packages", []string{"/src/main/java/com/example/domain/Model.java", "/src/main/kotlin/org/other/domain/Other.kt"}, "", true},
+		{"standard java layout", []string{"/src/main/java/com/example/domain/Model.java", "/src/main/java/com/example/api/Controller.java"}, "com.example"},
+		{"standard kotlin layout", []string{"/src/main/kotlin/com/example/domain/Model.kt", "/src/main/kotlin/com/example/api/Controller.kt"}, "com.example"},
+		{"nested base package", []string{"/src/main/kotlin/org/acme/myapp/domain/Model.kt", "/src/main/kotlin/org/acme/myapp/api/Controller.kt"}, "org.acme.myapp"},
+		{"kotlin sources under src/main/java", []string{"/src/main/java/com/example/domain/Model.kt", "/src/main/java/com/example/api/Controller.kt"}, "com.example"},
+		{"java and kotlin source sets combined", []string{"/src/main/java/com/example/domain/Model.java", "/src/main/kotlin/com/example/api/Controller.kt"}, "com.example"},
+		{"multiplatform source sets", []string{"/src/commonMain/kotlin/com/example/core/Model.kt", "/src/jvmMain/kotlin/com/example/core/jvm/Impl.kt"}, "com.example.core"},
+		{"test source set ignored", []string{"/src/main/kotlin/com/example/api/Controller.kt", "/src/test/kotlin/org/other/ControllerTest.kt"}, "com.example.api"},
+		{"test source sets ignored", []string{"/src/main/kotlin/com/example/api/Controller.kt", "/src/androidUnitTest/kotlin/org/other/Case.kt", "/src/testFixtures/kotlin/org/other/Fixture.kt"}, "com.example.api"},
+		{"production source set whose name merely contains test", []string{"/src/attestation/java/com/example/a/Model.java", "/src/main/kotlin/com/example/b/Service.kt"}, "com.example"},
+		{"sibling package is not a prefix", []string{"/src/main/java/com/example/app/Main.java", "/src/main/java/com/example/application/Service.java"}, "com.example"},
+		{"no source dir returns empty", nil, ""},
+		{"no source files", []string{"/src/main/java/com/example/Model.kts"}, ""},
+		// A source set with a package of its own must not sink the capsule.
+		{"divergent source sets fall back to main", []string{"/src/main/java/com/example/app/Main.java", "/src/jsMain/kotlin/org/other/Client.kt"}, "com.example.app"},
+		{"divergent source sets without a main one", []string{"/src/jvmMain/kotlin/com/example/Main.kt", "/src/jsMain/kotlin/org/other/Client.kt"}, ""},
+		{"divergent packages inside main", []string{"/src/main/java/com/example/domain/Model.java", "/src/main/kotlin/org/other/domain/Other.kt"}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -249,12 +251,6 @@ func TestFindBaseCapsule(t *testing.T) {
 				fs.WriteFile(f, nil, 0o644)
 			}
 			got, err := findBaseCapsule(fs, "/")
-			if c.wantErr {
-				if err == nil {
-					t.Fatalf("expected error, got %q", got)
-				}
-				return
-			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -278,7 +274,7 @@ func TestScansJavaAndKotlinInOneCapsule(t *testing.T) {
 	if entries[0].Capsule.CapsuleID != "com.example.domain" {
 		t.Errorf("CapsuleID = %q, want %q", entries[0].Capsule.CapsuleID, "com.example.domain")
 	}
-	l := Language{}
+	l := &Language{}
 	for _, rel := range []string{"src/main/java/com/example/domain/Foo.java", "src/main/java/com/example/domain/Bar.kt"} {
 		if !l.IsScannableFile(rel) {
 			t.Errorf("IsScannableFile(%q) = false, want true", rel)
@@ -330,10 +326,24 @@ func TestDiscover_MultiModuleWithSourcelessRoot(t *testing.T) {
 	}
 }
 
+// A multiplatform project whose targets share no package prefix still has a
+// JVM capsule; before the fallback to src/main it was dropped outright.
+func TestDiscover_DivergentSourceSets(t *testing.T) {
+	fs := memfs.New()
+	fs.WriteFile("/build.gradle.kts", nil, 0o644)
+	fs.WriteFile("/src/main/java/com/example/app/Main.java", nil, 0o644)
+	fs.WriteFile("/src/jsMain/kotlin/org/other/Client.kt", nil, 0o644)
+
+	entries := discover(t, fs)
+	if len(entries) != 1 || entries[0].Capsule.CapsuleID != "com.example.app" {
+		t.Fatalf("got %+v, want one capsule with CapsuleID com.example.app", entries)
+	}
+}
+
 func discover(t *testing.T, fs port.FileSystem) []service.CapsuleEntry {
 	t.Helper()
 	disco := service.NewCapsuleDiscovery()
-	Language{}.Register(disco)
+	(&Language{}).Register(disco)
 	entries, err := disco.Discover(context.Background(), fs, "/")
 	if err != nil {
 		t.Fatal(err)

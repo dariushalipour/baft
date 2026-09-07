@@ -26,17 +26,18 @@ func IsInternal(spec, base string) bool {
 }
 
 // CommonPrefix returns the longest namespace shared by every directory holding
-// a file with one of exts under srcDirs, as a dot-separated path.
+// a file with one of exts under srcDirs, as a dot-separated path. srcDirs are
+// absolute: they are always derived from a capsule dir, and discovery walks
+// from an absolute root.
 func CommonPrefix(fsys port.FileSystem, srcDirs, exts []string) (string, error) {
 	seen := make(map[string]bool)
 	var dirs []string
 	for _, src := range srcDirs {
-		base := strings.TrimPrefix(filepath.ToSlash(src), "/")
 		err := fsys.WalkDir(context.Background(), src, func(abs string, d fs.DirEntry) error {
 			if d.IsDir() || !hasExt(abs, exts) {
 				return nil
 			}
-			rel, err := filepath.Rel(base, strings.TrimPrefix(filepath.ToSlash(abs), "/"))
+			rel, err := filepath.Rel(src, abs)
 			if err != nil {
 				return nil
 			}

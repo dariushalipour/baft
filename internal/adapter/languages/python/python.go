@@ -18,7 +18,12 @@ func (Language) Name() string { return "python" }
 var exts = []string{".py", ".pyi"}
 
 func (Language) IsScannableFile(rel string) bool {
-	return strings.HasSuffix(rel, exts[0]) || strings.HasSuffix(rel, exts[1])
+	for _, ext := range exts {
+		if strings.HasSuffix(rel, ext) {
+			return true
+		}
+	}
+	return false
 }
 
 var importRe = regexp.MustCompile(`(?m)^\s*(?:from\s+(\.+(?:[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s+import|import\s+([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*))`)
