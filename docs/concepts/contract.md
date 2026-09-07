@@ -88,12 +88,12 @@ Nodes define which files belong to which architectural group.
 **Syntax:** `nodeId["glob_pattern"]`
 
 - **nodeId** — an alphanumeric identifier used in edges (e.g., `api`, `domain`, `usecase`).
-- **glob_pattern** — a path pattern matching files or directories.
+- **glob_pattern** — a path pattern matching files or directories. Wildcards are escaped: a raw `*` in a node label is a parse error, so the subtree glob `path/**` is written `path/&ast;&ast;`. Baft decodes it on load, and `dump` and `restyle` write it that way.
 
 **Three common shapes:**
 
 - **Exact directory:** `nodeId["path/to/dir"]` — matches files directly in that directory.
-- **Subtree directory:** `nodeId["path/to/dir/**"]` — matches that directory and nested directories beneath it.
+- **Subtree directory:** `nodeId["path/to/dir/&ast;&ast;"]` — matches that directory and nested directories beneath it.
 - **File-shaped:** `nodeId["path/file.ts"]` — matches a single file. Only supported by TypeScript and Dart; every other language reports `file-glob-unsupported`.
 
 **Specificity:** When a file matches multiple nodes, the most specific match wins. Specificity is scored by:
@@ -114,7 +114,7 @@ By default, node globs use forward slashes (`/`) as path separators:
 
 ```mermaid
 flowchart TD
-  domain["src/main/kotlin/com/example/domain/**"]
+  domain["src/main/kotlin/com/example/domain/&ast;&ast;"]
 ```
 
 Some ecosystems — notably Kotlin, Java, and Python — use dots (`.`) to separate package segments. The `globSeparator` config directive lets you write globs with any separator character instead of slashes:
@@ -123,8 +123,8 @@ Some ecosystems — notably Kotlin, Java, and Python — use dots (`.`) to separ
 flowchart TD
   %% config globSeparator "."
 
-  domain["src.main.kotlin.com.example.domain/**"]
-  api["src.main.kotlin.com.example.api/**"]
+  domain["src.main.kotlin.com.example.domain/&ast;&ast;"]
+  api["src.main.kotlin.com.example.api/&ast;&ast;"]
 
   api --> domain
 ```
@@ -149,8 +149,8 @@ When `globSeparator` is set, every dot that appears between path segments is tre
 Before (slashes):
 ```mermaid
 flowchart TD
-  domain["src/main/kotlin/com/example/domain/**"]
-  api["src/main/kotlin/com/example/api/**"]
+  domain["src/main/kotlin/com/example/domain/&ast;&ast;"]
+  api["src/main/kotlin/com/example/api/&ast;&ast;"]
 ```
 
 After adding `globSeparator "."` and running `baft dump`:
@@ -158,8 +158,8 @@ After adding `globSeparator "."` and running `baft dump`:
 flowchart TD
   %% config globSeparator "."
 
-  domain["src.main.kotlin.com.example.domain/**"]
-  api["src.main.kotlin.com.example.api/**"]
+  domain["src.main.kotlin.com.example.domain/&ast;&ast;"]
+  api["src.main.kotlin.com.example.api/&ast;&ast;"]
 ```
 
 ---
@@ -211,9 +211,9 @@ This is the phase-in path for a legacy codebase: declare the architecture you wa
 
 ```mermaid
 flowchart TD
-  api["internal/api/**"]
-  domain["internal/domain/**"]
-  legacy["internal/legacy/**"]
+  api["internal/api/&ast;&ast;"]
+  domain["internal/domain/&ast;&ast;"]
+  legacy["internal/legacy/&ast;&ast;"]
 
   api --> domain
   api -.-> legacy
@@ -249,7 +249,7 @@ When a subdirectory contains its own manifest (making it a child Capsule), it ma
 - It is responsible for coverage of all tracked files within its directory.
 
 **Parent scope:**
-- The parent's contract file can treat child directories as nodes (e.g., `auth["auth/**"]`).
+- The parent's contract file can treat child directories as nodes (e.g., `auth["auth/&ast;&ast;"]`).
 - The parent tracks edges between children (e.g., `billing --> auth`).
 - The parent does not check for unmatched files inside children — that is the child's responsibility.
 
@@ -330,10 +330,10 @@ Inside the Mermaid block, `%%` introduces a comment. Comments are ignored by the
 ```mermaid
 flowchart TD
   %% API layer handles HTTP requests
-  api["internal/api/**"]
+  api["internal/api/&ast;&ast;"]
 
   %% Domain has no dependencies
-  domain["internal/domain/**"]
+  domain["internal/domain/&ast;&ast;"]
 
   api --> domain
 `````
@@ -349,7 +349,8 @@ What the parser accepts and what it refuses:
 - **`graph` and `flowchart` headers** — both accepted, in any direction (`TD`, `LR`, `RL`, `BT`).
 - **`classDef`, `style`, `linkStyle`** — tolerated and skipped. Classes are inline only (`:::endophobic`); custom class definitions carry no meaning.
 - **Generated styling** — the `style`/`linkStyle` tail written by `dump --color-palette` and `restyle` is machine-managed. Regenerate it with `baft restyle`; do not hand-edit it.
-- **Undirected and invisible links** — `A --- B`, `A === B` and `A ~~~ B` are rejected; an edge must point somewhere.
+- **Undirected, invisible and bidirectional links** — `A --- B`, `A === B`, `A ~~~ B`, `A --o B`, `A --x B` and `A <--> B` are rejected by name; an edge must point one way.
+- **Raw `*` in a node glob** — a parse error. Escape every wildcard as `&ast;` (`&#42;` is also read): `api["internal/api/&ast;&ast;"]`.
 - **Node ids** — must match `[A-Za-z_][A-Za-z0-9_]*`. They are kept verbatim, so they are also what diagnostics report.
 
 ---
@@ -360,10 +361,10 @@ What the parser accepts and what it refuses:
 
 ```mermaid
 flowchart TD
-  presentation["internal/presentation/**"]
-  usecase["internal/usecase/**"]:::endophobic
-  domain["internal/domain/**"]
-  infra["internal/infra/**"]
+  presentation["internal/presentation/&ast;&ast;"]
+  usecase["internal/usecase/&ast;&ast;"]:::endophobic
+  domain["internal/domain/&ast;&ast;"]
+  infra["internal/infra/&ast;&ast;"]
 
   presentation --> usecase
   presentation --> domain
@@ -375,9 +376,9 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  auth["features/auth/**"]
-  billing["features/billing/**"]
-  shared["internal/shared/**"]
+  auth["features/auth/&ast;&ast;"]
+  billing["features/billing/&ast;&ast;"]
+  shared["internal/shared/&ast;&ast;"]
 
   auth --> shared
   billing --> shared
@@ -390,7 +391,7 @@ flowchart TD
 flowchart TD
   app["src/app.ts"]
   main["src/main.ts"]
-  utils["src/utils/**"]
+  utils["src/utils/&ast;&ast;"]
 
   main --> app
   app --> utils

@@ -208,7 +208,7 @@ Returns the namespace declaration from a source file's header, or `("", nil)` if
 
 A contract opts into namespace mode via `%% config namespaceMode "true"`. Import targets are then resolved by namespace string instead of filesystem path: the check builds a namespace index (file path → declared namespace) and matches each `using`/`import` against it. It is per-contract and applies to any language whose `GetFileNamespace` returns a value — C#, Java, and Kotlin today. See [contract.md](contract.md#namespace-mode).
 
-Node patterns may use wildcards (`api["MyApp.Api.*"]`); only a pattern containing `/` is file-shaped. Each `using` counts as one relation regardless of how many files share the target namespace. If no scanned file declares a namespace, the check reports `namespace-mode-no-namespaces` instead of silently reverting to path matching.
+Node patterns may use wildcards (`api["MyApp.Api.&ast;"]`); only a pattern containing `/` is file-shaped. Each `using` counts as one relation regardless of how many files share the target namespace. If no scanned file declares a namespace, the check reports `namespace-mode-no-namespaces` instead of silently reverting to path matching.
 
 Language modules do not:
 

@@ -44,6 +44,19 @@ var (
 		"&ast;", "*",
 		"&#42;", "*",
 	)
+
+	// unsupportedLinks names the mermaid link forms Baft has no meaning for, in
+	// the order they are tried against a line whose labels and accepted arrows
+	// have been blanked out. `<` is all a bidirectional link leaves behind.
+	unsupportedLinks = []struct {
+		re   *regexp.Regexp
+		name string
+	}{
+		{regexp.MustCompile(`<`), "bidirectional link"},
+		{regexp.MustCompile(`[-=.]{2,}[ox]`), "circle- or cross-headed link"},
+		{regexp.MustCompile(`~{2,}`), "invisible link"},
+		{regexp.MustCompile(`[-=]{2,}`), "undirected link"},
+	}
 )
 
 var generatedStyleComment = strings.Trim(`
@@ -227,9 +240,6 @@ func literalLinks(blockLines []string, g *graph.Graph) ([]graphEdge, error) {
 			line = strings.TrimSpace(line[:idx])
 		}
 		line = strings.TrimRight(line, "; \t")
-		if hasAnyPrefix(line, "flowchart ", "graph ") || isStyleLine(line) {
-			continue
-		}
 		arrows := topLevelArrows(line)
 		if len(arrows) == 0 {
 			continue
@@ -443,9 +453,6 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 			}
 			continue
 		}
-		if hasAnyPrefix(line, "flowchart ", "graph ") || isStyleLine(line) {
-			continue
-		}
 		if idx := inlineCommentStart(line); idx >= 0 {
 			line = strings.TrimSpace(line[:idx])
 		}
@@ -453,7 +460,17 @@ func (r *MermaidRepository) Load(md string) (*graph.Graph, error) {
 		if line == "" {
 			continue
 		}
-		if arrows := topLevelArrows(line); len(arrows) > 0 {
+		arrows := topLevelArrows(line)
+		if len(arrows) == 0 && (hasAnyPrefix(line, "flowchart ", "graph ") || isStyleLine(line)) {
+			continue
+		}
+		if name := unsupportedLink(line, arrows); name != "" {
+			return nil, &port.ParseError{
+				Line: absLine,
+				Msg:  fmt.Sprintf("%s in %q is not supported; write \"-->\" instead, or \"-.->\" to tolerate the edge", name, line),
+			}
+		}
+		if len(arrows) > 0 {
 			if err := parseEdgeLine(line, arrows, g, absLine); err != nil {
 				return nil, err
 			}
@@ -484,13 +501,13 @@ func hasAnyPrefix(s string, prefixes ...string) bool {
 	return false
 }
 
-// maskLine flags the bytes that sit inside a quoted string or a node label,
-// where mermaid punctuation carries no structural meaning.
+// maskLine flags the bytes that sit inside a quoted string, a node label or an
+// edge label, where mermaid punctuation carries no structural meaning.
 func maskLine(line string) []bool {
 	mask := make([]bool, len(line))
-	inQuotes, depth := false, 0
+	inQuotes, inLabel, depth := false, false, 0
 	for i := 0; i < len(line); i++ {
-		mask[i] = inQuotes || depth > 0
+		mask[i] = inQuotes || inLabel || depth > 0
 		switch c := line[i]; {
 		case c == '"':
 			inQuotes = !inQuotes
@@ -498,9 +515,33 @@ func maskLine(line string) []bool {
 			depth++
 		case c == ']' && !inQuotes && depth > 0:
 			depth--
+		case c == '|' && !inQuotes && depth == 0:
+			inLabel = !inLabel
 		}
 	}
 	return mask
+}
+
+// unsupportedLink names the mermaid link form a line uses, judged by what is
+// left once its labels and its accepted arrows are blanked out.
+func unsupportedLink(line string, arrows [][]int) string {
+	rest := []byte(line)
+	for i, masked := range maskLine(line) {
+		if masked {
+			rest[i] = ' '
+		}
+	}
+	for _, loc := range arrows {
+		for i := loc[0]; i < loc[1]; i++ {
+			rest[i] = ' '
+		}
+	}
+	for _, link := range unsupportedLinks {
+		if link.re.Match(rest) {
+			return link.name
+		}
+	}
+	return ""
 }
 
 func inlineCommentStart(line string) int {

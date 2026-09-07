@@ -1,6 +1,8 @@
 package mermaid
 
 import (
+	"os"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -73,6 +75,23 @@ func TestMermaidRepository_LoadRejectsRawAsterisks(t *testing.T) {
 	}
 	if got := err.Error(); !strings.Contains(got, `write &ast; instead`) {
 		t.Fatalf("unexpected error %q", got)
+	}
+}
+
+// TestDocumentedContractsLoad pins the documentation to the parser: every
+// example a reader may copy verbatim has to load.
+func TestDocumentedContractsLoad(t *testing.T) {
+	blockRe := regexp.MustCompile("(?s)```mermaid\n.*?\n```")
+	for _, path := range []string{"../../../../README.md", "../../../../docs/manual.md", "../../../../docs/concepts/contract.md"} {
+		md, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, block := range blockRe.FindAllString(string(md), -1) {
+			if _, err := (&MermaidRepository{}).Load(block); err != nil {
+				t.Errorf("%s: %v in:\n%s", path, err, block)
+			}
+		}
 	}
 }
 
@@ -1151,20 +1170,38 @@ func TestLoad_EdgeSyntax(t *testing.T) {
 }
 
 func TestLoad_EdgeSyntaxErrors(t *testing.T) {
-	cases := []struct{ name, line string }{
-		{"missing source", "--> b"},
-		{"missing target", "a -->"},
-		{"empty fan member", "a --> b &"},
-		{"two ids in one group", "a --> b c"},
-		{"undirected link", "a --- b"},
-		{"invisible link", "a ~~~ b"},
+	cases := []struct{ name, line, wantMsg string }{
+		{name: "missing source", line: "--> b"},
+		{name: "missing target", line: "a -->"},
+		{name: "empty fan member", line: "a --> b &"},
+		{name: "two ids in one group", line: "a --> b c"},
+		{name: "undirected link", line: "a --- b", wantMsg: "undirected link"},
+		{name: "thick undirected link", line: "a === b", wantMsg: "undirected link"},
+		{name: "invisible link", line: "a ~~~ b", wantMsg: "invisible link"},
+		{name: "circle headed link", line: "a --o b", wantMsg: "circle- or cross-headed link"},
+		{name: "cross headed link", line: "a --x b", wantMsg: "circle- or cross-headed link"},
+		{name: "bidirectional link", line: "a <--> b", wantMsg: "bidirectional link"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := loadLines(`a["a/&ast;&ast;"]`, `b["b/&ast;&ast;"]`, tc.line); err == nil {
+			_, err := loadLines(`a["a/&ast;&ast;"]`, `b["b/&ast;&ast;"]`, tc.line)
+			if err == nil {
 				t.Fatalf("expected error for %q", tc.line)
 			}
+			if tc.wantMsg != "" && !strings.Contains(err.Error(), tc.wantMsg+` in "`+tc.line+`"`) {
+				t.Errorf("error %q does not name the construct %q", err, tc.wantMsg)
+			}
 		})
+	}
+}
+
+func TestLoad_EdgeFromNodeNamedAfterAHeaderKeyword(t *testing.T) {
+	g, err := loadLines(`graph["graph/&ast;&ast;"]`, `b["b/&ast;&ast;"]`, "graph --> b")
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !g.Allows("graph", "b") {
+		t.Errorf("edge missing: %v", g.Edges)
 	}
 }
 

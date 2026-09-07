@@ -60,13 +60,13 @@ flowchart TD
 
 - **Mermaid Block:** Exactly one fenced `mermaid` block is parsed; a second one is a parse error. Its header may be `flowchart <direction>` or `graph <direction>`.
 - **Comments:** Use `%%` for comments inside the Mermaid block. Full-line comments are allowed, and inline comments are allowed after node or edge declarations. `%%` inside quoted labels stays part of the label.
-- **Escaping:** Use `&ast;` for literal asterisks (`*`) inside labels.
-- **Constraints:** `subgraph` syntax and undirected links (`---`, `===`, `~~~`) are not supported. `flowchart`/`graph` headers and `classDef`/`style`/`linkStyle` lines are tolerated and ignored.
+- **Escaping:** Write every asterisk (`*`) inside a label as `&ast;` — a raw one is a parse error.
+- **Constraints:** `subgraph` syntax is not supported, and so is any link that does not point one way: `---`, `===`, `~~~`, `--o`, `--x` and `<-->` are rejected by name. `flowchart`/`graph` headers and `classDef`/`style`/`linkStyle` lines are tolerated and ignored.
 - **Generated styling:** `baft dump --color-palette ...` and `baft restyle --color-palette ...` append a generated Mermaid notice plus `style` and `linkStyle` lines after the node and edge declarations. Treat that styling section as machine-managed: regenerate it with `baft restyle` or by formatting the file with Baft in your IDE, not by editing it manually. `vibrant`, `muted`, and `mono` define 16 canonical colors; graphs with more than 16 nodes reuse colors in deterministic node order. `none` skips palette coloring and only emits dashed styling for `:::endophobic` nodes.
 
 ### Node Definitions
 
-**Syntax:** `nodeId["path/to/dir"]` or `nodeId["path/to/dir/**"]` (directory-shaped), or `nodeId["path/file.go"]` (file-shaped).
+**Syntax:** `nodeId["path/to/dir"]` or `nodeId["path/to/dir/&ast;&ast;"]` (directory-shaped), or `nodeId["path/file.go"]` (file-shaped).
 
 - **Specificity:** The most specific match wins. File-shaped globs take precedence over directory-shaped globs.
 - **Coverage:** Every tracked file must match at least one node. Unmatched files are reported as `no-node` violations.
@@ -113,7 +113,7 @@ A child directory with its own contract file is treated as an independent bounde
 
 **Parent Scope:**
 
-- The parent contract can treat child directories as nodes (e.g., `auth["auth/**"]`).
+- The parent contract can treat child directories as nodes (e.g., `auth["auth/&ast;&ast;"]`).
 - The parent tracks edges _between_ children (e.g., `billing --> auth`).
 - The parent does not check for unmatched files inside children; that is the child's responsibility.
 
