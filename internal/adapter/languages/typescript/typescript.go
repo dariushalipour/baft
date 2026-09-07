@@ -33,13 +33,17 @@ func (l *Language) IsScannableFile(rel string) bool {
 	return false
 }
 
-var combinedImportRe = regexp.MustCompile(`(?m)(?:^\s*(?:import|export)\s+.*?|^\s*import\s+\w+\s*=\s*require\s*\(|\bimport\s*\(|\brequire\s*\()('([^']+)'|\"([^\"]+)\")`)
+// combinedImportRe anchors on the module specifier's keyword rather than on the
+// import line, so specifiers that sit on a later line than their `import` are
+// still found and quoted literals in other statements are not mistaken for one.
+var combinedImportRe = regexp.MustCompile(`(?m)(?:\bfrom[ \t]*|^[ \t]*(?:import|export)[ \t]*|\bimport[ \t]*\([ \t]*|\brequire[ \t]*\([ \t]*)('([^'\n]+)'|"([^"\n]+)")`)
 
 func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
-	data, err := fsys.ReadFile(absPath)
+	raw, err := fsys.ReadFile(absPath)
 	if err != nil {
 		return nil, err
 	}
+	data := maskComments(raw)
 	lineOffsets := lineoffsets.MakeLineOffsets(data)
 	dataStr := string(data)
 	seen := make(map[string]bool, 16)
@@ -64,6 +68,79 @@ func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Im
 	return out, nil
 }
 
+// maskComments blanks out comment bytes (keeping newlines and every other
+// offset intact) so commented-out imports never match. String literals are
+// skipped so that a `//` or `/*` inside one is not read as a comment.
+func maskComments(src []byte) []byte {
+	data := append([]byte(nil), src...)
+	for i := 0; i < len(data); {
+		switch {
+		case data[i] == '/' && i+1 < len(data) && data[i+1] == '/':
+			for ; i < len(data) && data[i] != '\n'; i++ {
+				data[i] = ' '
+			}
+		case data[i] == '/' && i+1 < len(data) && data[i+1] == '*':
+			for ; i < len(data); i++ {
+				if data[i] == '*' && i+1 < len(data) && data[i+1] == '/' {
+					data[i], data[i+1] = ' ', ' '
+					i += 2
+					break
+				}
+				if data[i] != '\n' {
+					data[i] = ' '
+				}
+			}
+		case data[i] == '\'' || data[i] == '"' || data[i] == '`':
+			quote := data[i]
+			for i++; i < len(data); i++ {
+				if data[i] == '\\' {
+					i++
+					continue
+				}
+				if data[i] == quote || (quote != '`' && data[i] == '\n') {
+					break
+				}
+			}
+			i++
+		default:
+			i++
+		}
+	}
+	return data
+}
+
+// stripJSONC turns JSONC (comments, trailing commas) into plain JSON.
+func stripJSONC(src []byte) []byte {
+	data := maskComments(src)
+	out := make([]byte, 0, len(data))
+	for i := 0; i < len(data); i++ {
+		if data[i] == '"' {
+			start := i
+			for i++; i < len(data) && data[i] != '"'; i++ {
+				if data[i] == '\\' {
+					i++
+				}
+			}
+			if i >= len(data) {
+				i = len(data) - 1
+			}
+			out = append(out, data[start:i+1]...)
+			continue
+		}
+		if data[i] == ',' {
+			j := i + 1
+			for j < len(data) && (data[j] == ' ' || data[j] == '\t' || data[j] == '\n' || data[j] == '\r') {
+				j++
+			}
+			if j < len(data) && (data[j] == '}' || data[j] == ']') {
+				continue
+			}
+		}
+		out = append(out, data[i])
+	}
+	return out
+}
+
 func (l *Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
 	if strings.HasPrefix(spec.Path, ".") {
 		base := path.Dir(fileRel)
@@ -74,17 +151,10 @@ func (l *Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportS
 		return resolveExtension(fsys, full, c.Dir), true
 	}
 
-	tsconfig, err := l.resolveTsconfigCached(fsys, c.Dir)
-	if err != nil || tsconfig == nil {
-		resolved, ok := resolveByCapsuleName(spec.Path, c)
-		if ok {
-			resolved = resolveExtension(fsys, resolved, c.Dir)
+	if cfg := l.resolveTsconfigCached(fsys, c.Dir); cfg != nil {
+		if resolved := cfg.resolvePaths(fsys, spec.Path); resolved != "" {
+			return resolveExtension(fsys, resolved, c.Dir), true
 		}
-		return resolved, ok
-	}
-
-	if resolved := tsconfig.resolvePaths(fsys, spec.Path); resolved != "" {
-		return resolveExtension(fsys, resolved, c.Dir), true
 	}
 
 	resolved, ok := resolveByCapsuleName(spec.Path, c)
@@ -94,20 +164,18 @@ func (l *Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportS
 	return resolved, ok
 }
 
-func (l *Language) resolveTsconfigCached(fsys port.FileSystem, capsuleDir string) (*tsconfig, error) {
+// resolveTsconfigCached caches misses as well as hits, so a capsule without a
+// readable tsconfig is not re-read once per import.
+func (l *Language) resolveTsconfigCached(fsys port.FileSystem, capsuleDir string) *tsconfig {
 	if cached, ok := l.tsconfigCache.Load(capsuleDir); ok {
-		return cached.(*tsconfig), nil
+		return cached.(*tsconfig)
 	}
 	cfg, err := resolveTsconfig(fsys, capsuleDir)
 	if err != nil {
-		return nil, err
+		cfg = nil
 	}
-	if cfg != nil {
-		if loaded, ok := l.tsconfigCache.LoadOrStore(capsuleDir, cfg); ok {
-			return loaded.(*tsconfig), nil
-		}
-	}
-	return cfg, nil
+	cached, _ := l.tsconfigCache.LoadOrStore(capsuleDir, cfg)
+	return cached.(*tsconfig)
 }
 
 func resolveByCapsuleName(spec string, c port.Capsule) (string, bool) {
@@ -127,15 +195,6 @@ func resolveByCapsuleName(spec string, c port.Capsule) (string, bool) {
 }
 
 func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string {
-	base := path.Base(resolved)
-	hasDot := false
-	for i := 0; i < len(base); i++ {
-		if base[i] == '.' {
-			hasDot = true
-			break
-		}
-	}
-
 	if strings.HasSuffix(resolved, ".ts") || strings.HasSuffix(resolved, ".tsx") {
 		return resolved
 	}
@@ -166,10 +225,8 @@ func resolveExtension(fsys port.FileSystem, resolved, capsuleDir string) string 
 		return resolved
 	}
 
-	if hasDot {
-		return resolved
-	}
-
+	// A dot in the basename is not necessarily an extension: `./user.service`
+	// still resolves to user.service.ts.
 	for _, ext := range [4]string{".ts", ".tsx", ".js", ".jsx"} {
 		candidate := resolved + ext
 		if _, err := fsys.Stat(filepath.Join(capsuleDir, filepath.FromSlash(candidate))); err == nil {
@@ -234,13 +291,13 @@ func resolveTsconfig(fsys port.FileSystem, capsuleDir string) (*tsconfig, error)
 		return nil, err
 	}
 	var cfg tsconfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", cfgPath, err)
 	}
 	cfg.configDir = capsuleDir
 
 	if cfg.Extends != "" {
-		visited := map[string]bool{filepath.Clean(capsuleDir): true}
+		visited := map[string]bool{filepath.Clean(cfgPath): true}
 		parent, err := resolveTsconfigExtends(fsys, cfg.Extends, capsuleDir, visited)
 		if err == nil && parent != nil {
 			cfg.merge(parent)
@@ -251,15 +308,21 @@ func resolveTsconfig(fsys port.FileSystem, capsuleDir string) (*tsconfig, error)
 }
 
 func resolveTsconfigExtends(fsys port.FileSystem, extends string, capsuleDir string, visited map[string]bool) (*tsconfig, error) {
+	// Only ./ and ../ (and absolute) specifiers are file paths; everything else
+	// names a package under node_modules.
 	target := extends
-	if !filepath.IsAbs(extends) {
-		if !strings.HasPrefix(extends, "@") && !strings.Contains(extends, "/") {
-			target = filepath.Join(capsuleDir, "node_modules", extends, "tsconfig.json")
-		} else if strings.HasPrefix(extends, "@") {
-			target = filepath.Join(capsuleDir, "node_modules", extends, "tsconfig.json")
-		} else {
-			parts := strings.SplitN(extends, "/", 2)
-			target = filepath.Join(capsuleDir, "node_modules", parts[0], parts[1], "tsconfig.json")
+	isPath := filepath.IsAbs(extends) || strings.HasPrefix(extends, "./") || strings.HasPrefix(extends, "../")
+	if isPath {
+		if !filepath.IsAbs(extends) {
+			target = filepath.Join(capsuleDir, extends)
+		}
+		if !strings.HasSuffix(target, ".json") {
+			target += ".json"
+		}
+	} else {
+		target = filepath.Join(capsuleDir, "node_modules", extends)
+		if !strings.HasSuffix(target, ".json") {
+			target = filepath.Join(target, "tsconfig.json")
 		}
 	}
 
@@ -274,7 +337,7 @@ func resolveTsconfigExtends(fsys port.FileSystem, extends string, capsuleDir str
 		return nil, err
 	}
 	var cfg tsconfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
+	if err := json.Unmarshal(stripJSONC(data), &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", target, err)
 	}
 	cfg.configDir = filepath.Dir(target)

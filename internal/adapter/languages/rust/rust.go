@@ -38,28 +38,94 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	imports := make([]port.ImportSpec, 0, approxLines/3)
 
 	for _, m := range rustImportRe.FindAllSubmatchIndex(data, -1) {
-		var spec string
-		if m[2] != -1 {
-			spec = strings.TrimSpace(dataStr[m[2]:m[3]])
-		} else if m[4] != -1 {
-			// mod statement
-			spec = dataStr[m[4]:m[5]]
-		} else if m[6] != -1 {
-			// extern crate
-			spec = dataStr[m[6]:m[7]]
-		} else {
+		var raw string
+		var specs []string
+		switch {
+		case m[2] != -1:
+			raw = strings.TrimSpace(dataStr[m[2]:m[3]])
+			specs = expandUseGroups(raw)
+		case m[4] != -1: // mod statement
+			raw = dataStr[m[4]:m[5]]
+			specs = []string{raw}
+		case m[6] != -1: // extern crate
+			raw = dataStr[m[6]:m[7]]
+			specs = []string{raw}
+		default:
 			continue
 		}
 
-		if !seen[spec] {
+		line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, m[0])
+		for _, spec := range specs {
+			if seen[spec] {
+				continue
+			}
 			seen[spec] = true
-			matchStart := m[0]
-			line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, matchStart)
-			imports = append(imports, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: col + len(spec)})
+			imports = append(imports, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: col + len(raw)})
 		}
 	}
 
 	return imports, nil
+}
+
+// expandUseGroups flattens a use path into one path per imported item, so
+// `crate::{a::X, b::Y}` becomes `crate::a::X` and `crate::b::Y`.
+func expandUseGroups(s string) []string {
+	open := strings.IndexByte(s, '{')
+	if open == -1 {
+		return []string{strings.TrimSpace(s)}
+	}
+	end := matchingBrace(s, open)
+	if end == -1 {
+		return []string{strings.TrimSpace(s)}
+	}
+	prefix := strings.TrimSpace(s[:open])
+	suffix := s[end+1:]
+	var out []string
+	for _, member := range splitTopLevel(s[open+1 : end]) {
+		if member == "" {
+			continue
+		}
+		if member == "self" {
+			out = append(out, expandUseGroups(strings.TrimSuffix(prefix, "::")+suffix)...)
+			continue
+		}
+		out = append(out, expandUseGroups(prefix+member+suffix)...)
+	}
+	return out
+}
+
+func matchingBrace(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+func splitTopLevel(s string) []string {
+	var out []string
+	depth, start := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				out = append(out, strings.TrimSpace(s[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	return append(out, strings.TrimSpace(s[start:]))
 }
 
 func (Language) ResolveInternalTarget(fsys port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {

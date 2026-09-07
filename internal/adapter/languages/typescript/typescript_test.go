@@ -173,6 +173,38 @@ import Foo = require('./import-require');
 	}
 }
 
+func TestParseImportsMultilineAndNonImports(t *testing.T) {
+	src := `import {
+  UserRepository,
+  UserMapper,
+} from '../infrastructure/db';
+export const LABEL = 'not-an-import';
+const query = ` + "`" + `select 1` + "`" + `;
+/* import { Dead } from './dead-block'; */
+export {
+  Service,
+} from "./service";
+`
+	fs := memfs.New()
+	fs.WriteFile("/sample.ts", []byte(src), 0o644)
+	got, err := (&Language{}).ParseImports(fs, "/sample.ts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"../infrastructure/db", "./service"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Path != want[i] {
+			t.Errorf("[%d] got %q, want %q", i, got[i].Path, want[i])
+		}
+	}
+	if got[0].Line != 4 {
+		t.Errorf("multi-line import reported on line %d, want 4", got[0].Line)
+	}
+}
+
 func TestResolveInternalTarget(t *testing.T) {
 	l := &Language{}
 
@@ -311,6 +343,41 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 		gotPath, gotIntl = l.ResolveInternalTarget(fs, port.ImportSpec{Path: "@shared/types"}, capsule, "src/app.ts")
 		if gotPath != "shared/types" || !gotIntl {
 			t.Errorf("parent path: got (%q, %v), want (shared/types, true)", gotPath, gotIntl)
+		}
+	})
+
+	t.Run("jsonc tsconfig with comments and trailing commas", func(t *testing.T) {
+		l := &Language{}
+		cfg := `{
+			// project config
+			"compilerOptions": {
+				/* path aliases */
+				"baseUrl": "src", // relative to the package
+				"paths": {
+					"@lib/*": ["lib/*"],
+				},
+			},
+		}`
+		fs := memfs.New()
+		fs.WriteFile("/tsconfig.json", []byte(cfg), 0o644)
+		capsule := port.Capsule{CapsuleID: "my-app", Dir: "/"}
+
+		gotPath, gotIntl := l.ResolveInternalTarget(fs, port.ImportSpec{Path: "@lib/utils"}, capsule, "src/app.ts")
+		if gotPath != "src/lib/utils" || !gotIntl {
+			t.Errorf("got (%q, %v), want (src/lib/utils, true)", gotPath, gotIntl)
+		}
+	})
+
+	t.Run("relative extends resolves next to the config", func(t *testing.T) {
+		l := &Language{}
+		fs := memfs.New()
+		fs.WriteFile("/tsconfig.base.json", []byte(`{"compilerOptions":{"paths":{"@shared/*":["shared/*"]}}}`), 0o644)
+		fs.WriteFile("/pkg/tsconfig.json", []byte(`{"extends":"../tsconfig.base.json"}`), 0o644)
+		capsule := port.Capsule{CapsuleID: "my-app", Dir: "/pkg"}
+
+		gotPath, gotIntl := l.ResolveInternalTarget(fs, port.ImportSpec{Path: "@shared/types"}, capsule, "src/app.ts")
+		if gotPath != "shared/types" || !gotIntl {
+			t.Errorf("got (%q, %v), want (shared/types, true)", gotPath, gotIntl)
 		}
 	})
 
@@ -622,6 +689,15 @@ func TestResolveExtension(t *testing.T) {
 		got := resolveExtension(memfs.New(), "src/missing.js", "/")
 		if got != "src/missing.js" {
 			t.Errorf("got %q, want src/missing.js", got)
+		}
+	})
+
+	t.Run("dotted basename resolves to .ts", func(t *testing.T) {
+		fs := memfs.New()
+		fs.WriteFile("/src/user.service.ts", []byte{}, 0o644)
+		got := resolveExtension(fs, "src/user.service", "/")
+		if got != "src/user.service.ts" {
+			t.Errorf("got %q, want src/user.service.ts", got)
 		}
 	})
 

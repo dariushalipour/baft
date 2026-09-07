@@ -22,7 +22,10 @@ func (Language) IsScannableFile(rel string) bool {
 	return rel[n-5:] == ".dart"
 }
 
-var directiveRe = regexp.MustCompile(`(?m)^\s*(?:import|export|part)\s+['"]([^'"]+)['"]`)
+// directiveRe captures the whole uri list of a directive, including the
+// `if (config) 'other.dart'` branches of a conditional import.
+var directiveRe = regexp.MustCompile(`(?m)^\s*(?:import|export|part)\s+(['"][^'"]+['"](?:\s*if\s*\([^)]*\)\s*['"][^'"]+['"])*)`)
+var uriRe = regexp.MustCompile(`['"]([^'"]+)['"]`)
 
 func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
 	data, err := fsys.ReadFile(absPath)
@@ -34,9 +37,12 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	lineOffsets := lineoffsets.MakeLineOffsets(data)
 
 	for _, m := range indices {
-		p := string(data[m[2]:m[3]])
-		line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, m[2])
-		out = append(out, port.ImportSpec{Path: p, Line: line, Col: col, ColEnd: col + len(p)})
+		for _, u := range uriRe.FindAllSubmatchIndex(data[m[2]:m[3]], -1) {
+			start := m[2] + u[2]
+			p := string(data[start : m[2]+u[3]])
+			line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, start)
+			out = append(out, port.ImportSpec{Path: p, Line: line, Col: col, ColEnd: col + len(p)})
+		}
 	}
 	return out, nil
 }
@@ -76,7 +82,7 @@ func (Language) Register(d port.CapsuleDiscovery) {
 	})
 }
 
-var pubspecNameRe = regexp.MustCompile(`(?m)^name\s*:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$`)
+var pubspecNameRe = regexp.MustCompile(`(?m)^name\s*:\s*['"]?([A-Za-z_][A-Za-z0-9_]*)['"]?\s*(?:#.*)?$`)
 
 func readPubspecName(fsys port.FileSystem, path string) (string, error) {
 	data, err := fsys.ReadFile(path)

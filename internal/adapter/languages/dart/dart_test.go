@@ -71,6 +71,29 @@ part of 'foo.dart';
 	}
 }
 
+func TestParseImports_ConditionalImport(t *testing.T) {
+	fs := memfs.New()
+	fs.WriteFile("/sample.dart", []byte(
+		"import 'src/stub.dart'\n"+
+			"    if (dart.library.io) 'src/io_impl.dart'\n"+
+			"    if (dart.library.html) 'src/web_impl.dart';\n",
+	), 0o644)
+
+	got, err := Language{}.ParseImports(fs, "/sample.dart")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"src/stub.dart", "src/io_impl.dart", "src/web_impl.dart"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i].Path != want[i] || got[i].Line != i+1 {
+			t.Errorf("[%d] got %q on line %d, want %q on line %d", i, got[i].Path, got[i].Line, want[i], i+1)
+		}
+	}
+}
+
 func TestResolveInternalTarget(t *testing.T) {
 	l := Language{}
 	capsule := port.Capsule{CapsuleID: "my_app"}
@@ -110,5 +133,19 @@ func TestReadPubspecName(t *testing.T) {
 	}
 	if got != "my_app" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestReadPubspecName_QuotedAndCommented(t *testing.T) {
+	for _, line := range []string{"name: \"my_app\"\n", "name: 'my_app'\n", "name: my_app # the package\n"} {
+		fs := memfs.New()
+		fs.WriteFile("/pubspec.yaml", []byte(line+"version: 0.0.1\n"), 0o644)
+		got, err := readPubspecName(fs, "/pubspec.yaml")
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if got != "my_app" {
+			t.Errorf("%q: got %q, want my_app", line, got)
+		}
 	}
 }

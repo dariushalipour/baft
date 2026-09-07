@@ -146,8 +146,10 @@ use std::collections::{HashMap, HashSet};
 fn main() {}
 `,
 			want: []string{
-				"crate::domain::{Model, Repository}",
-				"std::collections::{HashMap, HashSet}",
+				"crate::domain::Model",
+				"crate::domain::Repository",
+				"std::collections::HashMap",
+				"std::collections::HashSet",
 			},
 		},
 		{
@@ -177,13 +179,15 @@ use crate::{mymodule, othermodule::MyStruct};
 fn main() {}
 `,
 			want: []string{
-				"std::{fmt, io}",
-				"std::{fmt::Display, fmt::Debug}",
-				"std::fmt::{Display, Debug}",
-				"std::fmt::{Display, Debug, self}",
-				"std::{fmt::{Display, Debug}, io::{Read, Write}}",
-				"std::{self, fmt, io}",
-				"crate::{mymodule, othermodule::MyStruct}",
+				"std::fmt",
+				"std::io",
+				"std::fmt::Display",
+				"std::fmt::Debug",
+				"std::io::Read",
+				"std::io::Write",
+				"std",
+				"crate::mymodule",
+				"crate::othermodule::MyStruct",
 			},
 		},
 		{
@@ -198,7 +202,6 @@ fn main() {}
 				"std::fmt::Display as Disp",
 				"std::io::Result as IoResult",
 				"crate::mymodule::MyStruct as Alias",
-				"std::{fmt::Display as Disp, io::Result as IoResult}",
 			},
 		},
 		{
@@ -214,7 +217,7 @@ fn main() {}
 				"std::fmt::Display",
 				"crate::mymodule::MyStruct",
 				"crate::mymodule::*",
-				"std::fmt::{Display, Debug}",
+				"std::fmt::Debug",
 				"std::fmt::Display as Disp",
 			},
 		},
@@ -403,10 +406,6 @@ func TestResolveInternalTarget(t *testing.T) {
 		{"super::*", "src/domain/model.rs", "src/domain", true},
 		{"self::*", "src/lib.rs", "src", true},
 
-		// Grouped imports (resolved as-is, braces in path)
-		{"std::{fmt, io}", "src/lib.rs", "", false},
-		{"crate::{domain, api}", "src/lib.rs", "src", true},
-
 		// Deeply nested super
 		{"super::super::super::config", "src/domain/model.rs", "src", true},
 		{"super::super::utils::helpers", "src/domain/model.rs", "src/utils", true},
@@ -436,6 +435,33 @@ func TestResolveInternalTarget(t *testing.T) {
 					c.spec, c.fileRel, gotPath, gotIntl, c.wantPath, c.wantIntl)
 			}
 		})
+	}
+}
+
+// TestGroupedImportsResolveToEachTarget pins that every member of a brace group
+// gets its own target instead of one garbage path built from the raw group.
+func TestGroupedImportsResolveToEachTarget(t *testing.T) {
+	fs := memfs.New()
+	fs.WriteFile("/lib.rs", []byte("use crate::{domain::Model, infra::db::Pool};\nuse crate::api::{\n    handler::Handler,\n    self,\n};\n"), 0o644)
+
+	specs, err := Language{}.ParseImports(fs, "/lib.rs")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := make(map[string]bool)
+	for _, s := range specs {
+		target, ok := Language{}.ResolveInternalTarget(fs, s, port.Capsule{CapsuleID: "my_crate"}, "src/lib.rs")
+		if !ok {
+			t.Errorf("%q did not resolve", s.Path)
+			continue
+		}
+		got[target] = true
+	}
+	for _, want := range []string{"src/domain", "src/infra/db", "src/api/handler"} {
+		if !got[want] {
+			t.Errorf("missing target %q (got %v from %v)", want, got, specs)
+		}
 	}
 }
 

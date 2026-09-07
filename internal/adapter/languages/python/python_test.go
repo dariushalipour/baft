@@ -1,10 +1,12 @@
 package python
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
+	"github.com/dariushalipour/baft/internal/adapter/fs/realfs"
 	"github.com/dariushalipour/baft/internal/port"
 )
 
@@ -401,6 +403,8 @@ func TestResolveSourcePrefix(t *testing.T) {
 		{"lib/mypackage/user.py", "lib"},
 		{"mypackage/user.py", ""},
 		{"mypackage/deep/user.py", ""},
+		{"mypackage/lib/user.py", ""},
+		{"src/mypackage/lib/user.py", "src"},
 	}
 	for _, tt := range tests {
 		got := resolveSourcePrefix(tt.fileRel)
@@ -847,5 +851,62 @@ func TestParseImports_BareRelativeImport(t *testing.T) {
 	}
 	if paths["."] || paths[".."] {
 		t.Error("standalone dot-only paths should not appear in results")
+	}
+}
+
+func TestParseImports_ParenthesizedClosingOnSameLine(t *testing.T) {
+	fs := memfs.New()
+	fs.WriteFile("/project/foo.py", []byte(
+		"from mypackage.api import (Handler,\n"+
+			"    Router)\n"+
+			"x = 1\n"+
+			"from mypackage.domain import Model\n"+
+			"import json\n",
+	), 0o644)
+
+	specs, err := Language{}.ParseImports(fs, "/project/foo.py")
+	if err != nil {
+		t.Fatalf("ParseImports: %v", err)
+	}
+
+	lines := make(map[string]int)
+	for _, s := range specs {
+		lines[s.Path] = s.Line
+	}
+	for _, want := range []struct {
+		path string
+		line int
+	}{{"mypackage.api", 1}, {"mypackage.domain", 4}, {"json", 5}} {
+		if got := lines[want.path]; got != want.line {
+			t.Errorf("import %q on line %d, want line %d (got %v)", want.path, got, want.line, specs)
+		}
+	}
+}
+
+// TestFindBaseCapsule_RealFS pins capsule discovery against the real file
+// system: an absolute project root must not be turned into a relative walk root.
+func TestFindBaseCapsule_RealFS(t *testing.T) {
+	dir := t.TempDir()
+	write := func(rel, content string) {
+		t.Helper()
+		abs := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("pyproject.toml", "[project]\nname = \"app\"\n")
+	write("src/app/__init__.py", "")
+	write("src/app/api/h.py", "from app.domain import Model\n")
+	write("src/app/domain/model.py", "Model = object\n")
+
+	got, err := findBaseCapsule(realfs.New(), dir)
+	if err != nil {
+		t.Fatalf("findBaseCapsule: %v", err)
+	}
+	if got != "app" {
+		t.Errorf("got %q, want app", got)
 	}
 }

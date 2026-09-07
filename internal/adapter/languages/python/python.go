@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io/fs"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -315,38 +316,45 @@ func joinParenthesizedImports(lines []string, lineMap []int) ([]string, []int) {
 
 	for i < len(lines) {
 		stripped := strings.TrimSpace(lines[i])
-		// Detect: import (  or  from X import (
-		isImportParen := ((strings.HasPrefix(stripped, "import ") || strings.HasPrefix(stripped, "import(")) ||
-			strings.HasPrefix(stripped, "from ")) &&
-			strings.Contains(stripped, "(") && !strings.Contains(stripped, ")")
-		if isImportParen {
-			var parts []string
-			baseLine := lineMap[i]
-			parts = append(parts, strings.TrimSuffix(stripped, "("))
-			parts = append(parts, "(")
-			i++
-			for i < len(lines) {
-				s := strings.TrimSpace(lines[i])
-				if s == ")" && lines[i] != "" {
-					parts = append(parts, ")")
-					i++
-					break
-				}
-				if s != "" {
-					parts = append(parts, s)
-				}
-				i++
-			}
-			out = append(out, strings.Join(parts, " "))
-			outMap = append(outMap, baseLine)
-		} else {
+		depth := parenDepth(stripped)
+		if depth <= 0 || !isImportStart(stripped) {
 			out = append(out, lines[i])
 			outMap = append(outMap, lineMap[i])
 			i++
+			continue
 		}
+		parts := []string{stripped}
+		baseLine := lineMap[i]
+		i++
+		for i < len(lines) && depth > 0 {
+			s := strings.TrimSpace(lines[i])
+			depth += parenDepth(s)
+			parts = append(parts, s)
+			i++
+		}
+		out = append(out, strings.Join(parts, " "))
+		outMap = append(outMap, baseLine)
 	}
 
 	return out, outMap
+}
+
+func isImportStart(stripped string) bool {
+	return strings.HasPrefix(stripped, "import ") || strings.HasPrefix(stripped, "import(") ||
+		strings.HasPrefix(stripped, "from ")
+}
+
+func parenDepth(s string) int {
+	depth := 0
+	for _, c := range s {
+		switch c {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		}
+	}
+	return depth
 }
 
 func (Language) ResolveInternalTarget(_ port.FileSystem, spec port.ImportSpec, c port.Capsule, fileRel string) (string, bool) {
@@ -434,12 +442,13 @@ func resolveRelativeImport(modulePath, pkg, fileRel string) (string, bool) {
 	return filepath.ToSlash(resolvedPath), true
 }
 
+// resolveSourcePrefix returns the capsule-relative source root, which can only
+// be the first path segment: a nested directory named src/python/lib is part of
+// the package, not a source root.
 func resolveSourcePrefix(fileRel string) string {
-	parts := strings.Split(fileRel, "/")
-	for i, p := range parts {
-		if p == "src" || p == "python" || p == "lib" {
-			return strings.Join(parts[:i+1], "/")
-		}
+	first := strings.SplitN(fileRel, "/", 2)[0]
+	if first == "src" || first == "python" || first == "lib" {
+		return first
 	}
 	return ""
 }
@@ -506,7 +515,7 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 		return "", nil
 	}
 
-	chosenSrc = strings.TrimPrefix(chosenSrc, "/")
+	root := path.Clean("/" + filepath.ToSlash(chosenSrc))
 	var relPaths []string
 	err := fsys.WalkDir(context.Background(), chosenSrc, func(abs string, d fs.DirEntry) error {
 		if d.IsDir() {
@@ -515,10 +524,8 @@ func findBaseCapsule(fsys port.FileSystem, projectRoot string) (string, error) {
 		if !strings.HasSuffix(abs, ".py") && !strings.HasSuffix(abs, ".pyi") {
 			return nil
 		}
-		abs = strings.TrimPrefix(abs, "/")
-		rel, _ := filepath.Rel(chosenSrc, abs)
-		rel = filepath.ToSlash(rel)
-		dir := filepath.Dir(rel)
+		rel := strings.TrimPrefix(path.Clean("/"+filepath.ToSlash(abs)), root+"/")
+		dir := path.Dir(rel)
 		if dir != "." {
 			relPaths = append(relPaths, dir)
 		}
