@@ -35,7 +35,8 @@ func (l *Language) IsScannableFile(rel string) bool {
 
 // combinedImportRe anchors on the module specifier's keyword rather than on the
 // import line, so specifiers that sit on a later line than their `import` are
-// still found and quoted literals in other statements are not mistaken for one.
+// still found; ParseImports discards matches whose quote does not open a real
+// string literal, so text inside another literal is not mistaken for one.
 var combinedImportRe = regexp.MustCompile(`(?m)(?:\bfrom[ \t]*|^[ \t]*(?:import|export)[ \t]*|\bimport[ \t]*\([ \t]*|\brequire[ \t]*\([ \t]*)('([^'\n]+)'|"([^"\n]+)")`)
 
 func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
@@ -43,20 +44,23 @@ func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Im
 	if err != nil {
 		return nil, err
 	}
-	data := maskComments(raw)
+	data, literals := maskComments(raw)
 	lineOffsets := lineoffsets.MakeLineOffsets(data)
 	dataStr := string(data)
 	seen := make(map[string]bool, 16)
 	out := make([]port.ImportSpec, 0, 16)
 	for _, m := range combinedImportRe.FindAllStringSubmatchIndex(dataStr, -1) {
-		var pathStart, pathEnd int
-		if m[2] >= 0 {
-			pathStart = m[2] + 1
-			pathEnd = m[3] - 1
-		} else {
-			pathStart = m[4] + 1
-			pathEnd = m[5] - 1
+		quote, pathEnd := m[2], m[3]
+		if quote < 0 {
+			quote, pathEnd = m[4], m[5]
 		}
+		// Only a quote that opens a real literal starts a module specifier; a
+		// quote nested inside another literal is just text.
+		if !literals[quote] {
+			continue
+		}
+		pathStart := quote + 1
+		pathEnd--
 		line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, pathStart)
 		_, colEnd := lineoffsets.OffsetToLineCol(lineOffsets, data, pathEnd)
 		spec := dataStr[pathStart:pathEnd]
@@ -70,9 +74,12 @@ func (l *Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Im
 
 // maskComments blanks out comment bytes (keeping newlines and every other
 // offset intact) so commented-out imports never match. String literals are
-// skipped so that a `//` or `/*` inside one is not read as a comment.
-func maskComments(src []byte) []byte {
+// skipped so that a `//` or `/*` inside one is not read as a comment, and the
+// offset of each literal's opening quote is reported so callers can tell a real
+// specifier from a quote nested inside another literal.
+func maskComments(src []byte) ([]byte, map[int]bool) {
 	data := append([]byte(nil), src...)
+	literals := make(map[int]bool, 16)
 	for i := 0; i < len(data); {
 		switch {
 		case data[i] == '/' && i+1 < len(data) && data[i+1] == '/':
@@ -92,6 +99,7 @@ func maskComments(src []byte) []byte {
 			}
 		case data[i] == '\'' || data[i] == '"' || data[i] == '`':
 			quote := data[i]
+			literals[i] = true
 			for i++; i < len(data); i++ {
 				if data[i] == '\\' {
 					i++
@@ -106,12 +114,12 @@ func maskComments(src []byte) []byte {
 			i++
 		}
 	}
-	return data
+	return data, literals
 }
 
 // stripJSONC turns JSONC (comments, trailing commas) into plain JSON.
 func stripJSONC(src []byte) []byte {
-	data := maskComments(src)
+	data, _ := maskComments(src)
 	out := make([]byte, 0, len(data))
 	for i := 0; i < len(data); i++ {
 		if data[i] == '"' {

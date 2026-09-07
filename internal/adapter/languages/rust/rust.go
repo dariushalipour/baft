@@ -22,7 +22,9 @@ func (Language) IsScannableFile(rel string) bool {
 var cargoNameRe = regexp.MustCompile(`^name\s*=\s*"([^"]+)"`)
 var cargoNameInlineRe = regexp.MustCompile(`^name\s*=\s*\{[^"]*value\s*=\s*"([^"]+)"`)
 
-var rustImportRe = regexp.MustCompile(`(?m)^\s*(?:pub\(.*?\)\s+|pub\s+)?(?:use\s+([^;]+);|mod\s+(\w+);|extern\s+crate\s+(\w+)(?:\s+as\s+\w+)?)`)
+// The indent is matched with [ \t] rather than \s so a statement preceded by a
+// blank line is reported on its own line, not on the blank one.
+var rustImportRe = regexp.MustCompile(`(?m)^[ \t]*(?:pub\(.*?\)\s+|pub\s+)?(?:use\s+([^;]+);|mod\s+(\w+);|extern\s+crate\s+(\w+)(?:\s+as\s+\w+)?)`)
 
 func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.ImportSpec, error) {
 	data, err := fsys.ReadFile(absPath)
@@ -38,29 +40,32 @@ func (Language) ParseImports(fsys port.FileSystem, absPath string) ([]port.Impor
 	imports := make([]port.ImportSpec, 0, approxLines/3)
 
 	for _, m := range rustImportRe.FindAllSubmatchIndex(data, -1) {
-		var raw string
 		var specs []string
 		switch {
 		case m[2] != -1:
-			raw = strings.TrimSpace(dataStr[m[2]:m[3]])
-			specs = expandUseGroups(raw)
+			specs = expandUseGroups(strings.TrimSpace(dataStr[m[2]:m[3]]))
 		case m[4] != -1: // mod statement
-			raw = dataStr[m[4]:m[5]]
-			specs = []string{raw}
+			specs = []string{dataStr[m[4]:m[5]]}
 		case m[6] != -1: // extern crate
-			raw = dataStr[m[6]:m[7]]
-			specs = []string{raw}
+			specs = []string{dataStr[m[6]:m[7]]}
 		default:
 			continue
 		}
 
 		line, col := lineoffsets.OffsetToLineCol(lineOffsets, data, m[0])
+		// A `use` statement may span lines; the span stops at the end of the
+		// reported line rather than running past it.
+		end := m[1]
+		if nl := bytes.IndexByte(data[m[0]:end], '\n'); nl != -1 {
+			end = m[0] + nl
+		}
+		_, colEnd := lineoffsets.OffsetToLineCol(lineOffsets, data, end)
 		for _, spec := range specs {
 			if seen[spec] {
 				continue
 			}
 			seen[spec] = true
-			imports = append(imports, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: col + len(raw)})
+			imports = append(imports, port.ImportSpec{Path: spec, Line: line, Col: col, ColEnd: colEnd})
 		}
 	}
 

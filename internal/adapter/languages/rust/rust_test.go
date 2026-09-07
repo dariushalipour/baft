@@ -465,6 +465,25 @@ func TestGroupedImportsResolveToEachTarget(t *testing.T) {
 	}
 }
 
+func TestMultilineUseSpanStaysOnItsLine(t *testing.T) {
+	fs := memfs.New()
+	fs.WriteFile("/lib.rs", []byte("fn a() {}\n\nuse crate::{\n    domain::Model,\n    infra::db::Pool,\n};\n"), 0o644)
+
+	specs, err := Language{}.ParseImports(fs, "/lib.rs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 2 {
+		t.Fatalf("got %v, want 2 specs", specs)
+	}
+	for _, s := range specs {
+		// `use crate::{` is 12 columns wide and starts on line 3.
+		if s.Line != 3 || s.Col != 1 || s.ColEnd != 13 {
+			t.Errorf("%q at %d:%d-%d, want 3:1-13", s.Path, s.Line, s.Col, s.ColEnd)
+		}
+	}
+}
+
 func TestReadCargoToml(t *testing.T) {
 	type tc struct {
 		label   string

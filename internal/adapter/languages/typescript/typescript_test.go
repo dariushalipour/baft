@@ -180,6 +180,8 @@ func TestParseImportsMultilineAndNonImports(t *testing.T) {
 } from '../infrastructure/db';
 export const LABEL = 'not-an-import';
 const query = ` + "`" + `select 1` + "`" + `;
+throw new Error("config must be loaded from '../infrastructure/secrets' first");
+const hint = ` + "`" + `re-export from './templated' to fix` + "`" + `;
 /* import { Dead } from './dead-block'; */
 export {
   Service,
@@ -388,6 +390,20 @@ func TestResolveInternalTargetWithTsconfig(t *testing.T) {
 		gotPath, gotIntl := l.ResolveInternalTarget(memfs.New(), port.ImportSpec{Path: "@my/app/lib/utils"}, capsule, "src/app.ts")
 		if gotPath != "src/lib/utils" || !gotIntl {
 			t.Errorf("got (%q, %v), want (src/lib/utils, true)", gotPath, gotIntl)
+		}
+	})
+
+	t.Run("missing tsconfig is cached as a miss", func(t *testing.T) {
+		l := &Language{}
+		capsule := port.Capsule{CapsuleID: "@my/app", Dir: "/"}
+		l.ResolveInternalTarget(memfs.New(), port.ImportSpec{Path: "@my/app/lib/utils"}, capsule, "src/app.ts")
+
+		cached, ok := l.tsconfigCache.Load("/")
+		if !ok {
+			t.Fatal("miss not cached: tsconfig would be re-read once per import")
+		}
+		if cfg := cached.(*tsconfig); cfg != nil {
+			t.Errorf("cached %v, want nil", cfg)
 		}
 	})
 
