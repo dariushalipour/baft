@@ -94,7 +94,7 @@ func TestWalk_CancelMidWalkWithSucceedingWorkers(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- ch.walk(ctx, fsys, capsuleDir) }()
+	go func() { done <- ch.walk(ctx, capsuleDir) }()
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()

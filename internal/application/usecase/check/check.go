@@ -304,7 +304,7 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 		return &capsuleResult{errors: ctrCtx.loadErr}, nil
 	}
 	chk := newCapsuleChecker(fsys, capsule, lang, repo, contractDir, ctrCtx, nestedDirs)
-	if err := chk.walk(ctx, fsys, capsule.Dir); err != nil {
+	if err := chk.walk(ctx, capsule.Dir); err != nil {
 		return nil, err
 	}
 	if !ctrCtx.hasRootContract && !chk.scoped {

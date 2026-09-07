@@ -271,7 +271,7 @@ func (s *namespaceResolutionStrategy) ShouldReportNoNodeViolation(abs string) bo
 
 func (s *namespaceResolutionStrategy) ShouldFailOnInvalidGlob() bool { return true }
 
-func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsuleDir string) error {
+func (ch *capsuleChecker) walk(ctx context.Context, capsuleDir string) error {
 	contractDirSep := ch.contractDirAbs + string(filepath.Separator)
 	var nestedSep []string
 	for _, nested := range ch.nestedCapsuleDirs {
@@ -280,7 +280,7 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 
 	var filesToCheck []fileWork
 
-	err := service.WalkAllFiles(ctx, fsys, capsuleDir, ch.lang, func(abs, rel string) error {
+	err := service.WalkAllFiles(ctx, ch.fsys, capsuleDir, ch.lang, func(abs, rel string) error {
 		ch.walked = append(ch.walked, abs)
 		if abs != ch.contractDirAbs && !strings.HasPrefix(abs, contractDirSep) {
 			return nil
@@ -324,7 +324,7 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 	results := runParallel(ctx, filesToCheck, func(in <-chan fileWork, emit func(fileCheckResult) bool) {
 		var acc fileCheckResult
 		for fw := range in {
-			res := ch.checkFileResult(fsys, fw.abs, fw.rel, fw.scopeDir)
+			res := ch.checkFileResult(fw.abs, fw.rel, fw.scopeDir)
 			if res.err != nil {
 				emit(res)
 				return
@@ -359,7 +359,7 @@ func (r *fileCheckResult) merge(o fileCheckResult) {
 	r.violations = append(r.violations, o.violations...)
 }
 
-func (ch *capsuleChecker) checkFileResult(fsys port.FileSystem, abs, fileRel string, scopeDir string) fileCheckResult {
+func (ch *capsuleChecker) checkFileResult(abs, fileRel string, scopeDir string) fileCheckResult {
 	cfgPath, scopeGraph := ch.resolveScope(scopeDir)
 	if scopeGraph == nil {
 		return fileCheckResult{}
@@ -372,7 +372,7 @@ func (ch *capsuleChecker) checkFileResult(fsys port.FileSystem, abs, fileRel str
 		if !ch.strategy.ShouldReportNoNodeViolation(abs) {
 			return fileCheckResult{filesEncountered: filesEncountered}
 		}
-		return fileCheckResult{filesEncountered: filesEncountered, violations: ch.handleNoNodeResult(fsys, abs, fileRel, scopeDir, cfgPath)}
+		return fileCheckResult{filesEncountered: filesEncountered, violations: ch.handleNoNodeResult(abs, fileRel, scopeDir, cfgPath)}
 	}
 
 	imports, err := ch.parseCache.loadOrParse(ch, abs)
@@ -409,7 +409,7 @@ func (ch *capsuleChecker) mergeFileResult(res fileCheckResult) {
 	ch.res.violations = append(ch.res.violations, res.violations...)
 }
 
-func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel, scopeDir, cfgPath string) []port.Violation {
+func (ch *capsuleChecker) handleNoNodeResult(abs, fileRel, scopeDir, cfgPath string) []port.Violation {
 	scopeRel := ch.scopeRel(scopeDir, abs)
 	noNode := makeNoNodeViolation(abs, scopeRel, cfgPath)
 	imports, err := ch.parseCache.loadOrParse(ch, abs)
@@ -422,7 +422,7 @@ func (ch *capsuleChecker) handleNoNodeResult(fsys port.FileSystem, abs, fileRel,
 	violations := make([]port.Violation, 0, 1+len(imports))
 	violations = append(violations, noNode)
 	for _, spec := range imports {
-		targetPath, internal := ch.lang.ResolveInternalTarget(fsys, spec, ch.capsule, fileRel)
+		targetPath, internal := ch.lang.ResolveInternalTarget(ch.fsys, spec, ch.capsule, fileRel)
 		if !internal {
 			continue
 		}

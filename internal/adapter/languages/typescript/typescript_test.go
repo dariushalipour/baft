@@ -2,9 +2,11 @@ package typescript
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 
+	"github.com/dariushalipour/baft/internal/adapter/fs/ignorefs"
 	"github.com/dariushalipour/baft/internal/adapter/fs/memfs"
 	"github.com/dariushalipour/baft/internal/application/service"
 	"github.com/dariushalipour/baft/internal/port"
@@ -772,5 +774,33 @@ func TestResolveInternalTarget_JSExtensions(t *testing.T) {
 			t.Errorf("ResolveInternalTarget(%q, file=%q) = (%q, %v), want (%q, %v)",
 				c.spec, c.fileRel, gotPath, gotIntl, c.wantPath, c.wantIntl)
 		}
+	}
+}
+
+// node_modules is excluded by the language's own base ignore entries, so a
+// dependency is never mistaken for a capsule even without a .gitignore.
+func TestDiscoverSkipsNodeModules(t *testing.T) {
+	fsys := memfs.New()
+	fsys.WriteFile("/app/package.json", []byte(`{"name": "@baft/app"}`), 0o644)
+	fsys.WriteFile("/app/BAFT.md", []byte("# App"), 0o644)
+	fsys.WriteFile("/app/node_modules/pkg/package.json", []byte(`{"name": "pkg"}`), 0o644)
+	fsys.WriteFile("/app/node_modules/pkg/BAFT.md", []byte("# Pkg"), 0o644)
+
+	disco := service.NewCapsuleDiscovery()
+	(&Language{}).Register(disco)
+	ignored, err := ignorefs.Wrap(fsys, ignorefs.Options{
+		RootDir:           "/",
+		BaseIgnoreEntries: disco.BaseIgnoreEntries(),
+	})
+	if err != nil && !errors.Is(err, ignorefs.ErrRepoRootUnreachable) {
+		t.Fatal(err)
+	}
+
+	got, err := disco.Discover(context.Background(), ignored, "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Capsule.CapsuleID != "@baft/app" {
+		t.Fatalf("expected only the app capsule, got %+v", got)
 	}
 }

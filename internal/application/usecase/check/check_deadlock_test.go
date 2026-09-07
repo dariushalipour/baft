@@ -79,7 +79,7 @@ func TestWalk_ContextCancelledFeederDoesntLeak(t *testing.T) {
 	before := runtime.NumGoroutine()
 
 	done := make(chan error, 1)
-	go func() { done <- ch.walk(ctx, fsys, capsuleDir) }()
+	go func() { done <- ch.walk(ctx, capsuleDir) }()
 
 	// Let workers start and block in ParseImports. Feeder fills the
 	// workChan buffer, then blocks because workers can't consume more.
@@ -217,7 +217,7 @@ func TestWalk_NoDeadlockWhenFilesExceedChannelBuffer(t *testing.T) {
 	}
 
 	done := make(chan error, 1)
-	go func() { done <- ch.walk(context.Background(), fsys, capsuleDir) }()
+	go func() { done <- ch.walk(context.Background(), capsuleDir) }()
 
 	select {
 	case err := <-done:

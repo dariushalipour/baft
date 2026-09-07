@@ -70,7 +70,7 @@ func TestWalk_ReturnsContextCanceledError(t *testing.T) {
 		contractDirAbs: capsuleDir,
 		scopeCache:     newScopeCache(fsys, repo),
 		parseCache:     newParseCache(),
-	}).walk(ctx, fsys, capsuleDir)
+	}).walk(ctx, capsuleDir)
 
 	if err == nil {
 		t.Fatal("expected error from walk due to context cancellation, got nil")
