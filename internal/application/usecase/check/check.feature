@@ -2113,3 +2113,103 @@ Feature: Architecture rule checking
     And 2 relations are examined
     And 3 files are encountered and 3 files are scanned
     And 0 errors and 0 violations are reported
+
+  Scenario: A contract above the checked root is not adopted
+    Given a fresh workspace at "/Users/jane" with this layout:
+      """tree
+      ├─ BAFT.md
+      └─ repo/
+         └─ svc/
+            ├─ go.mod
+            └─ internal/
+               └─ app/
+                  └─ order.go
+      """
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        notes["notes"]
+      ```
+      """
+    Given file "repo/svc/go.mod" has content "module example.com/billing"
+    Given file "repo/svc/internal/app/order.go" has content "package app"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/repo"
+    Then 0 capsules are discovered
+    And 0 errors and 0 violations are reported
+
+  Scenario: Import towards a baftignored directory is treated as external
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      ├─ .baftignore
+      └─ internal/
+         ├─ application/
+         │  └─ order.go
+         ├─ gen/
+         │  └─ client.go
+         └─ domain/
+            └─ order.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        app["internal/application"]
+        domain["internal/domain"]
+      
+        app --> domain
+      ```
+      """
+    Given file ".baftignore" has content:
+      """ignore
+      internal/gen/
+      """
+    Given file "internal/application/order.go" has content:
+      """go
+      package application
+      
+      import "example.com/billing/internal/domain"
+      import "example.com/billing/internal/gen"
+      """
+    Given file "internal/gen/client.go" has content "package gen"
+    Given file "internal/domain/order.go" has content "package domain"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 1 relation is examined
+    And 2 files are encountered and 2 files are scanned
+    And 0 errors and 0 violations are reported
+
+  Scenario: A contract inside a nested capsule does not track the outer capsule
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ cmd/
+      │  └─ main.go
+      └─ tools/
+         ├─ go.mod
+         ├─ BAFT.md
+         └─ gen/
+            └─ gen.go
+      """
+    Given file "go.mod" has content "module example.com/billing"
+    Given file "cmd/main.go" has content "package main"
+    Given file "tools/go.mod" has content "module example.com/tools"
+    Given file "tools/BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        gen["gen"]
+      ```
+      """
+    Given file "tools/gen/gen.go" has content "package gen"
+    Given the check uses the "go" language adapter
+    When the check runs from "/Users/jane/baft"
+    Then 1 capsule is discovered
+    And 0 relations are examined
+    And 1 file is encountered and 1 file is scanned
+    And 0 errors and 0 violations are reported

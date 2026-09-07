@@ -1,6 +1,7 @@
 package check
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +10,9 @@ import (
 	golangLang "github.com/dariushalipour/baft/internal/adapter/languages/golang"
 	"github.com/dariushalipour/baft/internal/domain/graph"
 )
+
+// noWitnesses stands in for the walked file list when a test has no files.
+func noWitnesses(string) []string { return nil }
 
 func mustLoadContractGraph(t *testing.T, md string) *graph.Graph {
 	t.Helper()
@@ -28,7 +32,7 @@ func TestValidateContractGraph_SimpleCycle(t *testing.T) {
 		`  domain --> app` + "\n" +
 		"```\n"
 
-	result := validateContractGraph(nil, nil, "/tmp/BAFT.md", mustLoadContractGraph(t, md))
+	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if len(result.Errors) != 1 {
 		t.Fatalf("expected 1 cycle error, got %d", len(result.Errors))
 	}
@@ -55,7 +59,7 @@ func TestValidateContractGraph_MultipleCycles(t *testing.T) {
 		`  d --> c` + "\n" +
 		"```\n"
 
-	result := validateContractGraph(nil, nil, "/tmp/BAFT.md", mustLoadContractGraph(t, md))
+	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if len(result.Errors) != 2 {
 		t.Fatalf("expected 2 cycle errors, got %d", len(result.Errors))
 	}
@@ -69,7 +73,7 @@ func TestValidateContractGraph_DuplicateCycleNotReportedTwice(t *testing.T) {
 		`  b --> a` + "\n" +
 		"```\n"
 
-	result := validateContractGraph(nil, nil, "/tmp/BAFT.md", mustLoadContractGraph(t, md))
+	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if len(result.Errors) != 1 {
 		t.Fatalf("expected 1 cycle error, got %d", len(result.Errors))
 	}
@@ -83,7 +87,7 @@ func TestValidateContractGraph_EmptyGlob(t *testing.T) {
 		`  a[""]` + "\n" +
 		"```\n"
 
-	result := validateContractGraph(nil, nil, "/tmp/BAFT.md", mustLoadContractGraph(t, md))
+	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if len(result.Errors) != 1 {
 		t.Fatalf("expected 1 error, got %d", len(result.Errors))
 	}
@@ -100,7 +104,7 @@ func TestValidateContractGraph_UndefinedEdgeNode(t *testing.T) {
 		`  app["internal/app/&ast;&ast;"] --> domain` + "\n" +
 		"```\n"
 
-	result := validateContractGraph(nil, nil, "/tmp/BAFT.md", mustLoadContractGraph(t, md))
+	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if len(result.Errors) != 1 {
 		t.Fatalf("expected 1 error, got %d", len(result.Errors))
 	}
@@ -118,7 +122,7 @@ func TestValidateContractGraph_DuplicateGlob(t *testing.T) {
 		`  b["internal/x/&ast;&ast;"]` + "\n" +
 		"```\n"
 
-	result := validateContractGraph(nil, nil, "/tmp/BAFT.md", mustLoadContractGraph(t, md))
+	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if !result.HasDuplicateGlobError {
 		t.Fatal("expected duplicate glob flag")
 	}
@@ -135,7 +139,7 @@ func TestValidateContractGraph_InvalidGlob(t *testing.T) {
 		`  a["../domain/&ast;&ast;"]` + "\n" +
 		"```\n"
 
-	result := validateContractGraph(nil, nil, "/tmp/BAFT.md", mustLoadContractGraph(t, md))
+	result := validateContractGraph("/tmp/BAFT.md", mustLoadContractGraph(t, md), noWitnesses)
 	if !result.HasInvalidGlobError {
 		t.Fatal("expected invalid glob flag")
 	}
@@ -172,7 +176,9 @@ func TestContractOverlapErrors_NoDuplicates(t *testing.T) {
 	g := mustLoadContractGraph(t, md)
 	lang := golangLang.Language{}
 
-	result := validateContractGraph(fsys, lang, "/tmp/BAFT.md", g)
+	result := validateContractGraph("/tmp/BAFT.md", g, func(cfgPath string) []string {
+		return collectDirKeys(fsys, lang, filepath.Dir(cfgPath))
+	})
 
 	overlapCount := 0
 	for _, e := range result.Errors {
@@ -209,7 +215,7 @@ func TestIsFileGlob_Strategy(t *testing.T) {
 		{"MyApp", true, false},                 // single-segment namespace
 		{"src/api/**", true, true},             // has "/" → file path glob
 		{"Api/*.*", true, true},                // has "/" and "*" → file glob
-		{"MyApp.Api.*", true, true},            // has "*" → glob pattern
+		{"MyApp.Api.*", true, false},           // namespace wildcard, matched by the graph index
 		{".", true, false},                     // root
 	}
 

@@ -144,7 +144,7 @@ This means a manifest inside an ignored directory is never discovered. A `go.mod
 
 ## Interaction with import resolution
 
-During import resolution, if a target file is ignored (either by `.gitignore` or `.baftignore`), the import is treated as external. The core receives `internal: false` and does not check it against contract file rules.
+During import resolution, if a target file or directory is ignored (either by `.gitignore` or `.baftignore`), the import is treated as external. The core receives `internal: false` and does not check it against contract file rules.
 
 This handles the common case where a project imports from a vendored or generated dependency that should not be part of the architectural graph.
 

@@ -249,7 +249,7 @@ Contract validation is part of that flow, but it is not the end goal. `check` va
 The `check` command works like this:
 
 1. Discovers all Capsules in the target directory.
-2. For each Capsule, finds the root contract file and any scoped contracts in subdirectories.
+2. For each Capsule, finds the root contract file and any scoped contracts in subdirectories. The search never climbs above the checked directory, so a stray `BAFT.md` in a parent directory is never adopted.
 3. Loads each contract, runs contract validation, and applies language-specific validation.
 4. Walks every tracked file and resolves its imports.
 5. For each import, determines the tracking scope and checks the edge against the appropriate graph.

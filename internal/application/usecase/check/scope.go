@@ -2,7 +2,6 @@ package check
 
 import (
 	"context"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -104,11 +103,13 @@ func (sf *StrategyFactory) BuildStrategyFromGraph(g *graph.Graph) ResolutionStra
 	return &pathResolutionStrategy{}
 }
 
-// BuildStrategy returns a ResolutionStrategy for the given files and root graph.
-// If namespace mode is enabled, it will build the necessary namespace indexes.
-func (sf *StrategyFactory) BuildStrategy(files []fileWork, rootGraph *graph.Graph) ResolutionStrategy {
-	if rootGraph == nil || !rootGraph.NamespaceMode || len(files) == 0 {
-		return &pathResolutionStrategy{}
+// BuildStrategy returns a ResolutionStrategy for the given files and root graph,
+// building namespace indexes when namespace mode is enabled. The second return
+// value reports namespace mode with no namespace declared by any scanned file;
+// the caller surfaces that as a diagnostic rather than falling back to path mode.
+func (sf *StrategyFactory) BuildStrategy(files []fileWork, rootGraph *graph.Graph) (ResolutionStrategy, bool) {
+	if rootGraph == nil || !rootGraph.NamespaceMode {
+		return &pathResolutionStrategy{}, false
 	}
 
 	fileNSMap := make(map[string]string, len(files))
@@ -119,19 +120,10 @@ func (sf *StrategyFactory) BuildStrategy(files []fileWork, rootGraph *graph.Grap
 			continue
 		}
 		fileNSMap[fw.abs] = ns
-		if ns != "" {
-			nsMap[ns] = append(nsMap[ns], fw.abs)
-		}
+		nsMap[ns] = append(nsMap[ns], fw.abs)
 	}
 
-	if len(nsMap) == 0 {
-		return &pathResolutionStrategy{}
-	}
-
-	return &namespaceResolutionStrategy{
-		fileNSMap: fileNSMap,
-		nsMap:     nsMap,
-	}
+	return &namespaceResolutionStrategy{fileNSMap: fileNSMap, nsMap: nsMap}, len(nsMap) == 0
 }
 
 type pathResolutionStrategy struct{}
@@ -314,13 +306,10 @@ func (s *namespaceResolutionStrategy) ResolveCrossScope(ctx *CrossScopeContext) 
 	return nil
 }
 
+// IsFileGlob treats only a path-shaped pattern as file-shaped: a namespace
+// wildcard such as "MyApp.Api.*" is matched by the graph index.
 func (s *namespaceResolutionStrategy) IsFileGlob(pattern string) bool {
-	for i := 0; i < len(pattern); i++ {
-		if pattern[i] == '/' || pattern[i] == '*' {
-			return true
-		}
-	}
-	return false
+	return strings.Contains(pattern, "/")
 }
 
 func (s *namespaceResolutionStrategy) ShouldReportNoNodeViolation(abs string) bool {
@@ -352,6 +341,9 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 
 		}
 		scopeDir := ch.trackingScope(abs)
+		if scopeDir != ch.capsule.Dir {
+			ch.scoped = true
+		}
 		filesToCheck = append(filesToCheck, fileWork{abs: abs, rel: rel, scopeDir: scopeDir})
 		return nil
 	})
@@ -359,7 +351,8 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 		return err
 	}
 
-	if len(filesToCheck) == 0 {
+	ch.files = filesToCheck
+	if len(filesToCheck) == 0 || (!ch.hasRootContract && !ch.scoped) {
 		return nil
 	}
 
@@ -369,7 +362,11 @@ func (ch *capsuleChecker) walk(ctx context.Context, fsys port.FileSystem, capsul
 	if ch.rootGraphIndex != nil {
 		rootGraph = ch.rootGraphIndex.Graph()
 	}
-	ch.strategy = ch.strategyFactory.BuildStrategy(filesToCheck, rootGraph)
+	strategy, noNamespaces := ch.strategyFactory.BuildStrategy(filesToCheck, rootGraph)
+	ch.strategy = strategy
+	if noNamespaces {
+		ch.res.errors = append(ch.res.errors, makeNamespaceModeNoNamespacesError(ch.contractPathAbs))
+	}
 
 	numWorkers := min(runtime.NumCPU(), len(filesToCheck))
 	workChan := make(chan fileWork, numWorkers*2)
@@ -530,7 +527,8 @@ func (ch *capsuleChecker) checkImportResult(spec port.ImportSpec, abs, fileRel, 
 		if !ch.targetVisible(t.abs) {
 			continue
 		}
-		relations++
+		// One import is one relation, however many files share the namespace.
+		relations = 1
 		targetScope := ch.trackingScope(t.abs)
 		if scopeDir == targetScope {
 			if seenInScope {
@@ -609,7 +607,7 @@ func (ch *capsuleChecker) resolveScope(scopeDir string) (string, *graph.GraphInd
 func (ch *capsuleChecker) validateAll() {
 	if ch.hasRootContract && ch.rootGraphIndex != nil {
 		g := ch.rootGraphIndex.Graph()
-		ch.applyContractValidation(validateContractGraph(ch.fsys, ch.lang, ch.contractPathAbs, g))
+		ch.applyContractValidation(validateContractGraph(ch.contractPathAbs, g, ch.witnessKeys))
 		ch.validateLanguageGraph(g, ch.contractPathAbs)
 	}
 	ch.scopeCache.iterate(func(entry *scopeEntry) {
@@ -618,10 +616,24 @@ func (ch *capsuleChecker) validateAll() {
 		}
 		if entry.graphIndex != nil {
 			g := entry.graphIndex.Graph()
-			ch.applyContractValidation(validateContractGraph(ch.fsys, ch.lang, entry.contractPath, g))
+			ch.applyContractValidation(validateContractGraph(entry.contractPath, g, ch.witnessKeys))
 			ch.validateLanguageGraph(g, entry.contractPath)
 		}
 	})
+}
+
+// witnessKeys returns the walked files as paths relative to the contract at
+// cfgPath, the candidates for a node-overlap witness. It reuses the walk's own
+// file list, so no extra tree traversal is needed.
+func (ch *capsuleChecker) witnessKeys(cfgPath string) []string {
+	baseDir := filepath.Dir(cfgPath)
+	keys := make([]string, 0, len(ch.files))
+	for _, fw := range ch.files {
+		if rel := relToSlash(baseDir, fw.abs); !escapesScope(rel) {
+			keys = append(keys, rel)
+		}
+	}
+	return keys
 }
 
 func (ch *capsuleChecker) applyContractValidation(result ContractValidationResult) {
@@ -749,20 +761,6 @@ func walkAncestorDirs(scopeDir, capsuleDir string, fn func(parentDir string) boo
 		}
 		dir = parent
 	}
-}
-
-func hasScopedContract(fsys port.FileSystem, capsuleDir string) bool {
-	found := false
-	_ = fsys.WalkDir(context.Background(), capsuleDir, func(abs string, d fs.DirEntry) error {
-		if d.IsDir() {
-			return nil
-		}
-		if d.Name() == port.ContractFile && abs != filepath.Join(capsuleDir, port.ContractFile) {
-			found = true
-		}
-		return nil
-	})
-	return found
 }
 
 type parseCache struct {

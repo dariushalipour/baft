@@ -4,7 +4,6 @@ import (
 	"context"
 	"io/fs"
 	"os"
-	"path/filepath"
 )
 
 // FileSystem abstracts all file system operations so the core logic
@@ -24,44 +23,25 @@ type FileSystem interface {
 	WalkDir(ctx context.Context, root string, fn func(abs string, d fs.DirEntry) error) error
 }
 
-// NotGitRepoError is returned when a directory is not inside a git
-// repository.
-type NotGitRepoError struct {
-	Path string
+// IgnoreLookup is implemented by filesystems that hide paths matched by
+// .gitignore/.baftignore rules. It tells a deliberately ignored path apart
+// from one that simply does not exist, which Stat alone cannot do.
+type IgnoreLookup interface {
+	IsIgnored(path string) bool
 }
 
-func (e *NotGitRepoError) Error() string {
-	return "not inside a git repository: " + e.Path
-}
-
-// IsTargetVisible reports whether a target path is visible through the
-// filesystem (i.e. not baftignored).
-//
-// When fsys is an ignorefs-wrapped FileSystem (the typical case), ignored
-// paths return fs.ErrNotExist from Stat. The function checks:
-//  1. The target itself is statable (file or directory with entries).
-//  2. A ".go" variant exists for directory-level targets (e.g. orphan.go).
-//
-// A directory whose entries are all ignored is considered invisible.
+// IsTargetVisible reports whether an import target belongs to the checked
+// tree. Ignored paths are invisible, and so is a directory whose entries are
+// all ignored. A target the filesystem cannot resolve at all stays visible:
+// extensionless Kotlin and Python targets have no on-disk counterpart.
 func IsTargetVisible(fsys FileSystem, targetAbs string) bool {
-	info, statErr := fsys.Stat(targetAbs)
-	if statErr == nil {
-		if !info.IsDir() {
-			return true
-		}
-		// For directories, check if any entries are visible.
-		entries, readErr := fsys.ReadDir(targetAbs)
-		if readErr == nil && len(entries) == 0 {
-			return false
-		}
+	if ig, ok := fsys.(IgnoreLookup); ok && ig.IsIgnored(targetAbs) {
+		return false
+	}
+	info, err := fsys.Stat(targetAbs)
+	if err != nil || !info.IsDir() {
 		return true
 	}
-
-	base := filepath.Base(targetAbs)
-	goFile := targetAbs + "/" + base + ".go"
-	if _, err := fsys.Stat(goFile); err == nil {
-		return true
-	}
-
-	return true
+	entries, readErr := fsys.ReadDir(targetAbs)
+	return readErr != nil || len(entries) > 0
 }

@@ -79,8 +79,26 @@ func (m *mockDirEntry) Type() fs.FileMode {
 }
 func (m *mockDirEntry) Info() (os.FileInfo, error) { return nil, nil }
 
+// ignoringFS reports one path as ignored, as an ignorefs-wrapped FileSystem does.
+type ignoringFS struct {
+	*mockFS
+	ignored string
+}
+
+func (f *ignoringFS) IsIgnored(path string) bool { return path == f.ignored }
+
 func TestIsTargetVisible(t *testing.T) {
-	t.Run("visible Go file via stat", func(t *testing.T) {
+	t.Run("ignored target is invisible, unknown target is not", func(t *testing.T) {
+		fsys := &ignoringFS{mockFS: &mockFS{}, ignored: "/example/gen"}
+		if IsTargetVisible(fsys, "/example/gen") {
+			t.Fatal("expected ignored target to be invisible")
+		}
+		if !IsTargetVisible(fsys, "/example/unknown") {
+			t.Fatal("expected unresolvable target to stay visible")
+		}
+	})
+
+	t.Run("visible when stat resolves the target", func(t *testing.T) {
 		fsys := &mockFS{
 			statFn: func(path string) (os.FileInfo, error) {
 				return mockFileInfo{name: "orphan.go", isDir: false}, nil
@@ -119,9 +137,6 @@ func TestIsTargetVisible(t *testing.T) {
 	t.Run("empty directory is visible (conservative)", func(t *testing.T) {
 		fsys := &mockFS{
 			statFn: func(path string) (os.FileInfo, error) {
-				if path == "/example/ignored/ignored.go" {
-					return nil, fs.ErrNotExist
-				}
 				return mockFileInfo{name: "ignored", isDir: true}, nil
 			},
 		}
@@ -144,7 +159,7 @@ func TestIsTargetVisible(t *testing.T) {
 		}
 	})
 
-	t.Run("visible fallback when no Go file, no stat, no ReadDir", func(t *testing.T) {
+	t.Run("visible fallback when the target cannot be resolved", func(t *testing.T) {
 		fsys := &mockFS{
 			statFn:    func(path string) (os.FileInfo, error) { return nil, fs.ErrNotExist },
 			readDirFn: func(string) ([]fs.DirEntry, error) { return nil, fs.ErrNotExist },
@@ -157,9 +172,6 @@ func TestIsTargetVisible(t *testing.T) {
 	t.Run("visible when stat succeeds and target is not a directory", func(t *testing.T) {
 		fsys := &mockFS{
 			statFn: func(path string) (os.FileInfo, error) {
-				if path == "/example/foo.go" {
-					return nil, fs.ErrNotExist
-				}
 				return mockFileInfo{name: "data.json", isDir: false}, nil
 			},
 		}

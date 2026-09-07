@@ -311,6 +311,12 @@ func (w *ignoreWrapper) ignored(parts []string, isDir bool, local gitignore.Matc
 	return ignored
 }
 
+// IsIgnored reports whether path is hidden by base, ancestor or local ignore
+// rules, regardless of whether it exists.
+func (w *ignoreWrapper) IsIgnored(path string) bool {
+	return w.isIgnoredWithDir(path, dirUnknown)
+}
+
 func (w *ignoreWrapper) ReadFile(path string) ([]byte, error) {
 	if w.isIgnoredWithDir(path, dirIsFile) {
 		return nil, &fs.PathError{Op: "read", Path: path, Err: fs.ErrNotExist}

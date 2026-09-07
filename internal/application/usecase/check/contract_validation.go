@@ -21,10 +21,15 @@ type ContractValidationResult struct {
 }
 
 func ValidateContract(fsys port.FileSystem, lang port.Language, contractPath string, g *graph.Graph) ContractValidationResult {
-	return validateContractGraph(fsys, lang, contractPath, g)
+	return validateContractGraph(contractPath, g, func(cfgPath string) []string {
+		return collectDirKeys(fsys, lang, filepath.Dir(cfgPath))
+	})
 }
 
-func validateContractGraph(fsys port.FileSystem, lang port.Language, contractPath string, g *graph.Graph) ContractValidationResult {
+// validateContractGraph validates g. witnesses supplies the contract-relative
+// file paths used to witness node overlaps; it is only called when a candidate
+// overlapping pair exists.
+func validateContractGraph(contractPath string, g *graph.Graph, witnesses func(cfgPath string) []string) ContractValidationResult {
 	var result ContractValidationResult
 	if g == nil {
 		return result
@@ -46,7 +51,7 @@ func validateContractGraph(fsys port.FileSystem, lang port.Language, contractPat
 		result.Errors = append(result.Errors, invalidGlobErrors...)
 	}
 
-	overlapErrors := contractOverlapErrors(fsys, lang, g, contractPath)
+	overlapErrors := contractOverlapErrors(g, contractPath, witnesses)
 	if len(overlapErrors) > 0 {
 		result.HasOverlapError = true
 		result.Errors = append(result.Errors, overlapErrors...)
@@ -203,11 +208,7 @@ func invalidNodeGlobErrors(g *graph.Graph, cfgPath string) []port.Violation {
 	return errs
 }
 
-func contractOverlapErrors(fsys port.FileSystem, lang port.Language, g *graph.Graph, cfgPath string) []port.Violation {
-	if fsys == nil || lang == nil {
-		return nil
-	}
-
+func contractOverlapErrors(g *graph.Graph, cfgPath string, witnesses func(cfgPath string) []string) []port.Violation {
 	ids := make([]string, 0, len(g.Nodes))
 	for id := range g.Nodes {
 		ids = append(ids, id)
@@ -235,7 +236,7 @@ func contractOverlapErrors(fsys port.FileSystem, lang port.Language, g *graph.Gr
 		return nil
 	}
 
-	dirKeys := collectDirKeys(fsys, lang, filepath.Dir(cfgPath))
+	dirKeys := witnesses(cfgPath)
 	if len(dirKeys) == 0 {
 		return nil
 	}
@@ -287,6 +288,9 @@ func contractOverlapErrors(fsys port.FileSystem, lang port.Language, g *graph.Gr
 }
 
 func collectDirKeys(fsys port.FileSystem, lang port.Language, baseDir string) []string {
+	if fsys == nil || lang == nil {
+		return nil
+	}
 	var keys []string
 	_ = service.WalkAllFiles(context.Background(), fsys, baseDir, lang, func(abs, rel string) error {
 		keys = append(keys, rel)

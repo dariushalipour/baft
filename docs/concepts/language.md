@@ -204,6 +204,8 @@ C# contracts can opt into namespace mode via `%% config namespaceMode "true"`. I
 
 Namespace mode is opt-in per contract. Java and Kotlin can also use namespace mode with the same infrastructure.
 
+Node patterns may use wildcards (`api["MyApp.Api.*"]`); only a pattern containing `/` is file-shaped. Each `using` counts as one relation regardless of how many files share the target namespace. If no scanned file declares a namespace, the check reports `namespace-mode-no-namespaces` instead of silently reverting to path matching.
+
 Language modules do not:
 
 - **Discover capsules** — Capsule discovery is handled by the core

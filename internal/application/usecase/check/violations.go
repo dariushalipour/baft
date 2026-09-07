@@ -103,6 +103,16 @@ func makeFileGlobUnsupportedError(id, cfgPath string, line int, glob string) por
 	}
 }
 
+func makeNamespaceModeNoNamespacesError(cfgPath string) port.Violation {
+	return port.Violation{
+		Rule:     "namespace-mode-no-namespaces",
+		Severity: "error",
+		Source:   "baft",
+		Message:  fmt.Sprintf("namespaceMode is enabled but no scanned file declares a namespace (%s)", cfgPath),
+		File:     cfgPath,
+	}
+}
+
 func makeInvalidNodeGlobError(id, cfgPath string, line int, glob, msg string) port.Violation {
 	return port.Violation{
 		Rule:     "invalid-node-glob",

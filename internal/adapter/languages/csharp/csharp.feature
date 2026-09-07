@@ -264,3 +264,132 @@ Feature: C# language adapter with namespace mode
     When the check runs from "/Users/jane/myapp"
     Then 1 capsule is discovered
     And 0 errors and 1 violations are reported
+
+  Scenario: Namespace mode accepts wildcard namespace nodes
+    Given a fresh workspace at "/Users/jane/myapp" with this layout:
+      """tree
+      ├─ MyApp.csproj
+      ├─ BAFT.md
+      ├─ Api/
+      │  └─ Controller.cs
+      └─ Domain/
+         └─ Entity.cs
+      """
+    Given file "MyApp.csproj" has content "<Project><PropertyGroup><RootNamespace>MyApp</RootNamespace></PropertyGroup></Project>"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config namespaceMode "true"
+        api["MyApp.Api.&ast;"]
+        domain["MyApp.Domain.&ast;"]
+        api --> domain
+      ```
+      """
+    Given file "Api/Controller.cs" has content:
+      """csharp
+      using MyApp.Domain.Entities;
+
+      namespace MyApp.Api.Controllers
+      {
+          public class Controller { }
+      }
+      """
+    Given file "Domain/Entity.cs" has content:
+      """csharp
+      using MyApp.Api.Controllers;
+
+      namespace MyApp.Domain.Entities
+      {
+          public class Entity { }
+      }
+      """
+    Given the check uses the "csharp" language adapter
+    When the check runs from "/Users/jane/myapp"
+    Then 1 capsule is discovered
+    And 2 relations are examined
+    And 0 errors and 1 violations are reported
+
+  Scenario: Namespace mode without any declared namespace reports a diagnostic
+    Given a fresh workspace at "/Users/jane/myapp" with this layout:
+      """tree
+      ├─ MyApp.csproj
+      ├─ BAFT.md
+      └─ Api/
+         └─ Controller.cs
+      """
+    Given file "MyApp.csproj" has content "<Project><PropertyGroup><RootNamespace>MyApp</RootNamespace></PropertyGroup></Project>"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config namespaceMode "true"
+        api["MyApp.Api"]
+        domain["MyApp.Domain"]
+        api --> domain
+      ```
+      """
+    Given file "Api/Controller.cs" has content:
+      """csharp
+      public class Controller { }
+      """
+    Given the check uses the "csharp" language adapter
+    When the check runs from "/Users/jane/myapp"
+    Then 1 capsule is discovered
+    And 1 error and 0 violations are reported
+    And the error is:
+      """errors
+      /Users/jane/myapp: namespaceMode is enabled but no scanned file declares a namespace (/Users/jane/myapp/BAFT.md)
+      """
+
+  Scenario: One using counts as one relation regardless of files in the namespace
+    Given a fresh workspace at "/Users/jane/myapp" with this layout:
+      """tree
+      ├─ MyApp.csproj
+      ├─ BAFT.md
+      ├─ Api/
+      │  └─ Controller.cs
+      └─ Domain/
+         ├─ Entity.cs
+         └─ Value.cs
+      """
+    Given file "MyApp.csproj" has content "<Project><PropertyGroup><RootNamespace>MyApp</RootNamespace></PropertyGroup></Project>"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        %% config namespaceMode "true"
+        api["MyApp.Api"]
+        domain["MyApp.Domain"]
+        api --> domain
+      ```
+      """
+    Given file "Api/Controller.cs" has content:
+      """csharp
+      using MyApp.Domain;
+
+      namespace MyApp.Api
+      {
+          public class Controller { }
+      }
+      """
+    Given file "Domain/Entity.cs" has content:
+      """csharp
+      namespace MyApp.Domain
+      {
+          public class Entity { }
+      }
+      """
+    Given file "Domain/Value.cs" has content:
+      """csharp
+      namespace MyApp.Domain
+      {
+          public class Value { }
+      }
+      """
+    Given the check uses the "csharp" language adapter
+    When the check runs from "/Users/jane/myapp"
+    Then 1 capsule is discovered
+    And 1 relation is examined
+    And 3 files are encountered and 3 files are scanned
+    And 0 errors and 0 violations are reported

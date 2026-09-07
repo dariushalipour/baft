@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/dariushalipour/baft/internal/port"
 )
@@ -90,46 +91,44 @@ func TrackingScope(fsys port.FileSystem, absFile string, capsuleDir string) stri
 	}
 }
 
-// FindContract walks upward from startDir toward capsuleDir looking for
-// a contract file. It returns the absolute path to the nearest ancestor
-// contract file, or capsuleDir/BAFT.md if none is found.
-func FindContract(fsys port.FileSystem, startDir string, capsuleDir string) string {
-	dir := startDir
-	for {
-		contractPath := filepath.Join(dir, port.ContractFile)
-		if _, err := fsys.Stat(contractPath); err == nil {
-			return contractPath
+// absDir returns dir in absolute, cleaned form.
+func absDir(dir string) string {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return filepath.Clean(dir)
+	}
+	return abs
+}
+
+// contractDirFor returns the nearest directory at or above startDir holding a
+// contract file. The climb never leaves capsuleDir, so a stray contract in an
+// ancestor of the checked root is never adopted. When none is found it returns
+// startDir with false.
+func contractDirFor(fsys port.FileSystem, startDir, capsuleDir string) (string, bool) {
+	start := absDir(startDir)
+	prefix := absDir(capsuleDir) + string(filepath.Separator)
+	for dir := start; ; dir = filepath.Dir(dir) {
+		if _, err := fsys.Stat(filepath.Join(dir, port.ContractFile)); err == nil {
+			return dir, true
 		}
-		if dir == capsuleDir {
-			return filepath.Join(capsuleDir, port.ContractFile)
+		if !strings.HasPrefix(dir, prefix) {
+			return start, false
 		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return filepath.Join(capsuleDir, port.ContractFile)
-		}
-		dir = parent
 	}
 }
 
-// FindOrCreateContractDir walks upward from startDir toward capsuleDir.
-// If a contract file already exists in any directory along the way, it
-// returns that directory (contract exists). If no contract file is found,
-// it returns startDir (contract should be created there). The second
-// return value is true if the contract file already exists.
-func FindOrCreateContractDir(fsys port.FileSystem, startDir string, capsuleDir string) (contractDir string, exists bool) {
-	dir := startDir
-	for {
-		contractPath := filepath.Join(dir, port.ContractFile)
-		if _, err := fsys.Stat(contractPath); err == nil {
-			return dir, true
-		}
-		if dir == capsuleDir {
-			return startDir, false
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return startDir, false
-		}
-		dir = parent
+// FindContract returns the absolute path of the nearest contract file at or
+// above startDir, bounded by capsuleDir, or capsuleDir/BAFT.md if none exists.
+func FindContract(fsys port.FileSystem, startDir string, capsuleDir string) string {
+	if dir, ok := contractDirFor(fsys, startDir, capsuleDir); ok {
+		return filepath.Join(dir, port.ContractFile)
 	}
+	return filepath.Join(absDir(capsuleDir), port.ContractFile)
+}
+
+// FindOrCreateContractDir returns the directory of the nearest contract file at
+// or above startDir, bounded by capsuleDir, and whether it already exists. When
+// no contract exists it returns startDir, where one should be created.
+func FindOrCreateContractDir(fsys port.FileSystem, startDir string, capsuleDir string) (contractDir string, exists bool) {
+	return contractDirFor(fsys, startDir, capsuleDir)
 }

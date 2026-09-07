@@ -81,6 +81,8 @@ type capsuleChecker struct {
 	strategy          ResolutionStrategy
 	scopeMemo         sync.Map // dir -> tracking scope
 	visibleMemo       sync.Map // abs -> target visibility
+	files             []fileWork
+	scoped            bool
 	contractContext
 }
 
@@ -333,12 +335,12 @@ func checkCapsule(ctx context.Context, fsys port.FileSystem, capsule port.Capsul
 	if len(ctrCtx.loadErr) > 0 && ctrCtx.rootGraphIndex == nil {
 		return &capsuleResult{errors: ctrCtx.loadErr}, nil
 	}
-	if !ctrCtx.hasRootContract && !hasScopedContract(fsys, capsule.Dir) {
-		return nil, nil
-	}
 	chk := newCapsuleChecker(fsys, capsule, lang, repo, contractDir, ctrCtx, nestedDirs)
 	if err := chk.walk(ctx, fsys, capsule.Dir); err != nil {
 		return nil, err
+	}
+	if !ctrCtx.hasRootContract && !chk.scoped {
+		return nil, nil
 	}
 	chk.validateAll()
 	if chk.res.hasOverlapError || chk.res.hasDuplicateGlobError {
