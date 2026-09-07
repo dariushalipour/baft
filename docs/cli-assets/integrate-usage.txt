@@ -5,7 +5,7 @@ and verify that the plugin is compatible with the current CLI.
 
 By default, this command is interactive and prompts you to select an IDE.
 Use --yes to automatically install to the first detected IDE, or combine
-with --integration to target a specific family.
+with --integration to target a specific IDE.
 
 Examples:
   baft integrate
@@ -14,7 +14,9 @@ Examples:
 Flags:
   --help, -h                  Show this help
   --yes, -y                   Auto-select first detected IDE (non-interactive)
-  --integration <family>      Target a specific family (vscode, jetbrains)
+  --integration <id>          Target one IDE id (vscode, vscode-insiders, intellij-ultimate,
+                              intellij-community, goland, webstorm, rider, android-studio,
+                              rustrover) or a family (vscode, jetbrains)
   --verify-compatible         Print a JSON compatibility report instead of installing;
                               requires --integration, --plugin-version and --protocol
   --plugin-version <version>  Installed plugin version, for --verify-compatible

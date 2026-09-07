@@ -48,6 +48,7 @@ vi.mock("vscode", () => ({
     onDidSaveTextDocument: (fn: (arg: unknown) => void) => register("save", fn),
     onDidChangeTextDocument: (fn: (arg: unknown) => void) => register("change", fn),
     onDidCloseTextDocument: (fn: (arg: unknown) => void) => register("close", fn),
+    onDidChangeConfiguration: (fn: (arg: unknown) => void) => register("config", fn),
     applyEdit: () => Promise.resolve(true),
   },
 }));
@@ -134,6 +135,17 @@ describe("activate", () => {
 
     expect(publish).toHaveBeenCalledTimes(1);
     expect(showErrorMessage).toHaveBeenCalledWith("discovery: boom");
+  });
+
+  it("re-verifies against a newly configured binary", async () => {
+    await save();
+    expect(verifyCompatibility).toHaveBeenCalledTimes(1);
+
+    handlers.config({ affectsConfiguration: (key: string) => key === "baft.binaryPath" });
+    await flush();
+    await save();
+
+    expect(verifyCompatibility).toHaveBeenCalledTimes(2);
   });
 
   it("runs one check per burst of edits", async () => {

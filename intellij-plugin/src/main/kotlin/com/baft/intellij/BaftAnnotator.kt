@@ -54,9 +54,8 @@ class BaftAnnotator : ExternalAnnotator<BaftAnnotatorInfo, List<BaftViolation>>(
         if (compatibilityChecker.check() !is CompatibilityResult.Success) return emptyList()
 
         val result = checkRunner.check(info.projectRoot, info.overlayJson)
-        if (result.errors.isNotEmpty()) {
-            notifyError("Baft check failed: " + result.errors.joinToString("\n"))
-        }
+        if (result.errors.isEmpty()) notifications.reset()
+        else notifyError("Baft check failed: " + result.errors.joinToString("\n"))
         return result.violations.filter { it.file == info.filePath }
     }
 
@@ -172,7 +171,8 @@ private fun collectOverlayJson(projectRoot: String): String? {
         val filePath = File(virtualFile.path).toPath().normalize()
         if (!filePath.startsWith(rootPath)) return@mapNotNull null
         BaftOverlayFile(virtualFile.path, document.text)
-    }.distinctBy { it.path }
+        // unsavedDocuments is unordered; sorting keeps the per-root cache key stable.
+    }.distinctBy { it.path }.sortedBy { it.path }
     if (files.isEmpty()) return null
     return gson.toJson(BaftOverlayPayload(files))
 }

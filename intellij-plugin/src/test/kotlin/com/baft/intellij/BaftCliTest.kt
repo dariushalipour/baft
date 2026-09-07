@@ -8,11 +8,16 @@ import kotlin.test.assertTrue
 class BaftCliTest {
 
     @Test
-    fun `only files baft scans trigger a check`() {
-        for (path in listOf("/repo/a.go", "/repo/a.tsx", "/repo/a.pyi", "/repo/BAFT.md")) {
+    fun `only files that can change a check trigger one`() {
+        val scanned = listOf(
+            "/repo/a.go", "/repo/a.tsx", "/repo/a.pyi", "/repo/a.csproj", "/repo/BAFT.md",
+            "/repo/go.mod", "/repo/package.json", "/repo/build.gradle.kts",
+            "/repo/tsconfig.json", "/repo/tsconfig.build.json", "/repo/.baftignore", "/repo/.gitignore",
+        )
+        for (path in scanned) {
             assertTrue(isScannedByBaft(path), path)
         }
-        for (path in listOf("/repo/CHANGELOG.md", "/repo/a.json", "/repo/NOTBAFT.md")) {
+        for (path in listOf("/repo/CHANGELOG.md", "/repo/README.md", "/repo/a.json", "/repo/NOTBAFT.md")) {
             assertFalse(isScannedByBaft(path), path)
         }
     }
@@ -35,6 +40,9 @@ class BaftCliTest {
         assertFalse(deduper.isNew("Baft check failed"))
         assertTrue(deduper.isNew(versionMismatchDetail("mismatch", "0.4.0", "0.3.1")))
         assertFalse(deduper.isNew("Installed: 0.3.1, Expected: 0.4.0"))
+        assertTrue(deduper.isNew("Baft check failed"))
+
+        deduper.reset()
         assertTrue(deduper.isNew("Baft check failed"))
     }
 

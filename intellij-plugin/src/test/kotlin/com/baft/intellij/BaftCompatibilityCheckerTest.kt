@@ -52,7 +52,7 @@ class BaftCompatibilityCheckerTest {
     @Test
     fun `check returns failure for non-version-mismatch incompatibility`() {
         mockFactory.nextProcess = MockProcessResult(
-            stdout = """{"compatible":false,"code":"protocol_mismatch","message":"Baft plugin protocol mismatch: plugin uses protocol 2, CLI expects protocol 3"}""",
+            stdout = """{"compatible":false,"code":"protocol_mismatch","message":"Baft plugin protocol mismatch: plugin uses protocol 2, CLI expects protocol 4"}""",
             exitValue = 1,
         )
 
@@ -202,6 +202,7 @@ data class MockProcessResult(
     val stdout: String = "",
     val stderr: String = "",
     val exitValue: Int = 0,
+    val timesOut: Boolean = false,
 )
 
 class TestProcessBuilderFactory : BaftCompatibilityChecker.ProcessBuilderFactory {
@@ -221,9 +222,12 @@ class MockProcess(private val result: MockProcessResult) : java.lang.Process() {
     override fun getInputStream(): java.io.InputStream = stdoutStream
     override fun getOutputStream(): java.io.OutputStream = ByteArrayOutputStream()
     override fun getErrorStream(): java.io.InputStream = stderrStream
+    var destroyedForcibly = false
+
     override fun waitFor(): Int = result.exitValue
-    override fun waitFor(timeout: Long, unit: java.util.concurrent.TimeUnit): Boolean = true
+    override fun waitFor(timeout: Long, unit: java.util.concurrent.TimeUnit): Boolean = !result.timesOut
     override fun destroy() {}
+    override fun destroyForcibly(): java.lang.Process = also { destroyedForcibly = true }
     override fun isAlive() = false
     override fun exitValue(): Int = result.exitValue
 }

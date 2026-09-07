@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-const protocolVersion = 3
+const protocolVersion = 4
 
 // Stable, machine-readable classifications of a compatibility report.
 // Clients switch on these instead of matching the human-readable message.

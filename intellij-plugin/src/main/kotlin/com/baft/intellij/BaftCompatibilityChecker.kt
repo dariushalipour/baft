@@ -43,7 +43,7 @@ class BaftCompatibilityChecker(
     private val onFailure: (message: String) -> Unit,
     private val gson: Gson = Gson(),
     private val integrationId: () -> String = { "jetbrains" },
-    private val protocolVersion: Int = 3,
+    private val protocolVersion: Int = 4,
     private val processBuilderFactory: ProcessBuilderFactory = DefaultProcessBuilderFactory,
 ) {
 
@@ -114,7 +114,9 @@ class BaftCompatibilityChecker(
 
         return when {
             report?.compatible == true -> CompatibilityResult.success()
-            report?.code == COMPATIBILITY_VERSION_MISMATCH -> CompatibilityResult.versionMismatch(
+            // A CLI older than the `code` field only says it in the message.
+            report?.code == COMPATIBILITY_VERSION_MISMATCH ||
+                (report?.code == null && report?.message?.contains("version mismatch") == true) -> CompatibilityResult.versionMismatch(
                 report.message ?: "Baft plugin version mismatch",
                 report.expected_version,
                 report.plugin_version,

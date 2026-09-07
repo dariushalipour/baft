@@ -57,7 +57,8 @@ export function activate(context: vscode.ExtensionContext): void {
         lastError = "";
         return true;
       }
-      if (report.code === "version_mismatch") {
+      // A CLI older than the `code` field only says it in the message.
+      if (report.code === "version_mismatch" || (!report.code && report.message?.includes("version mismatch"))) {
         showVersionMismatch(report);
       } else {
         notifyFailure(report.message || "Baft compatibility check failed");
@@ -152,6 +153,12 @@ export function activate(context: vscode.ExtensionContext): void {
     } catch (err: unknown) {
       if (runs.get(root) !== runId) return;
       notifyFailure(failureMessage(err));
+    }
+  }
+
+  function checkEveryFolder(): void {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      checkFolder(folder.uri.fsPath);
     }
   }
 
@@ -273,12 +280,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidCloseTextDocument((doc) => {
       const root = rootToCheck(doc);
       if (root) scheduleCheck(root);
+    }),
+    // A new binary is a new CLI: the latched verdict says nothing about it.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("baft.binaryPath")) return;
+      compatible = false;
+      lastError = "";
+      checkEveryFolder();
     })
   );
 
-  for (const folder of vscode.workspace.workspaceFolders ?? []) {
-    checkFolder(folder.uri.fsPath);
-  }
+  checkEveryFolder();
 }
 
 export function deactivate(): void {}

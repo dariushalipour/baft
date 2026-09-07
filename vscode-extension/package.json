@@ -3,7 +3,7 @@
   "displayName": "🧶 Baft",
   "description": "Architecture violation diagnostics powered by the 🧶 Baft CLI",
   "icon": "icons/icon.png",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "publisher": "dariushalipour",
   "author": "Dariush Alipour (@dariushalipour)",
   "repository": {

@@ -69,7 +69,7 @@ describe("verifyCompatibility", () => {
       compatible: true,
       message: "compatible",
       integration_id: "vscode",
-      protocol: 3,
+      protocol: 4,
     };
     mockSpawn.mockReturnValue(createMockProcess({ stdout: JSON.stringify(report) }));
 
@@ -79,7 +79,7 @@ describe("verifyCompatibility", () => {
     expect(result?.compatible).toBe(true);
     expect(mockSpawn).toHaveBeenCalledWith(
       "baft",
-      expect.arrayContaining(["--verify-compatible", "--integration=vscode", "--plugin-version=0.2.1", "--protocol=3"]),
+      expect.arrayContaining(["--verify-compatible", "--integration=vscode", "--plugin-version=0.2.1", "--protocol=4"]),
       expect.any(Object)
     );
   });
@@ -285,11 +285,24 @@ describe("runRestyle", () => {
 });
 
 describe("isScanned", () => {
-  it("matches files baft scans and the contract, nothing else", () => {
-    for (const path of ["/repo/a.go", "/repo/a.tsx", "/repo/a.pyi", "/repo/BAFT.md"]) {
+  it("matches everything that can change a check, nothing else", () => {
+    for (const path of [
+      "/repo/a.go",
+      "/repo/a.tsx",
+      "/repo/a.pyi",
+      "/repo/a.csproj",
+      "/repo/BAFT.md",
+      "/repo/go.mod",
+      "/repo/package.json",
+      "/repo/build.gradle.kts",
+      "/repo/tsconfig.json",
+      "/repo/tsconfig.build.json",
+      "/repo/.baftignore",
+      "/repo/.gitignore",
+    ]) {
       expect(isScanned(path)).toBe(true);
     }
-    for (const path of ["/repo/CHANGELOG.md", "/repo/a.json", "/repo/NOTBAFT.md"]) {
+    for (const path of ["/repo/CHANGELOG.md", "/repo/README.md", "/repo/a.json", "/repo/NOTBAFT.md"]) {
       expect(isScanned(path)).toBe(false);
     }
   });

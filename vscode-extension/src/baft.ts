@@ -1,10 +1,13 @@
 import { spawn, ChildProcess } from "child_process";
 import * as vscode from "vscode";
 
-const PROTOCOL_VERSION = 3;
+const PROTOCOL_VERSION = 4;
 
-// Files baft scans, plus the contract itself. Nothing else can change a result.
-const SCANNED = /(\.(go|ts|tsx|py|pyi|rs|java|kt|cs|dart)|[\\/]BAFT\.md)$/;
+// Everything that can change a check: the sources baft scans, the contract,
+// the capsule manifests that delimit them, and the files that decide what is
+// scanned at all. Keep in sync with isScannedByBaft in the IntelliJ plugin.
+const SCANNED =
+  /(\.(go|ts|tsx|py|pyi|rs|java|kt|cs|csproj|dart)|[\\/](BAFT\.md|go\.mod|package\.json|pom\.xml|build\.gradle(\.kts)?|Cargo\.toml|pyproject\.toml|setup\.py|pubspec\.yaml|tsconfig[^\\/]*\.json|\.gitignore|\.baftignore))$/;
 
 export interface Violation {
   rule: string;

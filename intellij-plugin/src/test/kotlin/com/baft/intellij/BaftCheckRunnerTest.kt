@@ -55,6 +55,47 @@ class BaftCheckRunnerTest {
     }
 
     @Test
+    fun `a failure that outlives the stale window drops the last good violations`() {
+        var payload = """{"violations":[$violationJson],"errors":[]}"""
+        var clock = 0L
+        val runner = BaftCheckRunner(
+            binaryPath = { "/fake/baft" },
+            environment = { emptyMap() },
+            ttlMillis = 0,
+            staleMillis = 5 * 60_000,
+            now = { clock },
+            start = { MockProcess(MockProcessResult(stdout = payload)) },
+        )
+
+        runner.check("/repo", null)
+        payload = """{"violations":[],"errors":["discovery: boom"]}"""
+        clock = 60_000
+        assertEquals(1, runner.check("/repo", null).violations.size)
+
+        clock = 6 * 60_000
+        val stale = runner.check("/repo", null)
+
+        assertEquals(emptyList(), stale.violations)
+        assertEquals(listOf("discovery: boom"), stale.errors)
+    }
+
+    @Test
+    fun `a hung check is killed and reported instead of blocking every annotator`() {
+        val process = MockProcess(MockProcessResult(timesOut = true))
+        val runner = BaftCheckRunner(
+            binaryPath = { "/fake/baft" },
+            environment = { emptyMap() },
+            timeoutMillis = 10,
+            start = { process },
+        )
+
+        val result = runner.check("/repo", null)
+
+        assertTrue(result.errors.single().contains("timed out"))
+        assertTrue(process.destroyedForcibly)
+    }
+
+    @Test
     fun `unreadable output is reported as an error, not as zero violations`() {
         val runner = testRunner("not json")
 
