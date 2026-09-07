@@ -184,9 +184,12 @@ func TestRestyleContractReportsUnchangedOutput(t *testing.T) {
 func TestRestyleContractReturnsParseError(t *testing.T) {
 	repo := &mermaid.MermaidRepository{}
 
-	_, _, err := RestyleContract("not mermaid", repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant})
+	_, _, err := RestyleContract("```mermaid\nflowchart TD\n  a[\"a\"]\n  a --> \n```\n", repo, port.GraphSaveOptions{ColorPalette: port.ColorPaletteVibrant})
 	if err == nil {
 		t.Fatal("expected parse error")
+	}
+	if want := "edge has an empty node reference in \"a -->\" (line 4)"; err.Error() != want {
+		t.Fatalf("got %q, want %q", err, want)
 	}
 }
 

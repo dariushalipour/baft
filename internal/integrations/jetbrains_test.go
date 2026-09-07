@@ -107,6 +107,25 @@ func TestJetBrainsVerifyRejectsStaleInstalledVersion(t *testing.T) {
 	}
 }
 
+// The plugin compiles against the Kotlin API the oldest supported IDE bundles
+// (intellij-plugin/build.gradle.kts), so shipping a stdlib would only re-add
+// megabytes the IDE already has.
+func TestEmbeddedJetBrainsArchiveShipsNoKotlinStdlib(t *testing.T) {
+	asset, err := embeddedAssets.ReadFile(jetbrainsAssetPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	reader, err := zip.NewReader(bytes.NewReader(asset), int64(len(asset)))
+	if err != nil {
+		t.Fatalf("zip.NewReader: %v", err)
+	}
+	for _, file := range reader.File {
+		if strings.Contains(file.Name, "kotlin-stdlib") {
+			t.Fatalf("embedded JetBrains archive bundles the Kotlin stdlib: %s", file.Name)
+		}
+	}
+}
+
 func pluginArchive(t *testing.T, rootDir, jarName, pluginID, name, version string) []byte {
 	t.Helper()
 	var archive bytes.Buffer

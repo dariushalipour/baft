@@ -878,6 +878,34 @@ Feature: Dump BAFT.md from actual imports
       """
     And file "BAFT.md" should stay the same
 
+  Scenario: Dump reports the line number of an unparseable contract line
+    Given a fresh workspace at "/Users/jane/baft" with this layout:
+      """tree
+      ├─ go.mod
+      ├─ BAFT.md
+      └─ main.go
+      """
+    Given file "go.mod" has content "module example.com/invalid"
+    Given file "BAFT.md" has content:
+      """config
+      ```mermaid
+      flowchart TD
+        root["."]
+        ?!?
+      ```
+      """
+    Given file "main.go" has content:
+      """go
+      package main
+      func main() {}
+      """
+    Given the dump uses the "go" language adapter
+    When the dump runs from "/Users/jane/baft"
+    Then the error is:
+      """
+      /Users/jane/baft/BAFT.md: contract-load-error: unrecognized mermaid line: ?!? (line 4)
+      """
+
   Scenario: Dump skips and reports existing BAFT.md with circular dependency
     Given a fresh workspace at "/Users/jane/baft" with this layout:
       """tree

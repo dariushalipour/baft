@@ -1414,8 +1414,14 @@ func TestRestyleKeepsCRLFLineEndings(t *testing.T) {
 }
 
 func TestRestyleReturnsParseError(t *testing.T) {
-	if _, err := (&MermaidRepository{}).Restyle("no fence here\n", port.GraphSaveOptions{}); err == nil {
-		t.Fatal("expected parse error")
+	for content, want := range map[string]string{
+		"no fence here\n": "no ```mermaid block found",
+		"```mermaid\nflowchart TD\n  a[\"a\"]\n  ?!?\n```\n": "unrecognized mermaid line: ?!? (line 4)",
+	} {
+		_, err := (&MermaidRepository{}).Restyle(content, port.GraphSaveOptions{})
+		if err == nil || err.Error() != want {
+			t.Fatalf("Restyle(%q) = %v, want %q", content, err, want)
+		}
 	}
 }
 
