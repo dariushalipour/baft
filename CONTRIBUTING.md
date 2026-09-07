@@ -2,315 +2,111 @@
 
 ## Quick start
 
-```
+```bash
 go build -o baft .
-./baft check /path/to/repo
-./baft dump /path/to/repo
+./baft check .
+./baft dump .
 go test ./...
+```
+
+## Quality gate
+
+There is no hosted CI. `scripts/ci.sh` is the gate, and it is run by hand before every push:
+
+```bash
+./scripts/ci.sh
+```
+
+It stops at the first failure and covers, in order: `go fmt ./...` (which rewrites files, and fails the run if anything needed rewriting), `staticcheck ./...`, `go test ./...`, `baft check .` against Baft's own contract, `npm run compile` and `npm test` in `vscode-extension/`, then `./gradlew compileKotlin` and `./gradlew test` in `intellij-plugin/`. A plugin section is skipped only when its directory is absent.
+
+Prerequisites:
+
+- Go. `go.mod` declares `go 1.21`, and that floor is not tested anywhere — do not use language or stdlib features newer than 1.21.
+- `staticcheck`: `go install honnef.co/go/tools/cmd/staticcheck@latest`
+- Node and npm for the VS Code extension; a JDK for the Gradle wrapper.
+
+Two suites `ci.sh` does not run. Run them by hand when you touch the code they exercise:
+
+```bash
+go build -o baft . && BAFT_BINARY="$PWD/baft" go test ./internal/integrations/...  # CLI contract tests, skipped without the env var
+go test -race ./...
 ```
 
 ## Architecture
 
-Baft follows a hexagonal (ports and adapters) architecture:
+Hexagonal, one direction: `main.go` → `application/usecase/*` → `domain/graph`. Ports live in `internal/port/`, and everything that touches the outside world (filesystems, Mermaid, languages, reporters) is an adapter under `internal/adapter/`. The domain knows nothing about any language.
 
-```
-baft/
-├── main.go                                          # Entry point: embeds docs/, calls internal/cli
-├── go.mod                                           # Zero external dependencies
-└── internal/
-    ├── cli/                                         # Flag parsing, exit codes, use-case wiring
-    ├── port/                                        # Interfaces (ports)
-    │   ├── language.go                              # Language, CapsuleDiscovery, Capsule, ImportSpec
-    │   ├── fs.go                                    # FileSystem interface
-    │   ├── graph_repository.go                      # GraphRepository interface
-    │   └── reporter.go                              # CheckResult, Violation, CheckResultRenderer
-    ├── domain/graph/                                # Core domain logic
-    │   └── graph.go                                 # Graph, globs, node/edge matching
-    ├── treeview/                                    # ASCII tree parsing (test fixtures)
-    ├── application/
-    │   ├── service/
-    │   │   ├── discovery.go                         # CapsuleDiscovery (two-phase manifest walk)
-    │   │   └── capsule.go                           # Capsule walking utilities
-    │   └── usecase/
-    │       ├── check/check.go                       # `baft check` — validates architecture
-    │       └── dump/dump.go                       # `baft dump` — generates contract
-    └── adapter/
-        ├── languages/                               # Language adapters (adapters)
-        │   ├── golang/golang.go
-        │   ├── dart/dart.go
-        │   ├── typescript/typescript.go
-        │   ├── jvm/jvm.go                          # Java + Kotlin (one Gradle/Maven capsule)
-        │   ├── python/python.go
-        │   └── rust/rust.go
-        ├── fs/                                      # Filesystem adapters
-        │   ├── realfs/                              # OS-backed filesystem
-        │   ├── ignorefs/                            # Gitignore-aware wrapper
-        │   ├── overlayfs/                           # Stdin-overlay filesystem
-        │   ├── dryrunfs/                            # Write-buffering wrapper (`--dry-run`)
-        │   ├── memfs/                               # In-memory filesystem (testing)
-        │   └── gitignore/                           # Gitignore pattern parser
-        ├── graph_repositories/mermaid/              # Mermaid parser/renderer
-        └── reporters/                               # Output formatters
-            ├── textreporter/                        # Terminal output (colorized on a TTY)
-            ├── jsonreporter/                        # Full check result as JSON
-            └── diagnosticsreporter/                 # Editor diagnostics (--reporter=vsce/intellij)
-```
-
-The domain layer (`domain/graph/`) knows nothing about any language. Language-specific logic lives in `adapter/languages/`, plugged in via the `Language` interface in `port/`.
+The concepts each layer implements are documented in [docs/concepts/](docs/concepts/): [capsule](docs/concepts/capsule.md), [manifest](docs/concepts/manifest.md), [contract](docs/concepts/contract.md), [language](docs/concepts/language.md), [validation](docs/concepts/validation.md), [.baftignore](docs/concepts/baftignore.md).
 
 This layering is not a convention — it is enforced by Baft itself. The root `BAFT.md` is Baft's own contract, and `scripts/ci.sh` runs `baft check .` against it. Adapters are wired only in `internal/cli/`, the composition root; the application layer talks to them through `port/`.
 
 ## Adding a language adapter
 
-Create a new adapter under `internal/adapter/languages/<lang>/` and implement the `Language` interface from `internal/port/language.go`:
+`internal/port/language.go` is the source of truth for the method set — read the interface there rather than a copy in prose. Then:
 
-```go
-type Language interface {
-    Name() string
-    IsScannableFile(rel string) bool
-    ParseImports(fsys FileSystem, absPath string) ([]ImportSpec, error)
-    ResolveInternalTarget(fsys FileSystem, spec ImportSpec, c Capsule, fileRel string) (targetDir string, internal bool)
-    SupportsFileGlobs() bool
-    Register(d CapsuleDiscovery)
-}
-```
+1. Create `internal/adapter/languages/<lang>/` implementing `port.Language`.
+2. In `Register`, declare the manifest `Names`, a `ParseFunc` that extracts the capsule identifier, and `BaseIgnoreEntries` for test and generated files.
+3. Add the adapter to `resolveLangs` in `internal/cli/registry.go` — both the default slice and the `--lang` switch. That function is the language registry.
+4. Add the name to the `--lang` lists in `docs/cli-assets/check-usage.txt` and `docs/cli-assets/dump-usage.txt`, and to the supported list in `docs/cli-assets/help-intro.txt`.
+5. Add `<lang>_test.go` covering `IsScannableFile`, `ParseImports`, `ResolveInternalTarget`, and `GetFileNamespace`, plus a `<lang>.feature` beside it for the end-to-end path.
+6. Update the tables in `README.md` and [docs/concepts/language.md](docs/concepts/language.md).
 
-Each method:
-
-| Method                    | Purpose                                                                                                                                      |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Name()`                  | Short identifier for diagnostics (e.g. `"go"`, `"dart"`)                                                                                     |
-| `IsScannableFile()`       | Return `true` for source files that should be checked (exclude tests, generated files, etc.)                                                 |
-| `ParseImports()`          | Extract import specifiers from a file. Language-specific format. Receives a `FileSystem` for reading file content.                           |
-| `ResolveInternalTarget()` | Map an import specifier to a capsule-relative path. Return `internal=false` for external/stdlib imports.                                     |
-| `SupportsFileGlobs()`     | Return `true` if individual files can be claimed by nodes (e.g. `lib/src/providers.dart`). Return `false` for directory-only languages (Go). |
-| `Register()`              | Register manifest file names and parsing logic with the `CapsuleDiscovery` service.                                                          |
-
-Then register it in `main.go`:
-
-```go
-discovery := service.NewCapsuleDiscovery()
-golang.Language{}.Register(discovery)
-dart.Language{}.Register(discovery)
-mylang.Language{}.Register(discovery)
-
-result := check.Run(fsys, root, []port.Language{
-    golang.Language{},
-    dart.Language{},
-    mylang.Language{},
-}, repo, discovery)
-```
-
-That's it. No other changes needed.
+`SupportsFileGlobs` returns `false` unless nodes may name individual files (only TypeScript and Dart do today).
 
 ## Contract format
 
-Each tracked capsule has a contract file at its root and/or in some subdirectories. The first mermaid block is parsed:
-
-````markdown
-```mermaid
-flowchart TD
-  main["."]
-  httpapi["internal/adapter/http/&ast;&ast;"]
-  usecase["internal/usecase/&ast;&ast;"]:::endophobic
-  domain["internal/domain/&ast;&ast;"]
-
-  main --> httpapi --> usecase --> domain
-```
-````
-
-- **Nodes**: `[ID]["<glob>"]` — the glob claims directories or files inside the capsule
-- **Edges**: `A --> B` — node A may import node B
-- `:::endophobic` — forbids all same-node imports — files in an endophobic node cannot import any other file in the same node
-
-### Glob syntax
-
-| Glob                     | Matches                                                       |
-| ------------------------ | ------------------------------------------------------------- |
-| `.`                      | Only the capsule root                                         |
-| `internal/domain/**`     | `internal/domain` and any subdirectory                        |
-| `internal/infra/*`       | Exactly `internal/infra/<one-segment>`                        |
-| `internal/infra/*/**`    | `internal/infra/<x>/<y>` and deeper (not the port dir itself) |
-| `lib/src/providers.dart` | A single file (only for languages that support file globs)    |
-
-Most specific match wins. File-shaped globs beat directory-shaped globs.
+See [docs/concepts/contract.md](docs/concepts/contract.md) for the format and [docs/manual.md](docs/manual.md) (`baft manual`) for the working model. Do not restate either here.
 
 ## Testing
 
-Run all tests:
+`go test ./...` runs Go unit tests plus the godog suites: `internal/features/features_test.go` and the `*.feature` files sitting next to the code they cover. Filesystem-dependent tests run against `internal/adapter/fs/memfs`, so they need no fixtures on disk.
 
-```bash
-go test ./...
-```
+## Pitfalls worth knowing
 
-Tests are unit-only — no mocks, no fakes, no integration. The graph parser and glob matcher have thorough coverage in `graph_test.go`. Each adapter has its own test file.
+**Kotlin multiplatform has many source sets.** Not just `src/main/kotlin`: `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their `*Test` counterparts. `IsScannableFile` and `findBaseCapsule` must recognize all of them.
 
-When adding an adapter, test at minimum:
+**Generated files need explicit exclusion.** `/generated/`, `/kapt/`, `/ksp/`, `/buildSrc/` appear inside source trees and produce false positives if `IsScannableFile` does not filter them.
 
-- `IsScannableFile` with representative paths
-- `ParseImports` with a synthetic file
-- `ResolveInternalTarget` with internal, external, and edge-case imports
+**Dot-separated namespaces have shared helpers.** `internal/adapter/languages/internal/namespaces` owns the two traps every dot-namespaced adapter (C#, JVM, Python) used to get wrong: `IsInternal` (`strings.HasPrefix("com.example2", "com.example")` is true, so the next character must be `.`) and `CommonPrefix` (the capsule ID is the longest shared *segment* prefix, or `app` swallows `application`). Call them; do not re-implement them.
 
-## Common pitfalls
-
-### `append` mutates slices in-place
-
-```go
-// WRONG — candidate and common share the same backing array
-candidate := append(common, p)
-// ... use candidate ...
-common = append(common, p)  // common now has p twice
-
-// RIGHT — copy first, then append
-candidate := append([]string(nil), common...)
-candidate = append(candidate, p)
-// ... use candidate ...
-common = append(common, p)
-```
-
-When you `append` to a slice that has spare capacity, Go reuses the backing array. A "candidate" slice built from `common` will silently mutate `common` if you later append to `common`. Always copy with `append([]string(nil), src...)` before building a temporary view.
-
-### Regex capture groups eat optional suffixes
-
-```go
-// WRONG — captures the wildcard: "com.example.utils.*"
-re := regexp.MustCompile(`import\s+([A-Za-z_.\*]+)`)
-
-// RIGHT — wildcard outside the capture group
-re := regexp.MustCompile(`import\s+([A-Za-z_][A-Za-z0-9_.]*)\.\*?`)
-```
-
-If an optional part of your pattern (like `.*` wildcards) sits inside a capture group, it becomes part of the captured string. Keep optional suffixes outside the group, or strip them in code after capture.
-
-### Dot-separated namespaces have shared helpers
-
-`internal/adapter/languages/internal/namespaces` owns the two traps every
-dot-namespaced adapter (C#, JVM, Python) used to re-implement — and get wrong.
-Call them instead of writing your own:
-
-- `IsInternal(spec, base)` — `strings.HasPrefix("com.example2", "com.example")`
-  is `true`, so the next character must be a `.` (or the strings must be equal).
-- `CommonPrefix(fsys, srcDirs, exts)` — the capsule ID is the longest *segment*
-  prefix shared by every source directory; comparing raw string prefixes makes
-  `app` swallow `application`.
-
-### Kotlin multi-platform has many source sets
-
-Kotlin isn't just `src/main/kotlin`. Multi-platform projects use `commonMain`, `jvmMain`, `androidMain`, `iosMain`, `darwinMain`, `jsMain`, `nativeMain`, and their `*Test` counterparts. The JVM adapter therefore takes every `src/<sourceSet>/{java,kotlin}` directory (minus test source sets) and derives the capsule ID from their combined package prefix.
-
-### Generated files need explicit exclusion
-
-Kotlin code generators produce files in predictable paths. Exclude them in `IsScannableFile`:
-
-```bash
-/generated/
-/kapt/
-/ksp/
-/buildSrc/
-```
-
-These directories can appear inside source trees and will produce false positives if not filtered.
-
-### Go version compatibility with composite literals
-
-`Language{}.Name()` may fail to compile on Go 1.21 depending on the receiver type. Use `(Language{}).Name()` with explicit parentheses to disambiguate.
-
-### `filepath.Join` doesn't accept spread slices
-
-```go
-// WRONG — compile error: cannot use parts ([]string) as type string
-filepath.Join("src", parts...)
-
-// RIGHT — use append to build the argument list
-filepath.Join(append([]string{"src"}, parts...)...)
-```
-
-`filepath.Join` takes variadic `string` args, not a `[]string`. The `append([]string{"base"}, slice...)` pattern is the idiomatic workaround.
+**Optional suffixes must sit outside the capture group.** `import\s+([A-Za-z_.\*]+)` captures the `.*` wildcard into the package name; keep it outside the group or strip it after capture.
 
 ## Rules
 
-- Default to **no comments**. If the reason for code is non-obvious, rename or refactor instead.
-- One short line max when a comment is warranted. Explain **why**, never **what**.
+- Every letter in this repository is a liability. Prefer deleting code to adding it.
+- Default to **no comments**. If the reason for code is non-obvious, rename or refactor instead. One short line max when a comment is warranted, and it explains **why**.
 - Fix every broken test you encounter.
-- Prefer clarity over cleverness. A future maintainer will read this code.
 
 ## Releasing
 
-Baft uses semantic versioning with `v`-prefixed Git tags (e.g. `v0.1.0`).
+Semantic versioning with `v`-prefixed Git tags.
 
-### Steps
+```bash
+./scripts/ci.sh
+git tag -s v0.1.0 -m "Release v0.1.0"
+git push origin v0.1.0
+```
 
-1. Ensure tests pass:
+Then create the GitHub release against the new tag and verify:
 
-   ```bash
-   go test ./...
-   ```
+```bash
+go install github.com/dariushalipour/baft@v0.1.0
+baft --version
+```
 
-2. Tag the release:
-
-   ```bash
-   git tag -s v0.1.0 -m "Release v0.1.0"
-   git push origin v0.1.0
-   ```
-
-3. Create a GitHub release at `https://github.com/dariushalipour/baft/releases/new`:
-   - Target the new tag
-   - Auto-generate release notes or summarize changes
-   - Publish
-
-4. Verify `go install` works:
-   ```bash
-   go install github.com/dariushalipour/baft@v0.1.0
-   baft --version
-   ```
-
-### Version scheme
-
-- `v0.x.y` — pre-1.0, breaking changes may occur between minor versions
-- `v1.x.y` — stable API, semver-compliant
-
-### Building with version info
-
-For local builds that report a proper version string:
+`main.version` is set by `-ldflags` at build time and falls back to the module build info, then to `dev`. For a local build that reports a real version:
 
 ```bash
 go build -ldflags "-X main.version=v0.1.0" -o baft .
 ```
 
-The `main.version` variable is set to `"dev"` by default when not provided via `-ldflags`.
+### Plugin artifacts
 
-### Plugin integration workflow
+`baft integrate` installs the plugin artifacts embedded under `internal/integrations/embedded/`, and the compatibility check compares versions exactly. Nothing verifies that the embedded blobs match the plugin sources, so the order matters:
 
-`baft integrate` uses the embedded plugin artifacts under `internal/integrations/embedded/` as its source of truth. If you change a plugin version but do not rebuild and re-embed the packaged artifacts, the CLI will keep installing and validating against the old embedded version.
+1. Bump the version in its source of truth — `vscode-extension/package.json` or `intellij-plugin/gradle.properties`. Never hand-edit version strings in the other JetBrains files.
+2. `./scripts/build-plugins.sh` to rebuild and re-embed the artifacts.
+3. `go build -o baft .` so the new artifacts are compiled in.
+4. `baft integrate` to verify.
 
-Version sources:
-
-- VS Code: `vscode-extension/package.json`
-- JetBrains: `intellij-plugin/gradle.properties`
-
-Do not hand-edit version strings in multiple JetBrains files. The packaged plugin version is sourced from `intellij-plugin/gradle.properties`, and the runtime compatibility check reads the installed plugin version from the IDE.
-
-When changing either plugin:
-
-1. Bump the plugin version in its source of truth.
-2. Rebuild and sync the embedded artifacts:
-
-    ```bash
-    ./scripts/build-plugins.sh
-    ```
-
-3. Rebuild the CLI so the new embedded artifacts are compiled into `baft`:
-
-    ```bash
-    go build -o baft .
-    ```
-
-4. If you want the CLI to report a release version instead of `dev`, build with `-ldflags`:
-
-    ```bash
-    go build -ldflags "-X main.version=v0.1.0" -o baft .
-    ```
-
-5. Re-run `baft integrate`.
-
-In short: bump plugin version, run `./scripts/build-plugins.sh`, then rebuild `baft`. If you skip the script, `baft integrate` will still use the previously embedded plugin artifacts.
+Skip step 2 and the CLI keeps shipping the previously embedded version, which users see as a mismatch prompt.

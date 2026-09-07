@@ -58,7 +58,7 @@ A contract file is:
 A contract file has two parts:
 
 1. **Markdown text** — everything outside the Mermaid block is ignored by tooling. This is where developers write explanations, decisions, and context.
-2. **Mermaid flowchart block** — the single fenced ````mermaid` block is parsed. Everything else (code blocks, images) is ignored.
+2. **Mermaid flowchart block** — exactly one fenced ````mermaid` block, which is the contract. Other fenced blocks and images are ignored; a second ````mermaid` block is a parse error.
 
 ````markdown
 <!-- Baft -- Architecture Contract -->
@@ -77,7 +77,7 @@ flowchart TD
 ```
 ````
 
-A contract may hold exactly one mermaid block; a second one is a parse error. The block header may be `flowchart <direction>` or `graph <direction>`.
+The block header may be `flowchart <direction>` or `graph <direction>`. Markdown around the block is free text: this is where the reasoning behind the architecture belongs.
 
 ---
 
@@ -94,7 +94,7 @@ Nodes define which files belong to which architectural group.
 
 - **Exact directory:** `nodeId["path/to/dir"]` — matches files directly in that directory.
 - **Subtree directory:** `nodeId["path/to/dir/**"]` — matches that directory and nested directories beneath it.
-- **File-shaped:** `nodeId["path/file.ts"]` — matches a single file. Only supported by TypeScript and Dart.
+- **File-shaped:** `nodeId["path/file.ts"]` — matches a single file. Only supported by TypeScript and Dart; every other language reports `file-glob-unsupported`.
 
 **Specificity:** When a file matches multiple nodes, the most specific match wins. Specificity is scored by:
 
@@ -104,7 +104,7 @@ Nodes define which files belong to which architectural group.
 
 A file-shaped node (e.g., `lib/main.dart`) always wins over a directory-shaped node that contains it.
 
-**Coverage:** Every tracked file must match at least one node. Files that are not covered are reported as violations: `... is tracked by the contract but matches no node`.
+**Coverage:** Every tracked file must match at least one node. Files that are not covered are reported as `no-node` violations.
 
 ---
 
@@ -161,6 +161,26 @@ flowchart TD
   domain["src.main.kotlin.com.example.domain/**"]
   api["src.main.kotlin.com.example.api/**"]
 ```
+
+---
+
+## Namespace Mode
+
+`%% config namespaceMode "true"` switches import resolution from filesystem paths to declared namespaces. Baft indexes the namespace each tracked file declares (`namespace MyApp.Api` in C#, `package com.example.api` in Java and Kotlin), then resolves every `using`/`import` through that index instead of guessing a path from the string.
+
+Use it wherever a file's namespace may differ from its directory. Nodes are then written as namespaces, not paths, and a node claims its whole namespace subtree — `api` below also owns `MyApp.Api.Controllers`:
+
+```mermaid
+flowchart TD
+  %% config namespaceMode "true"
+
+  api["MyApp.Api"]
+  domain["MyApp.Domain"]
+
+  api --> domain
+```
+
+Namespace nodes are dotted already, so do not combine `namespaceMode` with `globSeparator "."` — that would rewrite the dots to slashes and nothing would match. File-shaped nodes remain invalid: `file-glob-unsupported` still fires.
 
 ---
 
@@ -254,7 +274,7 @@ The `dump` command generates a contract file from observed imports:
 3. Resolves internal targets to capsule-relative paths.
 4. Maps files to nodes based on directory structure (or file structure for TypeScript/Dart).
 5. Builds edges from observed import relationships.
-6. Writes a new contract file using the Mermaid format.
+6. Writes or amends the contract file in the Mermaid format.
 
 **Where no contract file exists, dump writes one from scratch.** That draft is a proposal, not an edit: it is as literal as the code it read, and you are expected to prune it.
 
@@ -270,7 +290,7 @@ That means **`baft dump` on a tracked repo legalizes the imports you have.** An 
 Use `baft dump --dry-run` to see those additions without writing anything. If an added edge is one your architecture forbids, do not keep it — revert the contract and fix the import instead.
 
 **Node granularity:**
-- **Go, Java, Kotlin, Python, Rust:** Dumps prefer bare directory nodes such as `internal/domain`. Use `/**` only when you want one node to own a whole subtree.
+- **C#, Go, Java, Kotlin, Python, Rust:** Dumps prefer bare directory nodes such as `internal/domain`. Use `/**` only when you want one node to own a whole subtree.
 - **TypeScript, Dart:** Root-level dumps start with merged same-directory `/*.*` nodes and retry with file-shaped nodes only when the merged draft creates a cycle. Scoped or bounded-context dumps still keep root files as file-shaped nodes.
 
 ---
@@ -320,11 +340,13 @@ flowchart TD
 
 ## Constraints
 
-The following Mermaid features are NOT supported:
+What the parser accepts and what it refuses:
 
 - **`subgraph` syntax** — nodes are flat, not grouped into subgraphs.
 - **Multiple mermaid blocks** — a second ````mermaid` block is a parse error.
-- **`classDef` definitions** — `classDef` lines are skipped. Classes are inline only (`:::endophobic`).
+- **`graph` and `flowchart` headers** — both accepted, in any direction (`TD`, `LR`, `RL`, `BT`).
+- **`classDef`, `style`, `linkStyle`** — tolerated and skipped. Classes are inline only (`:::endophobic`); custom class definitions carry no meaning.
+- **Generated styling** — the `style`/`linkStyle` tail written by `dump --color-palette` and `restyle` is machine-managed. Regenerate it with `baft restyle`; do not hand-edit it.
 - **Undirected and invisible links** — `A --- B`, `A === B` and `A ~~~ B` are rejected; an edge must point somewhere.
 - **Node ids** — must match `[A-Za-z_][A-Za-z0-9_]*`. They are kept verbatim, so they are also what diagnostics report.
 
@@ -394,3 +416,5 @@ flowchart TD
 | Rust           | `Cargo.toml` (per crate)     | All `*.rs` files under `src/` in the crate     |
 | Dart           | `pubspec.yaml` directory     | All `*.dart` files under `lib/` in the package |
 | Java/Kotlin    | `build.gradle.kts`, `build.gradle`, or `pom.xml` directory | All `*.java` and `*.kt` files in source sets |
+| Python         | `pyproject.toml`, `setup.py` directory | All `*.py` files under the package root |
+| C#             | `*.csproj` directory         | All `*.cs` files in the project                |

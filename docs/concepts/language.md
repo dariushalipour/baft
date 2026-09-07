@@ -17,12 +17,14 @@ type Language interface {
     Name() string
     IsScannableFile(rel string) bool
     ParseImports(fileSystem FileSystem, absPath string) ([]ImportSpec, error)
+    GetFileNamespace(fileSystem FileSystem, absPath string) (string, error)
     ResolveInternalTarget(fileSystem FileSystem, spec ImportSpec, c Capsule, fileRel string) (targetDir string, internal bool)
     SupportsFileGlobs() bool
     Register(d CapsuleDiscovery)
-    GetFileNamespace(fileSystem FileSystem, absPath string) (string, error)
 }
 ```
+
+`internal/port/language.go` is the source of truth for that signature; the sections below describe what each method owes the core.
 
 Every method on this interface is a language responsibility. None of them can
 be meaningfully shared across languages.
@@ -140,17 +142,20 @@ receives a `CapsuleDiscovery` interface and calls `d.Register()` with a
   `pubspec.yaml`, `package.json`)
 - **ParseFunc** — a function that reads the manifest and extracts the capsule
   identifier (module name, package name, etc.)
+- **BaseIgnoreEntries** — directory names and file globs that are invisible to
+  Baft for this language (e.g. `vendor`, `*_test.go`, `*.generated.cs`)
+
 Each language adapter implements its own manifest parser:
 
-| Language   | Manifest file(s)                     | Parser function    | Extracted value                    |
-| ---------- | ------------------------------------ | ------------------ | ---------------------------------- |
-| Go         | `go.mod`                             | `readGoModulePath` | `module github.com/...`            |
-| Dart       | `pubspec.yaml`                       | `readPubspecName`  | `name: my_package`                 |
-| TypeScript | `package.json`                       | `readCapsuleName`  | `"name": "my-package"`             |
-| JVM        | `build.gradle.kts`, `build.gradle`, `pom.xml` | `findBaseCapsule`  | common package prefix from source  |
-| Python     | `pyproject.toml`, `setup.py`         | `findBaseCapsule`  | common package prefix from source  |
-| Rust       | `Cargo.toml`                         | `readCargoName`    | `[package] name = ...`             |
-| C#         | `*.csproj`                           | `readCsharpProject` | `<RootNamespace>` or `<AssemblyName>` |
+| Language   | Manifest file(s)                              | Extracted value                       |
+| ---------- | --------------------------------------------- | ------------------------------------- |
+| Go         | `go.mod`                                      | `module github.com/...`               |
+| Dart       | `pubspec.yaml`                                | `name: my_package`                    |
+| TypeScript | `package.json`                                | `"name": "my-package"`                |
+| JVM        | `build.gradle.kts`, `build.gradle`, `pom.xml` | common package prefix from source     |
+| Python     | `pyproject.toml`, `setup.py`                  | common package prefix from source     |
+| Rust       | `Cargo.toml`                                  | `[package] name = ...`                |
+| C#         | `*.csproj`                                    | `<RootNamespace>` or `<AssemblyName>` |
 
 This method is called once during application startup so the discovery service
 knows which files to look for and how to parse them.
@@ -200,9 +205,7 @@ Returns the namespace declaration from a source file's header, or `("", nil)` if
 
 ### Namespace Mode
 
-C# contracts can opt into namespace mode via `%% config namespaceMode "true"`. In namespace mode, import targets are resolved by namespace string instead of filesystem path. The two-phase check builds a namespace index (file path → declared namespace), then matches `using` directives against that index.
-
-Namespace mode is opt-in per contract. Java and Kotlin can also use namespace mode with the same infrastructure.
+A contract opts into namespace mode via `%% config namespaceMode "true"`. Import targets are then resolved by namespace string instead of filesystem path: the check builds a namespace index (file path → declared namespace) and matches each `using`/`import` against it. It is per-contract and applies to any language whose `GetFileNamespace` returns a value — C#, Java, and Kotlin today. See [contract.md](contract.md#namespace-mode).
 
 Node patterns may use wildcards (`api["MyApp.Api.*"]`); only a pattern containing `/` is file-shaped. Each `using` counts as one relation regardless of how many files share the target namespace. If no scanned file declares a namespace, the check reports `namespace-mode-no-namespaces` instead of silently reverting to path matching.
 

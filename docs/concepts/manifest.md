@@ -2,7 +2,7 @@
 
 A **Manifest** is the build-system file that a Capsule owns. It is the file
 that declares identity, version, and dependencies — `go.mod`, `package.json`,
-`pyproject.toml`, `Cargo.toml`, `pubspec.yaml`, `build.gradle.kts`.
+`pyproject.toml`, `Cargo.toml`, `pubspec.yaml`, `build.gradle.kts`, `*.csproj`.
 
 A Manifest is both an ecosystem concept and a Baft concept. In each
 ecosystem, it has its own semantics, format, and tooling. Baft reads
@@ -28,6 +28,7 @@ Every major ecosystem has a term for its build manifest:
 | Dart                        | pubspec          |
 | Kotlin/Java (Gradle)        | build script     |
 | Python                      | pyproject        |
+| C#/.NET                     | project file     |
 
 These terms are not interchangeable. They carry language-specific baggage:
 
@@ -208,3 +209,4 @@ but those terms mean different things in different ecosystems.
 | Rust           | `Cargo.toml` (`[package]` → `name`)            | Cargo crate/package |
 | Dart           | `pubspec.yaml` (`name:` line)                  | Dart package        |
 | Java/Kotlin    | `build.gradle.kts`, `build.gradle`, `pom.xml` (source path common prefix) | Gradle module / Maven project |
+| C#/.NET        | `*.csproj` (`<RootNamespace>` or `<AssemblyName>`) | .NET project |

@@ -24,6 +24,7 @@ Every major ecosystem has a term for its primary code boundary:
 | Dart                        | package                     |
 | Kotlin/Java (Gradle)        | module / project            |
 | Python                      | package / module            |
+| C#/.NET                     | project / assembly          |
 
 These terms are not interchangeable. They carry language-specific baggage:
 
@@ -305,3 +306,4 @@ language.
 | Dart           | `pubspec.yaml`           | Dart package        | Dart libraries (`lib/`)                    |
 | Java/Kotlin    | `build.gradle.kts`, `build.gradle`, `pom.xml` | Gradle module / Maven project | Java and Kotlin packages (dot-separated namespaces) |
 | Python         | `pyproject.toml`, `setup.py` | Python package / module | Python packages (dot-separated namespaces) |
+| C#/.NET        | `*.csproj`               | .NET project        | C# namespaces (dot-separated)              |

@@ -61,7 +61,7 @@ flowchart TD
 - **Mermaid Block:** Exactly one fenced `mermaid` block is parsed; a second one is a parse error. Its header may be `flowchart <direction>` or `graph <direction>`.
 - **Comments:** Use `%%` for comments inside the Mermaid block. Full-line comments are allowed, and inline comments are allowed after node or edge declarations. `%%` inside quoted labels stays part of the label.
 - **Escaping:** Use `&ast;` for literal asterisks (`*`) inside labels.
-- **Constraints:** `subgraph` syntax and undirected links (`---`, `===`, `~~~`) are not supported.
+- **Constraints:** `subgraph` syntax and undirected links (`---`, `===`, `~~~`) are not supported. `flowchart`/`graph` headers and `classDef`/`style`/`linkStyle` lines are tolerated and ignored.
 - **Generated styling:** `baft dump --color-palette ...` and `baft restyle --color-palette ...` append a generated Mermaid notice plus `style` and `linkStyle` lines after the node and edge declarations. Treat that styling section as machine-managed: regenerate it with `baft restyle` or by formatting the file with Baft in your IDE, not by editing it manually. `vibrant`, `muted`, and `mono` define 16 canonical colors; graphs with more than 16 nodes reuse colors in deterministic node order. `none` skips palette coloring and only emits dashed styling for `:::endophobic` nodes.
 
 ### Node Definitions
@@ -69,12 +69,13 @@ flowchart TD
 **Syntax:** `nodeId["path/to/dir"]` or `nodeId["path/to/dir/**"]` (directory-shaped), or `nodeId["path/file.go"]` (file-shaped).
 
 - **Specificity:** The most specific match wins. File-shaped globs take precedence over directory-shaped globs.
-- **Coverage:** Every tracked file must match at least one node. Unmatched files are reported as violations.
+- **Coverage:** Every tracked file must match at least one node. Unmatched files are reported as `no-node` violations.
 - **Directory semantics:** `path/to/dir` claims files directly in that directory. `path/to/dir/**` claims the whole subtree rooted there.
 - **Custom separator:** `%% config globSeparator "."` lets you write globs with dots instead of slashes (useful for Kotlin/Java/Python). The `%%` wrapper prevents Mermaid preview errors.
+- **Namespace mode:** `%% config namespaceMode "true"` matches imports against the namespace each file declares instead of its path — for C#, Java, and Kotlin, where the `using`/`import` string is a namespace. Nodes are then written as namespaces (`api["MyApp.Api"]`) and claim the whole namespace subtree. Do not combine it with `globSeparator "."`.
 - **Language Support:**
   - **TypeScript, Dart:** Support both file-shaped and directory-shaped nodes.
-  - **Go, Java, Kotlin, Python, Rust:** Support directory-shaped nodes only. Using a file-shaped node (e.g., `handler["path/handler.go"]`) in these languages produces a validation error: `file-shaped nodes require a language that supports file globs`.
+  - **Go, C#, Java, Kotlin, Python, Rust:** Support directory-shaped nodes only. Using a file-shaped node (e.g., `handler["path/handler.go"]`) in these languages produces a `file-glob-unsupported` error.
 
 ### Ignoring Files with `.baftignore`
 
@@ -118,14 +119,39 @@ A child directory with its own contract file is treated as an independent bounde
 
 ### Handling Violations
 
-Common error messages:
+Every diagnostic carries a rule id, printed in brackets by the text reporter and in the `rule` field of `--reporter=json`.
 
-- `... is tracked by the contract but matches no node`: The file isn't covered by any glob in the contract.
-- `... imports ... - target matches no node`: The imported file isn't part of the contract.
-- `... imports ... - A -> B not allowed`: The import violates the defined edges.
-- `... cross-directory edge not declared in parent`: A violation occurring between nested capsules.
+Source-level violations — the code broke the contract:
 
-**Exit Codes:** `0` (Success), `1` (Violation/Error).
+| Rule                   | Meaning                                                                | Fix                                                        |
+| ---------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `import-not-allowed`   | `src → dst` has no edge in the contract                                | Add the edge, move the file, or route through an allowed node |
+| `endophobic`           | Two files in the same `:::endophobic` node import each other           | Extract the shared code into a node both may import        |
+| `no-node`              | A tracked file matches no node glob                                    | Widen a glob or add a node that claims the file            |
+| `import-no-node`       | The import target is tracked but matches no node glob                  | Same, for the target's directory                           |
+
+An import along a tolerated (`-.->`) edge is reported as an `import-tolerated` warning instead: it never fails `check`.
+
+Contract-level errors — the contract itself is wrong. These are reported against `BAFT.md`, not against source files:
+
+| Rule                    | Meaning                                                                    |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `contract-load-error`   | The contract could not be read or parsed into a usable graph                |
+| `empty-node-glob`       | A node declares an empty glob                                               |
+| `invalid-node-glob`     | A node glob is malformed — escaping the capsule with `..`, and so on        |
+| `duplicate-node-glob`   | Two nodes claim the same glob                                               |
+| `node-overlap`          | Two node globs both match the same file                                     |
+| `undefined-edge-node`   | An edge names a node that is never declared                                 |
+| `circular-dependency`   | The declared edges form a cycle                                             |
+| `file-glob-unsupported` | A file-shaped node in a language that only supports directory nodes         |
+
+**Exit codes:** `0` no violations, `1` violations or a run error, `2` a usage error such as an unknown flag or language.
+
+**Color:** the text reporter emits ANSI color only when stdout is a terminal and `NO_COLOR` is unset, so `baft check > report.txt` stays plain.
+
+### Refreshing a Contract
+
+`baft dump` writes a fresh contract for a capsule that has none (`[new] BAFT.md (…)`), but **amends** one that already exists: it adds the nodes and edges needed to make current imports legal and prints `[amended] BAFT.md (+N nodes, +N edges)`. Amending widens the architecture, so run `baft dump --dry-run` first to see what would be added without writing, and review the diff before committing.
 
 ## Styling Workflow
 

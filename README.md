@@ -65,7 +65,7 @@ go build -o baft .
 
 ### Write a contract
 
-Create a contract file beside your module manifest.
+Create a file named `BAFT.md` beside your module manifest (`go.mod`, `package.json`, `Cargo.toml`, …). The name is fixed; Baft does not look for any other file.
 
 ````markdown
 ```mermaid
@@ -103,7 +103,8 @@ In this contract:
 - `usecase` may import `domain` and `infra`
 - `infra` may import `domain`
 - `usecase` is `endophobic`, so files in that node may not import other files in the same node
-- For Kotlin/Java/Python, use `%% config globSeparator "."` to write globs with dots instead of slashes
+- For Java/Kotlin/Python, `%% config globSeparator "."` lets you write globs with dots instead of slashes
+- For C#/Java/Kotlin, `%% config namespaceMode "true"` matches imports by declared namespace instead of path, and nodes become namespaces
 
 ### Run the check
 
@@ -121,7 +122,7 @@ Violation output:
 
 ```text
 ✗ myservice (432 files scanned, 847 internal imports checked, graph: 11 nodes, 28 edges)
-    violation [import-not-allowed]: internal/api/handler.go:12:2 (api) → internal/domain (domain) — relation not allowed (add edge in contract file or move the file)
+    violation [import-not-allowed]: internal/api/handler.go:12:2 (api) → internal/domain (domain) — relation not allowed (add edge in BAFT.md or move the file)
 ```
 
 Exit code `0` means clean, `1` means violations or an error, and `2` means a usage error.
@@ -134,13 +135,13 @@ If you do not want to write the first contract by hand:
 baft dump .
 ```
 
-Baft will generate a contract dump from current dependency reality.
+Baft writes a `BAFT.md` per capsule from current dependency reality.
 
 That dump is intentionally too literal. It is a starting point, not the final architecture. You still need to prune edges and merge low-level nodes into the model you actually want to enforce.
 
 ## How It Works
 
-1. Baft discovers capsules from standard manifests such as `go.mod`, `package.json`, `pubspec.yaml`, `build.gradle.kts`, `pyproject.toml`, and `Cargo.toml`.
+1. Baft discovers capsules from standard manifests such as `go.mod`, `package.json`, `pubspec.yaml`, `build.gradle.kts`, `pyproject.toml`, `Cargo.toml`, and `*.csproj`.
 2. For each capsule with a contract file, it parses the Mermaid flowchart.
 3. Node globs claim tracked files.
 4. Arrows become the allow-list for cross-node imports.
@@ -159,9 +160,9 @@ Nested capsules are supported. A child directory with its own contract file is t
 
 **Ignoring Files:** Use a `.baftignore` file (standard gitignore syntax) to exclude files or directories from the check. This is useful for generated code or temporary files that shouldn't be tracked by the contract. Note that inline suppression comments (e.g. `// baft:ignore`) are intentionally not supported to ensure all architectural exceptions remain visible and centralized.
 
-TypeScript and Dart support file-shaped nodes. Go, Java, Kotlin, Python, and Rust require directory-shaped nodes. In all languages, a bare directory glob means the exact directory, not an implicit `/**`.
+TypeScript and Dart support file-shaped nodes. C#, Go, Java, Kotlin, Python, and Rust require directory-shaped nodes. In all languages, a bare directory glob means the exact directory, not an implicit `/**`.
 
-**Namespace Mode:** C# contracts can use `%% config namespaceMode "true"` to match `using` directives against namespace strings instead of file paths. Java and Kotlin can also opt into namespace mode.
+**Namespace Mode:** `%% config namespaceMode "true"` makes a C#, Java, or Kotlin contract match imports against declared namespaces, with nodes written as namespaces. See [contract.md](docs/concepts/contract.md#namespace-mode).
 
 ## Supported Languages
 
@@ -185,8 +186,8 @@ Baft can scan a multilingual repository in one run as long as each capsule has a
 ## CI
 
 ```yaml
-- name: Check architecture
-  run: baft check /github/workspace
+- run: go install github.com/dariushalipour/baft@latest
+- run: baft check .
 ```
 
 ## Docs
